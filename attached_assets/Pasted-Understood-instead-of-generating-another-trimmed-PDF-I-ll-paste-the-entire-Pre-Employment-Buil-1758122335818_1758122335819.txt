@@ -1,0 +1,321 @@
+Understood 👍 — instead of generating another trimmed PDF, I’ll paste the entire Pre-Employment Build Pack v1.1 (Handover Edition) here in full detail so you can copy it directly to Roylett.
+
+⸻
+
+📂 GPNet Pre-Employment Build Pack v1.1 — Handover Edition
+
+(Locked – Sept 17, 2025 • Brand Colour: Teal #00A68C)
+
+⸻
+
+Handover Context
+
+This document is the definitive specification for building the GPNet Pre-Employment Check process.
+It includes technical and operational details plus handover notes for developers (Roylett/Replit) and non-technical stakeholders.
+Please treat this pack as the single source of truth for Phase 1 (Pre-Employment only).
+
+Scope
+   •   Build only the Pre-Employment Check process.
+   •   Other case types (Injury, Prevention, General Health, Mental Health, Exit) are out of scope.
+
+Deliverables
+   •   A working Pre-Employment workflow integrated with Freshdesk ticketing.
+   •   Fit Classification logic and RAG scoring implemented.
+   •   Employer-ready PDF report generation and email delivery.
+   •   Data storage and threading rules enforced.
+
+⸻
+
+Executive Summary (non-technical)
+
+Most employers struggle to manage health risks before hiring. Small issues missed at pre-employment often lead to costly WorkCover claims later.
+
+GPNet automates this step:
+	1.	Candidates complete a health form.
+	2.	The system analyses their responses.
+	3.	Employers receive a clear report with Fit Classification and recommendations.
+
+Everything is stored in Freshdesk tickets, ensuring a full audit trail.
+This document specifies how the process works, how data flows, and how success will be measured.
+
+⸻
+
+Table of Contents
+	1.	Executive Summary & Scope
+	2.	Glossary
+	3.	Roles & Permissions
+	4.	End-to-End Workflow (Pre-Employment)
+	5.	Form Specification (Fields & Validation)
+	6.	Fit Classification Logic
+	7.	RAG Scoring Logic
+	8.	Email Standard & Templates
+	9.	Ticket & Data Model
+	10.	Integrations (Jotform, Freshdesk)
+	11.	Storage Rules & Naming
+	12.	Agent Behaviour (Manager Assistant)
+	13.	Report Template Layout
+	14.	Security, Privacy & Audit
+	15.	Error Handling & Edge Cases
+	16.	Non-Functional Requirements
+	17.	Metrics & Telemetry
+	18.	QA & Acceptance Criteria
+	19.	Deployment Plan & Feature Flags
+	20.	Handover Checklist
+	21.	Appendix A: API Endpoints & Payloads
+	22.	Appendix B: Future Modules Roadmap
+
+⸻
+
+1. Executive Summary & Scope
+   •   GPNet is a case-management hub for employers, workers, doctors, and insurers.
+   •   This build pack covers only the Pre-Employment Check process.
+
+In Scope:
+   •   Worker form capture (via Jotform).
+   •   Automatic Freshdesk ticket creation & email threading.
+   •   Automated analysis → Fit Classification & recommendations.
+   •   Consultant review → employer report delivery.
+   •   RAG scoring for flagged risks.
+   •   Email subject line standard applied to all messages.
+
+Out of Scope (Phase 1):
+   •   Injury, Prevention, General Health, Mental Health, Exit workflows.
+   •   Manager dashboards beyond report view.
+   •   Payment plans, billing, multi-tenant analytics.
+
+⸻
+
+2. Glossary
+   •   Case: A worker-specific workflow instance (here: Pre-Employment Check).
+   •   Ticket: Canonical container for a case (ID, emails, notes, attachments, events).
+   •   Agent: Manager-facing assistant suggesting next steps, drafting correspondence.
+   •   RAG: Red/Amber/Green risk score used for prioritisation.
+
+⸻
+
+3. Roles & Permissions
+   •   Employer Manager: View case status, final report, receive notifications.
+   •   GPNet Consultant: Review analysis, edit recommendations, approve report.
+   •   System Admin: Configure users, permissions, templates, integrations.
+   •   Worker (External): Submit form only.
+
+⸻
+
+4. End-to-End Workflow (Pre-Employment)
+
+Swimlane Steps:
+	1.	Worker → submits form (Jotform).
+	2.	System → creates Freshdesk ticket (subject per standard), attaches payload (JSON + PDF).
+	3.	System → analyses responses; computes Fit Classification & RAG; drafts recommendations.
+	4.	Consultant → reviews & edits as needed; approves.
+	5.	System → generates PDF report; emails employer; stores report in ticket; updates status to Complete.
+
+Status Codes: NEW, ANALYSING, AWAITING_REVIEW, REVISIONS_REQUIRED, READY_TO_SEND, COMPLETE.
+
+⸻
+
+5. Form Specification (Fields & Validation)
+
+Sections & Fields:
+   •   Worker Details: first_name*, last_name*, DOB*, phone*, email*, role_applied*, site/location.
+   •   Medical History: previous_injuries (textarea), conditions (multi-select), medications, allergies.
+   •   Musculoskeletal: back, neck, shoulders, elbows, wrists/hands, hips, knees, ankles/feet (none/current/past + details if non-none).
+   •   Functional Capacity: lifting (kg), standing (mins), walking (mins), repetitive tasks (yes/no + details).
+   •   Psychosocial Screening: sleep (1–5), stress (1–5), support (1–5), comments.
+   •   Consent & Declaration: consent_to_share*, signature*, date*.
+
+Validation Rules:
+   •   All * fields required.
+   •   If any body part ≠ “none” → require details (≥10 chars).
+   •   Lifting <10kg or repetitive tasks = yes → flag Amber.
+   •   DOB must make age ≥15.
+
+⸻
+
+6. Fit Classification Logic
+   •   Fit without restriction: no issues, functional thresholds met, RAG=Green.
+   •   Fit with restrictions: minor issues/reduced capacity → specify limits.
+   •   Not fit: significant issues, unsafe → recommend GP/physio clearance.
+
+⸻
+
+7. RAG Scoring Logic
+   •   Green: no issues, functional capacity matches role, psychosocial ≤3/5.
+   •   Amber: 1–2 minor issues or borderline functional shortfall.
+   •   Red: multiple issues, severe shortfall, or clearance required.
+
+⸻
+
+8. Email Standard & Templates
+
+Subject Line Format (Locked):
+[GPNet #<TicketID>] – <Worker Name> – <Case Type>
+
+Examples:
+   •   [GPNet #1234] – John Smith – Pre-Employment Check
+   •   [GPNet #5678] – Maria Lopez – Injury Check
+
+Templates:
+   •   Manager Invite:
+“Hello , a Pre-Employment Check has been initiated for .”
+   •   Report Delivery:
+“Subject: [GPNet #1234] – John Smith – Pre-Employment Check (Report)
+Body: Please find the attached Pre-Employment Check Report. Summary: .”
+   •   Reminder:
+“This is a reminder that the Pre-Employment Check for  is pending review.”
+
+⸻
+
+9. Ticket & Data Model
+
+Entities:
+   •   Ticket: ticket_id, case_type, status, created_at, updated_at.
+   •   Worker: worker_id, name, DOB, contact, role_applied.
+   •   FormSubmission: submission_id, ticket_id, raw_json, pdf_path, received_at.
+   •   Analysis: ticket_id, fit_classification, rag_score, recommendations[], notes.
+   •   Email: message_id, ticket_id, subject, body, timestamp.
+   •   Attachment: attachment_id, ticket_id, filename, path.
+
+Threading Rule: All emails must preserve the subject line format.
+
+⸻
+
+10. Integrations (Jotform, Freshdesk)
+   •   Jotform → Webhook posts JSON → middleware → Freshdesk ticket.
+   •   Freshdesk → Stores tickets, notes, attachments.
+
+⸻
+
+11. Storage Rules & Naming
+   •   Ticket folder: /cases/<ticket_id>/
+   •   Attachments: /cases/<ticket_id>/attachments/<ts>_<filename>
+   •   Reports: /cases/<ticket_id>/reports/<ts>_preemployment_report.pdf
+   •   Audit JSON: /cases/<ticket_id>/form/<submission_id>.json
+
+⸻
+
+12. Agent Behaviour (Manager Assistant)
+   •   Summarise risks in plain English.
+   •   Suggest restrictions if needed.
+   •   Escalate to consultant if ambiguous.
+
+⸻
+
+13. Report Template Layout
+   •   Disclaimer (locked).
+   •   Summary of Findings.
+   •   Fit Classification (checkboxes).
+   •   Recommendations (actionable bullets).
+   •   Sections: Health Overview, Physical in Role Context, Emotional Wellbeing, Work & Social Impacts, Lifestyle, Support Provided, Health Outlook.
+
+⸻
+
+14. Security, Privacy & Audit
+   •   Role-based access control.
+   •   Audit logs of all actions.
+   •   PII encrypted at rest; TLS in transit.
+   •   Retention: 7 years minimum.
+
+⸻
+
+15. Error Handling & Edge Cases
+   •   Missing subject → quarantine + admin alert.
+   •   Duplicate submission → merge under same ticket.
+   •   PDF generation failure → retry 3x then fallback.
+   •   Invalid email → bounce handling, SMS fallback (future).
+
+⸻
+
+16. Non-Functional Requirements
+   •   Reliability: ≥99.5% submission→ticket uptime.
+   •   Performance: ticket created ≤10s after submission.
+   •   Scalability: 100 concurrent submissions.
+   •   Observability: correlation IDs logged.
+
+⸻
+
+17. Metrics & Telemetry
+   •   Submission→ticket latency (p50/p95).
+   •   Ticket counts by status.
+   •   Average review time.
+   •   % Fit with restrictions.
+
+⸻
+
+18. QA & Acceptance Criteria
+   •   Valid submission → correct ticket creation.
+   •   RAG score & Fit Classification visible.
+   •   Consultant can edit recommendations & approve.
+   •   Employer receives PDF via email, thread intact.
+   •   Audit log complete.
+   •   Edge cases tested: duplicates, missing subject, PDF retry.
+
+⸻
+
+19. Deployment Plan & Feature Flags
+   •   Feature flag: PREEMPLOYMENT_ENABLED.
+   •   Environments: Dev → Staging → Prod.
+   •   Rollback: toggle flag off (hold queue).
+
+⸻
+
+20. Handover Checklist
+   •   API keys stored securely.
+   •   Email templates verified.
+   •   Test submissions completed, screenshots archived.
+   •   Admin roles configured (least privilege).
+   •   GPNet consultant sign-off required before production go-live.
+
+⸻
+
+21. Appendix A: API Endpoints & Payloads
+
+Freshdesk Ticket Create Example:
+
+POST /api/v2/tickets
+Headers: Authorization: Basic <api_key>
+{
+  "email": "manager@example.com",
+  "subject": "[GPNet #1234] – John Smith – Pre-Employment Check",
+  "description": "Automated case creation via Jotform webhook.",
+  "status": 2,
+  "priority": 1,
+  "custom_fields": {
+    "gpnet_case_type": "pre_employment",
+    "gpnet_ticket_id": "1234"
+  }
+}
+
+Jotform Webhook Payload (Illustrative):
+
+{
+  "first_name": "...",
+  "last_name": "...",
+  "dob": "YYYY-MM-DD",
+  "email": "...",
+  "role_applied": "...",
+  "msk_wrists": "none/current/past",
+  "msk_wrists_details": "...",
+  "lifting_kg": 15,
+  "repetitive_tasks": "yes/no",
+  "consent_to_share": true
+}
+
+
+⸻
+
+22. Appendix B: Future Modules Roadmap (Out of Scope)
+   •   Injury Check workflow – Phase 2.
+   •   Prevention Check workflow – Phase 3.
+   •   Exit Check workflow – Phase 4.
+   •   General Health & Mental Health modules – future extensions.
+
+⸻
+
+📌 End of Build Pack v1.1 (Pre-Employment Only)
+© 2025 GPNet — Master Package v1.1
+
+⸻
+
+That’s the full expanded version — no trims.
+Would you like me to also write a one-paragraph covering email to Roylett that you can send along with this doc?
