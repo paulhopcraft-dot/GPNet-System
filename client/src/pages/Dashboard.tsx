@@ -14,107 +14,79 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Filter, Download } from "lucide-react";
+import { Plus, Filter, Download, Loader2 } from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
-// Mock data for demonstration - todo: remove mock functionality
-const mockStats = {
-  total: 147,
-  new: 23,
-  inProgress: 34,
-  awaiting: 12,
-  complete: 78,
-  flagged: 5,
-};
+interface DashboardStats {
+  total: number;
+  new: number;
+  inProgress: number;
+  awaiting: number;
+  complete: number;
+  flagged: number;
+}
 
-const mockCases = [
-  {
-    ticketId: "1234",
-    workerName: "John Smith",
-    roleApplied: "Warehouse Operator",
-    company: "ABC Logistics",
-    status: "AWAITING_REVIEW" as const,
-    ragScore: "amber" as const,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    email: "john.smith@email.com",
-    phone: "+1 (555) 123-4567",
-    fitClassification: "Fit with Restrictions",
-    recommendations: [
-      "Recommend ergonomic assessment for lifting tasks",
-      "Provide back support training before starting role"
-    ],
-    notes: "Previous back strain history but good functional capacity"
-  },
-  {
-    ticketId: "5678",
-    workerName: "Maria Lopez",
-    roleApplied: "Office Administrator",
-    company: "XYZ Corp",
-    status: "COMPLETE" as const,
-    ragScore: "green" as const,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-    email: "maria.lopez@email.com",
-    phone: "+1 (555) 987-6543",
-    fitClassification: "Fit without restriction",
-    recommendations: ["No restrictions required"],
-    notes: "Excellent health profile, no concerns identified"
-  },
-  {
-    ticketId: "9012",
-    workerName: "David Wilson",
-    roleApplied: "Construction Worker",
-    company: "BuildCorp",
-    status: "REVISIONS_REQUIRED" as const,
-    ragScore: "red" as const,
-    createdAt: new Date(Date.now() - 1000 * 60 * 30),
-    email: "david.wilson@email.com",
-    phone: "+1 (555) 456-7890",
-    fitClassification: "Not fit",
-    recommendations: [
-      "Recommend GP clearance for shoulder injury",
-      "Physiotherapy assessment required"
-    ],
-    notes: "Current shoulder injury requires medical clearance"
-  },
-  {
-    ticketId: "3456",
-    workerName: "Sarah Johnson",
-    roleApplied: "Delivery Driver",
-    company: "Fast Delivery Co",
-    status: "NEW" as const,
-    ragScore: "green" as const,
-    createdAt: new Date(Date.now() - 1000 * 60 * 15),
-    email: "sarah.johnson@email.com",
-    phone: "+1 (555) 234-5678",
-    fitClassification: "Fit without restriction",
-    recommendations: ["Standard driving medical clearance"],
-    notes: "No health concerns identified"
-  },
-  {
-    ticketId: "7890",
-    workerName: "Michael Brown",
-    roleApplied: "Factory Supervisor",
-    company: "Manufacturing Plus",
-    status: "READY_TO_SEND" as const,
-    ragScore: "amber" as const,
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 4),
-    email: "michael.brown@email.com",
-    phone: "+1 (555) 345-6789",
-    fitClassification: "Fit with restrictions",
-    recommendations: [
-      "Limit standing to 4-hour periods",
-      "Provide ergonomic support for knee condition"
-    ],
-    notes: "Minor knee condition managed with restrictions"
-  }
-];
+interface DashboardCase {
+  ticketId: string;
+  status: string;
+  createdAt: string;
+  workerName: string;
+  email: string;
+  phone: string;
+  roleApplied: string;
+  company: string;
+  ragScore: "green" | "amber" | "red";
+  fitClassification: string;
+  recommendations: string[];
+  notes: string;
+}
 
 export default function Dashboard() {
-  const [selectedCase, setSelectedCase] = useState<typeof mockCases[0] | null>(null);
+  const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const handleViewCase = (caseData: typeof mockCases[0]) => {
+  // Fetch dashboard statistics
+  const { 
+    data: stats, 
+    isLoading: statsLoading, 
+    error: statsError 
+  } = useQuery<DashboardStats>({ 
+    queryKey: ["/api/dashboard/stats"] 
+  });
+
+  // Fetch all cases
+  const { 
+    data: cases, 
+    isLoading: casesLoading, 
+    error: casesError 
+  } = useQuery<DashboardCase[]>({ 
+    queryKey: ["/api/cases"] 
+  });
+
+  // Mutations for updating case data
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ ticketId, status }: { ticketId: string; status: string }) => {
+      return apiRequest("PUT", `/api/cases/${ticketId}/status`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+    },
+  });
+
+  const updateRecommendationsMutation = useMutation({
+    mutationFn: async ({ ticketId, recommendations }: { ticketId: string; recommendations: string[] }) => {
+      return apiRequest("PUT", `/api/cases/${ticketId}/recommendations`, { recommendations });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+    },
+  });
+
+  const handleViewCase = (caseData: DashboardCase) => {
     console.log("Opening case details for:", caseData.ticketId);
     setSelectedCase(caseData);
     setIsModalOpen(true);
@@ -122,15 +94,15 @@ export default function Dashboard() {
 
   const handleStatusUpdate = (ticketId: string, newStatus: string) => {
     console.log("Status update requested:", ticketId, newStatus);
-    // todo: remove mock functionality - implement real status update
+    updateStatusMutation.mutate({ ticketId, status: newStatus });
   };
 
   const handleRecommendationsUpdate = (ticketId: string, recommendations: string[]) => {
     console.log("Recommendations update requested:", ticketId, recommendations);
-    // todo: remove mock functionality - implement real recommendations update
+    updateRecommendationsMutation.mutate({ ticketId, recommendations });
   };
 
-  const filteredCases = mockCases.filter(caseItem => {
+  const filteredCases = (cases || []).filter((caseItem: DashboardCase) => {
     const matchesStatus = statusFilter === "all" || caseItem.status === statusFilter;
     const matchesSearch = searchQuery === "" || 
       caseItem.workerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -139,6 +111,38 @@ export default function Dashboard() {
     
     return matchesStatus && matchesSearch;
   });
+
+  // Handle loading states
+  if (statsLoading || casesLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-6 py-8">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin mr-2" />
+            <span>Loading dashboard...</span>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Handle error states
+  if (statsError || casesError) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto px-6 py-8">
+          <div className="text-center py-12">
+            <p className="text-red-600">Error loading dashboard data</p>
+            <p className="text-muted-foreground text-sm mt-2">
+              {statsError?.message || casesError?.message}
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -167,7 +171,7 @@ export default function Dashboard() {
         {/* Status Board */}
         <div className="mb-8">
           <StatusBoard 
-            stats={mockStats}
+            stats={stats || { total: 0, new: 0, inProgress: 0, awaiting: 0, complete: 0, flagged: 0 }}
             todayCount={8}
             weeklyGrowth={15}
           />
@@ -252,9 +256,9 @@ export default function Dashboard() {
                   workerName={caseItem.workerName}
                   roleApplied={caseItem.roleApplied}
                   company={caseItem.company}
-                  status={caseItem.status}
+                  status={caseItem.status as any}
                   ragScore={caseItem.ragScore}
-                  createdAt={caseItem.createdAt}
+                  createdAt={new Date(caseItem.createdAt)}
                   onViewCase={() => handleViewCase(caseItem)}
                 />
               ))}
@@ -267,7 +271,10 @@ export default function Dashboard() {
       <CaseDetailsModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        caseDetails={selectedCase}
+        caseDetails={selectedCase ? {
+          ...selectedCase,
+          createdAt: new Date(selectedCase.createdAt)
+        } : null}
         onStatusUpdate={handleStatusUpdate}
         onRecommendationsUpdate={handleRecommendationsUpdate}
       />
