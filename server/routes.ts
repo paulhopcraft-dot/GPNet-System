@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { preEmploymentFormSchema, type PreEmploymentFormData, injuryFormSchema, type InjuryFormData } from "@shared/schema";
+import { preEmploymentFormSchema, type PreEmploymentFormData, injuryFormSchema, type InjuryFormData, rtwPlanSchema } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -530,6 +530,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Test endpoint for form submission (for demo purposes)
+  // RTW Plan API endpoints
+  
+  // Get RTW plans for a ticket
+  app.get("/api/cases/:ticketId/rtw-plans", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const plans = await storage.getRtwPlansByTicket(ticketId);
+      res.json(plans);
+    } catch (error) {
+      console.error("Error fetching RTW plans:", error);
+      res.status(500).json({ error: "Failed to fetch RTW plans" });
+    }
+  });
+
+  // Get specific RTW plan
+  app.get("/api/rtw-plans/:planId", async (req, res) => {
+    try {
+      const { planId } = req.params;
+      const plan = await storage.getRtwPlan(planId);
+      
+      if (!plan) {
+        return res.status(404).json({ error: "RTW plan not found" });
+      }
+      
+      res.json(plan);
+    } catch (error) {
+      console.error("Error fetching RTW plan:", error);
+      res.status(500).json({ error: "Failed to fetch RTW plan" });
+    }
+  });
+
+  // Create new RTW plan
+  app.post("/api/cases/:ticketId/rtw-plans", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const planData = { ...req.body, ticketId };
+      
+      // Validate RTW plan data
+      const validationResult = rtwPlanSchema.safeParse(planData);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid RTW plan data", details: errorMessage });
+      }
+
+      const plan = await storage.createRtwPlan(validationResult.data);
+      
+      console.log(`Created RTW plan ${plan.id} for case ${ticketId}`);
+      res.json({ success: true, plan });
+      
+    } catch (error) {
+      console.error("Error creating RTW plan:", error);
+      res.status(500).json({ error: "Failed to create RTW plan" });
+    }
+  });
+
+  // Update RTW plan
+  app.put("/api/rtw-plans/:planId", async (req, res) => {
+    try {
+      const { planId } = req.params;
+      const updates = req.body;
+      
+      // Validate partial RTW plan updates
+      const partialSchema = rtwPlanSchema.partial();
+      const validationResult = partialSchema.safeParse(updates);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid RTW plan update data", details: errorMessage });
+      }
+
+      const plan = await storage.updateRtwPlan(planId, validationResult.data);
+      
+      console.log(`Updated RTW plan ${planId}`);
+      res.json({ success: true, plan });
+      
+    } catch (error) {
+      console.error("Error updating RTW plan:", error);
+      res.status(500).json({ error: "Failed to update RTW plan" });
+    }
+  });
+
+  // Update RTW plan status
+  app.patch("/api/rtw-plans/:planId/status", async (req, res) => {
+    try {
+      const { planId } = req.params;
+      const { status } = req.body;
+      
+      if (!["draft", "pending_approval", "approved", "active", "completed"].includes(status)) {
+        return res.status(400).json({ error: "Invalid status value" });
+      }
+
+      const plan = await storage.updateRtwPlanStatus(planId, status);
+      
+      console.log(`Updated RTW plan ${planId} status to ${status}`);
+      res.json({ success: true, plan });
+      
+    } catch (error) {
+      console.error("Error updating RTW plan status:", error);
+      res.status(500).json({ error: "Failed to update RTW plan status" });
+    }
+  });
+
+  // Delete RTW plan
+  app.delete("/api/rtw-plans/:planId", async (req, res) => {
+    try {
+      const { planId } = req.params;
+      await storage.deleteRtwPlan(planId);
+      
+      console.log(`Deleted RTW plan ${planId}`);
+      res.json({ success: true });
+      
+    } catch (error) {
+      console.error("Error deleting RTW plan:", error);
+      res.status(500).json({ error: "Failed to delete RTW plan" });
+    }
+  });
+
   app.post("/api/test/submit-form", async (req, res) => {
     try {
       // This endpoint simulates a form submission for testing

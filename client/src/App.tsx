@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import Dashboard from "@/pages/Dashboard";
 import WorkerForm from "@/pages/WorkerForm";
 import InjuryFormPage from "@/pages/InjuryForm";
+import RtwPlans from "@/pages/RtwPlans";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/form" component={WorkerForm} />
       <Route path="/injury" component={InjuryFormPage} />
+      <Route path="/cases/:ticketId/rtw-plans" component={RtwPlans} />
       <Route component={NotFound} />
     </Switch>
   );

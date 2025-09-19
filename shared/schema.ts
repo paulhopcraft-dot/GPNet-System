@@ -288,3 +288,20 @@ export const injuryFormSchema = z.object({
 });
 
 export type InjuryFormData = z.infer<typeof injuryFormSchema>;
+
+// RTW Plan validation schema
+export const rtwPlanSchema = z.object({
+  ticketId: z.string().min(1, "Ticket ID is required"),
+  doctorStakeholderId: z.string().optional(),
+  title: z.string().min(1, "Plan title is required"),
+  restrictions: z.array(z.string()).default([]),
+  modifiedDuties: z.array(z.string()).default([]),
+  targetReturnDate: z.string().min(1, "Target return date is required"),
+  reviewDate: z.string().min(1, "Review date is required"),
+  status: z.enum(["draft", "pending_approval", "approved", "active", "completed"]).default("draft"),
+  doctorApproval: z.boolean().default(false),
+  doctorNotes: z.string().optional(),
+  createdBy: z.string().min(1, "Created by is required"),
+});
+
+export type RtwPlanFormData = z.infer<typeof rtwPlanSchema>;
