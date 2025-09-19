@@ -479,3 +479,8 @@ export type LetterTemplate = typeof letterTemplates.$inferSelect;
 
 export type InsertGeneratedLetter = z.infer<typeof insertGeneratedLetterSchema>;
 export type GeneratedLetter = typeof generatedLetters.$inferSelect;
+
+// RTW Workflow Types
+export type RtwStepId = "eligibility_assessment" | "month_2_review" | "month_3_assessment" | "non_compliance_escalation";
+export type RtwComplianceStatus = "compliant" | "non_compliant" | "pending";
+export type RtwOutcome = "completed" | "escalated" | "terminated" | "withdrawn";
