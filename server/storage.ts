@@ -36,7 +36,10 @@ export interface IStorage {
   
   // Stakeholders
   createStakeholder(stakeholder: InsertStakeholder): Promise<Stakeholder>;
+  getStakeholder(id: string): Promise<Stakeholder | undefined>;
   getStakeholdersByTicket(ticketId: string): Promise<Stakeholder[]>;
+  updateStakeholder(id: string, updates: Partial<InsertStakeholder>): Promise<Stakeholder>;
+  deleteStakeholder(id: string): Promise<void>;
   
   // RTW Plans
   createRtwPlan(plan: InsertRtwPlan): Promise<RtwPlan>;
@@ -168,11 +171,35 @@ export class DatabaseStorage implements IStorage {
     return stakeholder;
   }
 
+  async getStakeholder(id: string): Promise<Stakeholder | undefined> {
+    const [stakeholder] = await db
+      .select()
+      .from(stakeholders)
+      .where(eq(stakeholders.id, id));
+    return stakeholder || undefined;
+  }
+
   async getStakeholdersByTicket(ticketId: string): Promise<Stakeholder[]> {
     return await db
       .select()
       .from(stakeholders)
-      .where(eq(stakeholders.ticketId, ticketId));
+      .where(eq(stakeholders.ticketId, ticketId))
+      .orderBy(desc(stakeholders.createdAt));
+  }
+
+  async updateStakeholder(id: string, updates: Partial<InsertStakeholder>): Promise<Stakeholder> {
+    const [stakeholder] = await db
+      .update(stakeholders)
+      .set(updates)
+      .where(eq(stakeholders.id, id))
+      .returning();
+    return stakeholder;
+  }
+
+  async deleteStakeholder(id: string): Promise<void> {
+    await db
+      .delete(stakeholders)
+      .where(eq(stakeholders.id, id));
   }
 
   // RTW Plans
