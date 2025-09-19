@@ -426,7 +426,7 @@ REQUIRED SECTIONS: Disclaimer, Summary (psychosocial concerns), Fit Classificati
     },
   };
 
-  return prompts[templateId] || prompts.injury_check;
+  return prompts[templateId as keyof typeof prompts] || prompts.injury_check;
 }
 
 function getClassifyPrompt(text: string, hints?: any): string {
