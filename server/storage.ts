@@ -1,10 +1,16 @@
 import { 
   tickets, workers, formSubmissions, analyses, emails, attachments,
   injuries, stakeholders, rtwPlans,
+  legislationDocuments, rtwWorkflowSteps, complianceAudit, workerParticipationEvents,
+  letterTemplates, generatedLetters,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
   type Injury, type Stakeholder, type RtwPlan,
+  type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
+  type LetterTemplate, type GeneratedLetter,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis,
-  type InsertInjury, type InsertStakeholder, type InsertRtwPlan
+  type InsertInjury, type InsertStakeholder, type InsertRtwPlan,
+  type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
+  type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
