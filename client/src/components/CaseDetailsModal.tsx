@@ -20,9 +20,11 @@ import {
   Edit,
   CheckCircle,
   AlertTriangle,
-  XCircle 
+  XCircle,
+  Bot
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { MichelleChat } from "./MichelleChat";
 
 interface CaseDetails {
   ticketId: string;
@@ -122,9 +124,10 @@ export default function CaseDetailsModal({
         </DialogHeader>
 
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
             <TabsTrigger value="analysis" data-testid="tab-analysis">Analysis</TabsTrigger>
+            <TabsTrigger value="michelle" data-testid="tab-michelle">Michelle AI</TabsTrigger>
             <TabsTrigger value="actions" data-testid="tab-actions">Actions</TabsTrigger>
           </TabsList>
 
@@ -284,6 +287,27 @@ export default function CaseDetailsModal({
                     </div>
                   </>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="michelle" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bot className="h-5 w-5 text-primary" />
+                  Michelle AI Assistant
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground mb-4">
+                  Chat with Michelle about this case. She can help answer questions about the worker's health assessment, 
+                  provide guidance on return-to-work processes, and offer compliance recommendations.
+                </p>
+                <MichelleChat 
+                  ticketId={caseDetails.ticketId}
+                  conversationId={`case-${caseDetails.ticketId}`}
+                />
               </CardContent>
             </Card>
           </TabsContent>
