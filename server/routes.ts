@@ -557,6 +557,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Enhanced Analytics endpoints
+  app.get("/api/analytics/trends", async (req, res) => {
+    try {
+      const days = req.query.days ? parseInt(req.query.days as string) : 30;
+      const analytics = await storage.getTrendAnalytics(days);
+      res.json(analytics);
+    } catch (error) {
+      console.error("Error fetching trend analytics:", error);
+      res.status(500).json({ error: "Failed to fetch trend analytics" });
+    }
+  });
+
+  app.get("/api/analytics/performance", async (req, res) => {
+    try {
+      const metrics = await storage.getPerformanceMetrics();
+      res.json(metrics);
+    } catch (error) {
+      console.error("Error fetching performance metrics:", error);
+      res.status(500).json({ error: "Failed to fetch performance metrics" });
+    }
+  });
+
   // Get all cases with optional filtering
   app.get("/api/cases", async (req, res) => {
     try {
