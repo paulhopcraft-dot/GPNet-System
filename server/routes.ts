@@ -1443,7 +1443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         subject,
         content,
         tokens: allTokens,
-        legislationRefs: template.legislationRefs,
+        legislationRefs: template.legislationRefs || null,
         deadlineDate: tokens?.deadlineDate,
         status: "draft",
         generatedBy: "Michelle AI"
