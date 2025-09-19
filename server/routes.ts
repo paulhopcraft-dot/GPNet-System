@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { preEmploymentFormSchema, type PreEmploymentFormData } from "@shared/schema";
+import { preEmploymentFormSchema, type PreEmploymentFormData, injuryFormSchema, type InjuryFormData } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -93,7 +93,127 @@ class AnalysisEngine {
   }
 }
 
+// Injury Analysis Engine for workplace injury assessments
+class InjuryAnalysisEngine {
+  analyzeInjury(formData: InjuryFormData) {
+    const risks: string[] = [];
+    let ragScore: "green" | "amber" | "red" = "green";
+    let fitClassification = "fit";
+    const recommendations: string[] = [];
+
+    // Severity assessment
+    if (formData.severity === "major" || formData.severity === "serious") {
+      ragScore = "red";
+      fitClassification = "not_fit";
+      risks.push(`${formData.severity} injury requiring comprehensive assessment`);
+      recommendations.push("Immediate medical assessment required before return to work");
+      recommendations.push("Development of comprehensive return-to-work plan necessary");
+    } else if (formData.severity === "moderate") {
+      ragScore = "amber";
+      fitClassification = "fit_with_restrictions";
+      risks.push("Moderate injury requiring monitoring");
+      recommendations.push("Modified duties may be required during recovery");
+    }
+
+    // Time off work assessment
+    if (formData.timeOffWork) {
+      if (ragScore === "green") ragScore = "amber";
+      recommendations.push("Return-to-work planning and medical clearance required");
+      risks.push("Time off work required for recovery");
+    }
+
+    // Work capacity assessment
+    if (formData.canReturnToWork === "no") {
+      ragScore = "red";
+      fitClassification = "not_fit";
+      risks.push("Unable to return to work at this time");
+      recommendations.push("Medical treatment and recovery period required");
+      recommendations.push("Regular medical review to assess fitness for work");
+    } else if (formData.canReturnToWork === "with_restrictions") {
+      if (ragScore === "green") ragScore = "amber";
+      fitClassification = "fit_with_restrictions";
+      recommendations.push("Return to work with medical restrictions and modified duties");
+      
+      // Add specific restrictions
+      if (formData.workRestrictions && formData.workRestrictions.length > 0) {
+        risks.push(`Work restrictions required: ${formData.workRestrictions.join(", ")}`);
+      }
+    }
+
+    // Body parts affected analysis
+    if (formData.bodyPartsAffected && formData.bodyPartsAffected.length > 0) {
+      const criticalAreas = ["Back", "Neck", "Head", "Chest"];
+      const affectedCritical = formData.bodyPartsAffected.filter(part => 
+        criticalAreas.some(critical => part.toLowerCase().includes(critical.toLowerCase()))
+      );
+      
+      if (affectedCritical.length > 0) {
+        if (ragScore === "green") ragScore = "amber";
+        risks.push(`Critical body areas affected: ${affectedCritical.join(", ")}`);
+        recommendations.push("Specialist medical assessment recommended for critical body areas");
+      }
+
+      if (formData.bodyPartsAffected.length >= 3) {
+        ragScore = "red";
+        risks.push("Multiple body parts affected indicating complex injury");
+        recommendations.push("Comprehensive medical evaluation for multi-site injury");
+      }
+    }
+
+    // Injury type assessment
+    const highRiskInjuries = ["Fracture/Break", "Burn", "Chemical Exposure", "Crush"];
+    if (highRiskInjuries.includes(formData.injuryType)) {
+      ragScore = "red";
+      fitClassification = "not_fit";
+      risks.push(`High-risk injury type: ${formData.injuryType}`);
+      recommendations.push("Specialist medical treatment and extended recovery period required");
+    }
+
+    // WorkCover claim assessment
+    if (formData.claimType === "workcover") {
+      recommendations.push("WorkCover claim processing required");
+      recommendations.push("Case manager assignment and claim documentation necessary");
+      risks.push("WorkCover claim - formal injury management process required");
+    }
+
+    // Recovery time assessment
+    if (formData.estimatedRecovery) {
+      const recoveryLower = formData.estimatedRecovery.toLowerCase();
+      if (recoveryLower.includes("month") || recoveryLower.includes("week")) {
+        if (ragScore === "green") ragScore = "amber";
+        recommendations.push("Extended recovery period - regular medical review required");
+      }
+      if (recoveryLower.includes("unknown") || recoveryLower.includes("unclear")) {
+        if (ragScore === "green") ragScore = "amber";
+        recommendations.push("Uncertain recovery timeline - close medical monitoring required");
+      }
+    }
+
+    // Set final fit classification based on RAG score
+    if (ragScore === "red") {
+      fitClassification = "not_fit";
+    } else if (ragScore === "amber") {
+      fitClassification = "fit_with_restrictions";
+    } else {
+      fitClassification = "fit";
+    }
+
+    // Default recommendations if none identified
+    if (recommendations.length === 0) {
+      recommendations.push("Monitor for symptom changes and ensure proper workplace safety protocols");
+    }
+
+    return {
+      ragScore,
+      fitClassification,
+      recommendations,
+      notes: risks.length > 0 ? `Identified risks: ${risks.join("; ")}` : "Minor injury with standard recovery expected",
+    };
+  }
+}
+
 const analysisEngine = new AnalysisEngine();
+const injuryAnalysisEngine = new InjuryAnalysisEngine();
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -163,6 +283,111 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         error: "Internal server error", 
         message: "Failed to process form submission" 
+      });
+    }
+  });
+
+  // Injury webhook endpoint for receiving injury form submissions
+  app.post("/api/webhook/injury", async (req, res) => {
+    try {
+      console.log("Received injury webhook:", req.body);
+      
+      // Validate the injury form data
+      const validationResult = injuryFormSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid injury form data", details: errorMessage });
+      }
+
+      const formData = validationResult.data;
+
+      // Create worker record
+      const worker = await storage.createWorker({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        dateOfBirth: "", // Not captured in injury form
+        phone: formData.phone,
+        email: formData.email,
+        roleApplied: formData.position, // Use position as role applied
+        site: formData.department || null,
+      });
+
+      // Create ticket for injury case
+      const ticket = await storage.createTicket({
+        workerId: worker.id,
+        caseType: "injury",
+        claimType: formData.claimType,
+        status: "NEW",
+        priority: formData.severity === "major" || formData.severity === "serious" ? "high" : "medium",
+      });
+
+      // Create injury record with incident details
+      await storage.createInjury({
+        ticketId: ticket.id,
+        incidentDate: formData.incidentDate,
+        incidentTime: formData.incidentTime || null,
+        location: formData.location,
+        description: formData.description,
+        bodyPartsAffected: formData.bodyPartsAffected,
+        injuryType: formData.injuryType,
+        severity: formData.severity,
+        witnessDetails: formData.witnessDetails || null,
+        immediateAction: formData.immediateAction || null,
+        medicalTreatment: formData.medicalTreatment,
+        timeOffWork: formData.timeOffWork,
+        estimatedRecovery: formData.estimatedRecovery || null,
+      });
+
+      // Create form submission record
+      await storage.createFormSubmission({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        rawData: formData,
+      });
+
+      // Create doctor stakeholder if provided
+      if (formData.doctorName && formData.clinicName) {
+        await storage.createStakeholder({
+          ticketId: ticket.id,
+          role: "doctor",
+          name: formData.doctorName,
+          email: null,
+          phone: formData.clinicPhone || null,
+          organization: formData.clinicName,
+          notes: "Primary treating doctor",
+        });
+      }
+
+      // Perform automated injury analysis
+      const analysisResult = injuryAnalysisEngine.analyzeInjury(formData);
+      
+      await storage.createAnalysis({
+        ticketId: ticket.id,
+        fitClassification: analysisResult.fitClassification,
+        ragScore: analysisResult.ragScore,
+        recommendations: analysisResult.recommendations,
+        notes: analysisResult.notes,
+      });
+
+      // Update ticket status to ANALYSING
+      await storage.updateTicketStatus(ticket.id, "ANALYSING");
+
+      console.log(`Created injury case ${ticket.id} for ${worker.firstName} ${worker.lastName}`);
+
+      res.json({
+        success: true,
+        ticketId: ticket.id,
+        caseType: "injury",
+        claimType: formData.claimType,
+        status: "ANALYSING",
+        message: `Injury report processed successfully. ${formData.claimType === 'workcover' ? 'WorkCover claim processing initiated.' : 'Standard claim processing initiated.'}`,
+      });
+
+    } catch (error) {
+      console.error("Error processing injury submission:", error);
+      res.status(500).json({ 
+        error: "Internal server error", 
+        message: "Failed to process injury report" 
       });
     }
   });

@@ -1,7 +1,10 @@
 import { 
   tickets, workers, formSubmissions, analyses, emails, attachments,
+  injuries, stakeholders, rtwPlans,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
-  type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis
+  type Injury, type Stakeholder, type RtwPlan,
+  type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis,
+  type InsertInjury, type InsertStakeholder, type InsertRtwPlan
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
@@ -26,6 +29,18 @@ export interface IStorage {
   createAnalysis(analysis: InsertAnalysis): Promise<Analysis>;
   getAnalysisByTicket(ticketId: string): Promise<Analysis | undefined>;
   updateAnalysis(ticketId: string, updates: Partial<InsertAnalysis>): Promise<Analysis>;
+  
+  // Injuries
+  createInjury(injury: InsertInjury): Promise<Injury>;
+  getInjuryByTicket(ticketId: string): Promise<Injury | undefined>;
+  
+  // Stakeholders
+  createStakeholder(stakeholder: InsertStakeholder): Promise<Stakeholder>;
+  getStakeholdersByTicket(ticketId: string): Promise<Stakeholder[]>;
+  
+  // RTW Plans
+  createRtwPlan(plan: InsertRtwPlan): Promise<RtwPlan>;
+  getRtwPlansByTicket(ticketId: string): Promise<RtwPlan[]>;
   
   // Dashboard stats
   getDashboardStats(): Promise<{
@@ -121,6 +136,55 @@ export class DatabaseStorage implements IStorage {
       .where(eq(analyses.ticketId, ticketId))
       .returning();
     return analysis;
+  }
+
+  // Injuries
+  async createInjury(insertInjury: InsertInjury): Promise<Injury> {
+    const [injury] = await db
+      .insert(injuries)
+      .values(insertInjury)
+      .returning();
+    return injury;
+  }
+
+  async getInjuryByTicket(ticketId: string): Promise<Injury | undefined> {
+    const [injury] = await db
+      .select()
+      .from(injuries)
+      .where(eq(injuries.ticketId, ticketId));
+    return injury || undefined;
+  }
+
+  // Stakeholders
+  async createStakeholder(insertStakeholder: InsertStakeholder): Promise<Stakeholder> {
+    const [stakeholder] = await db
+      .insert(stakeholders)
+      .values(insertStakeholder)
+      .returning();
+    return stakeholder;
+  }
+
+  async getStakeholdersByTicket(ticketId: string): Promise<Stakeholder[]> {
+    return await db
+      .select()
+      .from(stakeholders)
+      .where(eq(stakeholders.ticketId, ticketId));
+  }
+
+  // RTW Plans
+  async createRtwPlan(insertPlan: InsertRtwPlan): Promise<RtwPlan> {
+    const [plan] = await db
+      .insert(rtwPlans)
+      .values(insertPlan)
+      .returning();
+    return plan;
+  }
+
+  async getRtwPlansByTicket(ticketId: string): Promise<RtwPlan[]> {
+    return await db
+      .select()
+      .from(rtwPlans)
+      .where(eq(rtwPlans.ticketId, ticketId));
   }
 
   // Dashboard stats

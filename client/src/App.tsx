@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import Dashboard from "@/pages/Dashboard";
 import WorkerForm from "@/pages/WorkerForm";
+import InjuryFormPage from "@/pages/InjuryForm";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -13,6 +14,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/form" component={WorkerForm} />
+      <Route path="/injury" component={InjuryFormPage} />
       <Route component={NotFound} />
     </Switch>
   );
