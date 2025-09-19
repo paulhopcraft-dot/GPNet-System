@@ -93,13 +93,17 @@ class AnalysisEngine {
   }
 }
 
-// Injury Analysis Engine for workplace injury assessments
+// Enhanced Injury Analysis Engine for comprehensive workplace injury assessments
 class InjuryAnalysisEngine {
   analyzeInjury(formData: InjuryFormData) {
     const risks: string[] = [];
+    const riskFactors: string[] = [];
     let ragScore: "green" | "amber" | "red" = "green";
     let fitClassification = "fit";
     const recommendations: string[] = [];
+    const workCapacityAssessment: string[] = [];
+    const medicalRecommendations: string[] = [];
+    const workplaceModifications: string[] = [];
 
     // Severity assessment
     if (formData.severity === "major" || formData.severity === "serious") {
@@ -181,13 +185,24 @@ class InjuryAnalysisEngine {
       const recoveryLower = formData.estimatedRecovery.toLowerCase();
       if (recoveryLower.includes("month") || recoveryLower.includes("week")) {
         if (ragScore === "green") ragScore = "amber";
-        recommendations.push("Extended recovery period - regular medical review required");
+        medicalRecommendations.push("Extended recovery period - regular medical review required");
+        workCapacityAssessment.push("Extended recovery may affect return-to-work timeline");
       }
       if (recoveryLower.includes("unknown") || recoveryLower.includes("unclear")) {
         if (ragScore === "green") ragScore = "amber";
-        recommendations.push("Uncertain recovery timeline - close medical monitoring required");
+        medicalRecommendations.push("Uncertain recovery timeline - close medical monitoring required");
+        riskFactors.push("Unpredictable recovery timeline increases case complexity");
       }
     }
+
+    // Enhanced injury type-specific assessments
+    this.analyzeInjuryTypeSpecific(formData, riskFactors, workCapacityAssessment, medicalRecommendations, workplaceModifications);
+    
+    // Position and department-specific risk assessment
+    this.analyzeWorkplaceFactors(formData, workplaceModifications, workCapacityAssessment);
+    
+    // Recovery timeline and RTW planning
+    this.generateRTWRecommendations(formData, medicalRecommendations, workCapacityAssessment);
 
     // Set final fit classification based on RAG score
     if (ragScore === "red") {
@@ -206,9 +221,148 @@ class InjuryAnalysisEngine {
     return {
       ragScore,
       fitClassification,
-      recommendations,
+      recommendations: [...recommendations, ...medicalRecommendations, ...workCapacityAssessment, ...workplaceModifications],
       notes: risks.length > 0 ? `Identified risks: ${risks.join("; ")}` : "Minor injury with standard recovery expected",
+      riskFactors,
+      workCapacityAssessment,
+      medicalRecommendations,
+      workplaceModifications,
     };
+  }
+
+  // Analyze injury type-specific factors and implications
+  analyzeInjuryTypeSpecific(formData: InjuryFormData, riskFactors: string[], workCapacity: string[], medical: string[], workplace: string[]) {
+    const injuryTypeAssessments = {
+      "Strain/Sprain": {
+        risks: ["Potential for re-injury", "Recurring pain patterns"],
+        capacity: ["May require lifting restrictions", "Gradual return to full duties"],
+        medical: ["Physiotherapy assessment recommended", "Pain management strategies"],
+        workplace: ["Ergonomic workstation assessment", "Manual handling training"]
+      },
+      "Cut/Laceration": {
+        risks: ["Infection risk", "Scarring affecting function"],
+        capacity: ["Hand/finger dexterity may be affected", "Possible tool restrictions"],
+        medical: ["Wound care management", "Tetanus status verification"],
+        workplace: ["Safety equipment review", "Sharp object handling protocols"]
+      },
+      "Fracture/Break": {
+        risks: ["Long recovery period", "Potential permanent impairment"],
+        capacity: ["Extended reduced capacity", "Significant work modifications required"],
+        medical: ["Orthopedic specialist referral", "X-ray monitoring schedule"],
+        workplace: ["Major duty modifications", "Temporary alternative roles"]
+      },
+      "Burn": {
+        risks: ["Scarring and contractures", "Psychological impact"],
+        capacity: ["Skin sensitivity to temperature", "Possible mobility restrictions"],
+        medical: ["Burn specialist assessment", "Scar management therapy"],
+        workplace: ["Heat source exposure elimination", "Personal protective equipment review"]
+      },
+      "Chemical Exposure": {
+        risks: ["Systemic health effects", "Respiratory complications"],
+        capacity: ["Chemical sensitivity development", "Breathing restrictions"],
+        medical: ["Toxicology consultation", "Ongoing health monitoring"],
+        workplace: ["Chemical safety protocols review", "Ventilation system assessment"]
+      },
+      "Crush": {
+        risks: ["Permanent tissue damage", "Complex recovery"],
+        capacity: ["Severe functional limitations", "Long-term disability risk"],
+        medical: ["Immediate specialist care", "Reconstructive surgery consideration"],
+        workplace: ["Machinery safety audit", "Comprehensive training review"]
+      }
+    };
+
+    const assessment = injuryTypeAssessments[formData.injuryType as keyof typeof injuryTypeAssessments];
+    if (assessment) {
+      riskFactors.push(...assessment.risks);
+      workCapacity.push(...assessment.capacity);
+      medical.push(...assessment.medical);
+      workplace.push(...assessment.workplace);
+    }
+  }
+
+  // Analyze workplace factors based on position and department
+  analyzeWorkplaceFactors(formData: InjuryFormData, workplace: string[], workCapacity: string[]) {
+    // Department-specific assessments
+    const departmentRisks = {
+      "warehouse": ["Heavy lifting requirements", "Forklift operation", "Standing for extended periods"],
+      "office": ["Ergonomic workstation setup", "Computer use duration", "Minimal physical demands"],
+      "production": ["Machine operation safety", "Repetitive motions", "Manufacturing environment"],
+      "maintenance": ["Tool usage requirements", "Physical accessibility", "Safety equipment needs"],
+      "customer service": ["Voice strain considerations", "Sitting/standing options", "Stress management"]
+    };
+
+    const dept = formData.department.toLowerCase();
+    const relevantRisks = Object.entries(departmentRisks).find(([key]) => 
+      dept.includes(key)
+    );
+
+    if (relevantRisks) {
+      workplace.push(`Department-specific considerations: ${relevantRisks[1].join(", ")}`);
+    }
+
+    // Position-specific capacity requirements
+    const position = formData.position.toLowerCase();
+    if (position.includes("manager") || position.includes("supervisor")) {
+      workCapacity.push("Leadership responsibilities may be maintained with physical restrictions");
+      workplace.push("Consider delegation of physical oversight tasks");
+    }
+    
+    if (position.includes("driver") || position.includes("operator")) {
+      workCapacity.push("Operating licenses and certifications may be affected");
+      workplace.push("Medical clearance required for safety-sensitive position");
+    }
+  }
+
+  // Generate comprehensive RTW recommendations
+  generateRTWRecommendations(formData: InjuryFormData, medical: string[], workCapacity: string[]) {
+    // Graduated return-to-work planning
+    if (formData.canReturnToWork === "with_restrictions") {
+      medical.push("Develop graduated return-to-work plan with medical oversight");
+      workCapacity.push("Start with reduced hours and gradually increase capacity");
+      
+      // Specific restriction planning
+      if (formData.workRestrictions) {
+        formData.workRestrictions.forEach(restriction => {
+          switch (restriction.toLowerCase()) {
+            case "no lifting":
+              workCapacity.push("Alternative duties for all lifting tasks required");
+              medical.push("Regular assessment of lifting capacity progression");
+              break;
+            case "no standing":
+              workCapacity.push("Seated work arrangement mandatory");
+              medical.push("Monitor for circulation and mobility improvements");
+              break;
+            case "limited hours":
+              workCapacity.push("Flexible scheduling to accommodate medical appointments");
+              medical.push("Fatigue management strategies implementation");
+              break;
+            case "light duties only":
+              workCapacity.push("Comprehensive light duty program development");
+              medical.push("Regular capacity assessments for duty progression");
+              break;
+          }
+        });
+      }
+    }
+
+    // Timeline-based recommendations
+    if (formData.estimatedRecovery) {
+      const recovery = formData.estimatedRecovery.toLowerCase();
+      if (recovery.includes("week")) {
+        medical.push("Weekly medical reviews during initial recovery phase");
+        workCapacity.push("Short-term modified duties with weekly progression assessment");
+      } else if (recovery.includes("month")) {
+        medical.push("Bi-weekly medical reviews with functional capacity evaluations");
+        workCapacity.push("Medium-term rehabilitation program with monthly milestones");
+      }
+    }
+
+    // WorkCover-specific RTW planning
+    if (formData.claimType === "workcover") {
+      medical.push("Coordinate with WorkCover case manager for treatment approvals");
+      workCapacity.push("Document all capacity changes for WorkCover reporting");
+      medical.push("Ensure all treating practitioners are WorkCover approved");
+    }
   }
 }
 
@@ -526,6 +680,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating status:", error);
       res.status(500).json({ error: "Failed to update status" });
+    }
+  });
+
+  // Regenerate injury analysis
+  app.post("/api/cases/:ticketId/regenerate-analysis", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+
+      // Get the original form submission
+      const submission = await storage.getFormSubmissionByTicket(ticketId);
+      if (!submission) {
+        return res.status(404).json({ error: "Form submission not found" });
+      }
+
+      // Check if this is an injury case
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket || ticket.caseType !== "injury") {
+        return res.status(400).json({ error: "Analysis regeneration only available for injury cases" });
+      }
+
+      // Re-run injury analysis with enhanced engine
+      const formData = submission.rawData as any;
+      const analysisResult = injuryAnalysisEngine.analyzeInjury(formData);
+
+      // Update the analysis with enhanced results
+      await storage.updateAnalysis(ticketId, {
+        ragScore: analysisResult.ragScore,
+        fitClassification: analysisResult.fitClassification,
+        recommendations: analysisResult.recommendations,
+        notes: analysisResult.notes,
+      });
+
+      console.log(`Regenerated analysis for case ${ticketId}`);
+      res.json({ success: true, analysis: analysisResult });
+
+    } catch (error) {
+      console.error("Error regenerating analysis:", error);
+      res.status(500).json({ error: "Failed to regenerate analysis" });
+    }
+  });
+
+  // Update assessment notes
+  app.put("/api/cases/:ticketId/assessment-notes", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const { notes } = req.body;
+
+      // Validate notes
+      if (typeof notes !== "string") {
+        return res.status(400).json({ error: "Notes must be a string" });
+      }
+
+      // Check if case exists
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      // Update analysis notes
+      await storage.updateAnalysis(ticketId, { notes });
+
+      console.log(`Updated assessment notes for case ${ticketId}`);
+      res.json({ success: true, message: "Assessment notes updated" });
+
+    } catch (error) {
+      console.error("Error updating assessment notes:", error);
+      res.status(500).json({ error: "Failed to update assessment notes" });
     }
   });
 
