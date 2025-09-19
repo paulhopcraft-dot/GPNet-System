@@ -1,0 +1,66 @@
+{
+  "WIRC": {
+    "s104": {
+      "title": "Plan return to work",
+      "summary": "Employer must plan RTW from when incapacity known; includes obtaining capacity info, assessing duties, consulting, providing RTW details, and monitoring.",
+      "url": "https://www.legislation.vic.gov.au/in-force/acts/workplace-injury-rehabilitation-and-compensation-act-2013/104"
+    },
+    "s105": {
+      "title": "Consult about RTW",
+      "summary": "Employer must consult with worker, treating practitioner (with consent), and OR provider as reasonable.",
+      "url": "https://www.legislation.vic.gov.au/in-force/acts/workplace-injury-rehabilitation-and-compensation-act-2013/105"
+    },
+    "s111": {
+      "title": "Participate in planning for RTW",
+      "summary": "Worker must make reasonable efforts to actively participate and co-operate in RTW planning.",
+      "url": "https://www.legislation.vic.gov.au/in-force/acts/workplace-injury-rehabilitation-and-compensation-act-2013/111"
+    },
+    "s113": {
+      "title": "Participate in assessments",
+      "summary": "Worker must participate in assessments of capacity, rehab progress, and employment prospects when requested (reasonable extent).",
+      "url": "https://www.legislation.vic.gov.au/in-force/acts/workplace-injury-rehabilitation-and-compensation-act-2013/113"
+    },
+    "s115": {
+      "title": "Worker interviews",
+      "summary": "Agents may arrange interviews to optimise RTW opportunities; minimum notice applies (see Claims Manual 5.1.6).",
+      "url": "https://www.legislation.vic.gov.au/in-force/acts/workplace-injury-rehabilitation-and-compensation-act-2013/115"
+    },
+    "s116": {
+      "title": "Non-compliance consequences",
+      "summary": "If worker fails to comply with RTW obligations, Agent may issue warnings or suspend/terminate payments.",
+      "url": "https://www.legislation.vic.gov.au/in-force/acts/workplace-injury-rehabilitation-and-compensation-act-2013/116"
+    }
+  },
+  "CLAIMS_MANUAL": {
+    "5.1": {
+      "title": "Worker RTW obligations",
+      "url": "https://www1.worksafe.vic.gov.au/vwa/claimsmanual/Claims_Manual/5-RTW/5.1_Worker_RTW_Obligations/5.1.htm"
+    },
+    "5.1.1": {
+      "title": "Agent to assess worker's reasonable efforts",
+      "url": "https://www1.worksafe.vic.gov.au/vwa/claimsmanual/Claims_Manual/5-RTW/5.1_Worker_RTW_Obligations/5.1.1.htm"
+    },
+    "5.1.2": {
+      "title": "Issuing warning letters",
+      "url": "https://www1.worksafe.vic.gov.au/vwa/claimsmanual/Claims_Manual/5-RTW/5.1_Worker_RTW_Obligations/5.1.2.htm"
+    },
+    "5.1.3": {
+      "title": "Suspending weekly payments",
+      "url": "https://www1.worksafe.vic.gov.au/vwa/claimsmanual/Claims_Manual/5-RTW/5.1_Worker_RTW_Obligations/5.1.3.htm"
+    },
+    "5.1.4": {
+      "title": "Terminating weekly payments",
+      "url": "https://www1.worksafe.vic.gov.au/vwa/claimsmanual/Claims_Manual/5-RTW/5.1_Worker_RTW_Obligations/5.1.4.htm"
+    },
+    "5.1.5": {
+      "title": "Worker review rights",
+      "url": "https://www1.worksafe.vic.gov.au/vwa/claimsmanual/Claims_Manual/5-RTW/5.1_Worker_RTW_Obligations/5.1.5.htm"
+    },
+    "5.1.6": {
+      "title": "Worker interview process",
+      "url": "https://www1.worksafe.vic.gov.au/vwa/claimsmanual/Claims_Manual/5-RTW/5.1_Worker_RTW_Obligations/5.1.6.htm"
+    }
+  },
+  "source_version": "2025-09-19",
+  "checksum": "replace-with-sha256"
+}
