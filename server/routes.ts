@@ -961,6 +961,231 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===============================================
+  // RTW COMPLEX CLAIMS - LEGISLATION COMPLIANCE API
+  // ===============================================
+
+  // Import legislation data from JSON
+  app.post("/api/legislation/import", async (req, res) => {
+    try {
+      const { jsonData } = req.body;
+      let importCount = 0;
+
+      // Import WIRC Act sections
+      if (jsonData.WIRC) {
+        for (const [sectionId, details] of Object.entries(jsonData.WIRC)) {
+          const sectionDetails = details as any;
+          const legislationData = {
+            source: "WIRC",
+            sectionId,
+            title: sectionDetails.title,
+            summary: sectionDetails.summary,
+            sourceUrl: sectionDetails.url,
+            version: jsonData.source_version || "2025-09-19",
+            checksum: jsonData.checksum || "pending",
+            documentType: "act",
+            jurisdiction: "VIC"
+          };
+
+          await storage.createLegislationDocument(legislationData);
+          importCount++;
+        }
+      }
+
+      // Import Claims Manual sections
+      if (jsonData.CLAIMS_MANUAL) {
+        for (const [sectionId, details] of Object.entries(jsonData.CLAIMS_MANUAL)) {
+          const sectionDetails = details as any;
+          const legislationData = {
+            source: "CLAIMS_MANUAL",
+            sectionId,
+            title: sectionDetails.title,
+            summary: sectionDetails.summary || "",
+            sourceUrl: sectionDetails.url,
+            version: jsonData.source_version || "2025-09-19",
+            checksum: jsonData.checksum || "pending",
+            documentType: "manual",
+            jurisdiction: "VIC"
+          };
+
+          await storage.createLegislationDocument(legislationData);
+          importCount++;
+        }
+      }
+
+      console.log(`Imported ${importCount} legislation sections`);
+      res.json({ 
+        success: true, 
+        message: `Successfully imported ${importCount} legislation sections`,
+        importCount 
+      });
+
+    } catch (error) {
+      console.error("Error importing legislation data:", error);
+      res.status(500).json({ error: "Failed to import legislation data" });
+    }
+  });
+
+  // Get all legislation
+  app.get("/api/legislation", async (req, res) => {
+    try {
+      const legislation = await storage.getAllLegislation();
+      res.json(legislation);
+    } catch (error) {
+      console.error("Error fetching legislation:", error);
+      res.status(500).json({ error: "Failed to fetch legislation" });
+    }
+  });
+
+  // Get legislation by source (WIRC, CLAIMS_MANUAL)
+  app.get("/api/legislation/:source", async (req, res) => {
+    try {
+      const { source } = req.params;
+      const legislation = await storage.getLegislationBySource(source);
+      res.json(legislation);
+    } catch (error) {
+      console.error("Error fetching legislation by source:", error);
+      res.status(500).json({ error: "Failed to fetch legislation" });
+    }
+  });
+
+  // Get specific legislation section
+  app.get("/api/legislation/:source/:sectionId", async (req, res) => {
+    try {
+      const { source, sectionId } = req.params;
+      const legislation = await storage.getLegislationBySourceAndSection(source, sectionId);
+      
+      if (!legislation) {
+        return res.status(404).json({ error: "Legislation section not found" });
+      }
+      
+      res.json(legislation);
+    } catch (error) {
+      console.error("Error fetching legislation section:", error);
+      res.status(500).json({ error: "Failed to fetch legislation section" });
+    }
+  });
+
+  // RTW Workflow Management
+  app.post("/api/tickets/:ticketId/rtw-workflow", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const workflowData = req.body;
+
+      const step = await storage.createRtwWorkflowStep({
+        ticketId,
+        ...workflowData
+      });
+
+      // Update ticket RTW status
+      await storage.updateTicketRtwStatus(
+        ticketId, 
+        workflowData.stepId, 
+        "compliant"
+      );
+
+      console.log(`Created RTW workflow step for ticket ${ticketId}`);
+      res.json({ success: true, step });
+
+    } catch (error) {
+      console.error("Error creating RTW workflow step:", error);
+      res.status(500).json({ error: "Failed to create RTW workflow step" });
+    }
+  });
+
+  // Get RTW workflow steps for a ticket
+  app.get("/api/tickets/:ticketId/rtw-workflow", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const steps = await storage.getRtwWorkflowStepsByTicket(ticketId);
+      res.json(steps);
+    } catch (error) {
+      console.error("Error fetching RTW workflow steps:", error);
+      res.status(500).json({ error: "Failed to fetch RTW workflow steps" });
+    }
+  });
+
+  // Update RTW workflow step
+  app.patch("/api/rtw-workflow/:stepId", async (req, res) => {
+    try {
+      const { stepId } = req.params;
+      const updates = req.body;
+
+      const step = await storage.updateRtwWorkflowStep(stepId, updates);
+
+      console.log(`Updated RTW workflow step ${stepId}`);
+      res.json({ success: true, step });
+
+    } catch (error) {
+      console.error("Error updating RTW workflow step:", error);
+      res.status(500).json({ error: "Failed to update RTW workflow step" });
+    }
+  });
+
+  // Compliance Audit
+  app.post("/api/tickets/:ticketId/compliance-audit", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const auditData = req.body;
+
+      const audit = await storage.createComplianceAudit({
+        ticketId,
+        ...auditData
+      });
+
+      console.log(`Created compliance audit for ticket ${ticketId}`);
+      res.json({ success: true, audit });
+
+    } catch (error) {
+      console.error("Error creating compliance audit:", error);
+      res.status(500).json({ error: "Failed to create compliance audit" });
+    }
+  });
+
+  // Get compliance audit trail for a ticket
+  app.get("/api/tickets/:ticketId/compliance-audit", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const auditTrail = await storage.getComplianceAuditByTicket(ticketId);
+      res.json(auditTrail);
+    } catch (error) {
+      console.error("Error fetching compliance audit:", error);
+      res.status(500).json({ error: "Failed to fetch compliance audit" });
+    }
+  });
+
+  // Worker Participation Events
+  app.post("/api/tickets/:ticketId/participation-events", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const eventData = req.body;
+
+      const event = await storage.createWorkerParticipationEvent({
+        ticketId,
+        ...eventData
+      });
+
+      console.log(`Created participation event for ticket ${ticketId}`);
+      res.json({ success: true, event });
+
+    } catch (error) {
+      console.error("Error creating participation event:", error);
+      res.status(500).json({ error: "Failed to create participation event" });
+    }
+  });
+
+  // Get worker participation events for a ticket
+  app.get("/api/tickets/:ticketId/participation-events", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const events = await storage.getWorkerParticipationEventsByTicket(ticketId);
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching participation events:", error);
+      res.status(500).json({ error: "Failed to fetch participation events" });
+    }
+  });
+
   app.post("/api/test/submit-form", async (req, res) => {
     try {
       // This endpoint simulates a form submission for testing
