@@ -1,0 +1,435 @@
+Got it. Here’s a complete, drop-in RTW – Complex Claims (Legislation-Backed) Spec you can paste straight into Roylett/Replit. It includes the change request, file layout, data model, API, UI flows, templates, versioning, security, and acceptance tests.
+
+⸻
+
+RTW – Complex Claims (Legislation-Backed) Specification v1.0
+
+Module: Return-to-Work (RTW) – Complex Claims
+Author: GPNet
+Status: Ready for build
+Date: 19 Sep 2025
+Target runtime: Roylett/Replit (Node/Express + React/Next; adapt if different)
+
+0. Objective
+
+Deliver a defensible, legislation-backed RTW workflow that escalates from engagement → warning → suspension, mapped explicitly to:
+	•	Workplace Injury Rehabilitation & Compensation Act 2013 (Vic) (WIRC Act)
+	•	WorkSafe Victoria Claims Manual (Agents) (Sections 5.1.x)
+
+The system must generate compliant letters, keep an audit trail of legislative references, and nudge case managers through the correct escalation path.
+
+⸻
+
+1. Change Request (integrated)
+
+Change ID: CR-RTW-LEG-001
+Title: Legislative Integration for Complex RTW Non-Compliance
+Summary: Map each RTW step to WIRC Act (ss104, 105, 111, 113, 115, 116) and Claims Manual (5.1, 5.1.1–5.1.6, 5.1.3).
+Acceptance:
+	•	Every RTW step includes legislation_refs[].
+	•	Warning/Suspension letters auto-populate with correct sections and deadlines.
+	•	Audit log stores {section_id, version, source_url, checksum} per action.
+
+⸻
+
+2. Scope
+
+In scope
+	•	Complex RTW process tracks: Eligibility (0–28d), Month 2 (accepted), Month 3 (OR + escalation), Non-compliance.
+	•	Legislation content store (official PDFs/URLs + curated JSON/MD).
+	•	Mapping JSON: step → Act/Manual sections.
+	•	Letter templates: Invite, Planning Meeting, Consultant Attendance, Warning (5.1.2), Suspension (5.1.3).
+	•	Case notes macros that cite legislation.
+	•	Minimal REST API to serve steps, sections, templates.
+
+Out of scope
+	•	Legal advice generation.
+	•	OR invoicing and third-party payments.
+
+⸻
+
+3. File Layout (repo)
+
+/apps/backend/src/knowledge/
+  legislation/
+    act_wirc_2013.pdf                 # Official (locked)
+    claims_manual_index.md            # Landing pointer to Claims Manual
+    act_and_manual.json               # Curated sections (see §6)
+  mappings/
+    rtw_flow_map.json                 # Step → sections (see §5)
+  templates/letters/
+    invite_planning_meeting.md
+    invite_consultant_doctor.md
+    warning_5_1_2.md
+    suspension_5_1_3.md
+
+/apps/backend/src/routes/
+  legislation.ts
+  templates.ts
+  rtw.ts
+
+/apps/backend/src/lib/
+  validateLegRefs.ts
+  checksum.ts
+
+/apps/frontend/src/modules/rtw/
+  steps/StepBoard.tsx
+  panels/LegislationPanel.tsx
+  panels/TemplatePreview.tsx
+  components/LegChip.tsx
+  api/rtwClient.ts
+
+/config/
+  legislation_sources.json            # Source URLs + versions
+
+
+⸻
+
+4. RTW Process (business rules)
+
+4.1 Steps & intent
+	1.	Eligibility (0–28 days):
+	•	Employer must plan RTW (s104) and consult (s105).
+	•	Invite worker to consultant GP/physio/psych as part of planning.
+	•	If worker refuses: log non-participation under s111/s113.
+	2.	Month 2 (Claim accepted):
+	•	Planning meeting (tele/onsite).
+	•	Case manager conference; document joint plan.
+	•	If refusal: send invite letter citing s111 (planning) and s113 (assessments); copy Treating GP.
+	3.	Month 3 (OR + escalation):
+	•	Agent engages OR; GP case conference; potential IME.
+	•	If refusal persists: request Worker Interview (s115; Manual 5.1.6).
+	•	Prepare for warning.
+	4.	Non-compliance pathway:
+	•	Agent assesses “reasonable efforts” (Manual 5.1.1).
+	•	Issue Warning (Manual 5.1.2) with 14–60 day window to comply.
+	•	If still non-compliant: Suspend payments (Manual 5.1.3) with 28-day notice.
+	•	All under statutory basis s116.
+
+4.2 Default deadlines
+	•	Worker interview notice: ≥14 days (Manual 5.1.6).
+	•	Warning window: 14–60 days (5.1.2).
+	•	Suspension notice: 28 days to comply (5.1.3).
+
+⸻
+
+5. Mapping file (rtw_flow_map.json)
+
+{
+  "source_version": "2025-09-19",
+  "checksum": "replace-with-sha256",
+  "steps": [
+    {
+      "id": "eligibility_0_28",
+      "label": "Eligibility (0–28 days)",
+      "legislation_refs": [
+        {"source":"WIRC","id":"s104","title":"Plan return to work"},
+        {"source":"WIRC","id":"s105","title":"Consult about RTW"},
+        {"source":"WIRC","id":"s111","title":"Participate in planning"},
+        {"source":"WIRC","id":"s113","title":"Participate in assessments"}
+      ],
+      "claims_manual_refs": ["5.1","5.1.1"]
+    },
+    {
+      "id": "month_2",
+      "label": "Month 2 (Claim accepted)",
+      "legislation_refs": [
+        {"source":"WIRC","id":"s111","title":"Participate in planning"},
+        {"source":"WIRC","id":"s113","title":"Participate in assessments"}
+      ],
+      "claims_manual_refs": ["5.1","5.1.6"]
+    },
+    {
+      "id": "month_3",
+      "label": "Month 3 (OR provider + escalation)",
+      "legislation_refs": [
+        {"source":"WIRC","id":"s115","title":"Worker interviews"},
+        {"source":"WIRC","id":"s116","title":"Non-compliance"}
+      ],
+      "claims_manual_refs": ["5.1.1","5.1.2","5.1.3","5.1.6"]
+    },
+    {
+      "id": "non_compliance",
+      "label": "Non-compliance actions",
+      "legislation_refs": [{"source":"WIRC","id":"s116","title":"Non-compliance"}],
+      "claims_manual_refs": ["5.1.1","5.1.2","5.1.3"]
+    }
+  ],
+  "sources": {
+    "WIRC": {
+      "display": "Workplace Injury Rehabilitation & Compensation Act 2013 (Vic)",
+      "url": "https://www.legislation.vic.gov.au/in-force/acts/workplace-injury-rehabilitation-and-compensation-act-2013"
+    },
+    "CLAIMS_MANUAL": {
+      "display": "WorkSafe Victoria Claims Manual",
+      "url": "https://www.worksafe.vic.gov.au/claims-manual-worksafe-agents"
+    }
+  }
+}
+
+
+⸻
+
+6. Curated content (act_and_manual.json)
+
+Use short, accurate summaries with official links (do not paste full text). Keep under fair-use.
+
+{
+  "WIRC": {
+    "s104": {
+      "title": "Plan return to work",
+      "summary": "Employer must plan RTW from when incapacity known; tasks include obtaining capacity info, considering workplace support, assessing suitable employment, consulting (s105), providing RTW details, and monitoring progress.",
+      "source_url": "https://www.legislation.vic.gov.au/...",
+      "version": "in-force as at 2025-09-19"
+    },
+    "s105": {
+      "title": "Consult about the RTW of a worker",
+      "summary": "Employer must consult with worker, treating health practitioner (with consent), and OR provider as reasonable.",
+      "source_url": "https://www.legislation.vic.gov.au/..."
+    },
+    "s111": {
+      "title": "Participate in planning for RTW",
+      "summary": "Worker must make reasonable efforts to actively participate and co-operate in RTW planning with employer/Authority/self-insurer.",
+      "source_url": "https://www.legislation.vic.gov.au/..."
+    },
+    "s113": {
+      "title": "Participate in assessments",
+      "summary": "Worker must, when requested and to the extent reasonable, participate in assessments of capacity for work, rehab progress, and future employment prospects.",
+      "source_url": "https://www.legislation.vic.gov.au/..."
+    },
+    "s115": {
+      "title": "Worker interview",
+      "summary": "Authority/Agent may arrange interviews to enhance RTW; minimum notice rules apply (see Claims Manual 5.1.6).",
+      "source_url": "https://www.legislation.vic.gov.au/..."
+    },
+    "s116": {
+      "title": "Non-compliance consequences",
+      "summary": "If worker fails to comply with RTW obligations, Agent may issue warning/suspend weekly payments per operational guidelines.",
+      "source_url": "https://www.legislation.vic.gov.au/..."
+    }
+  },
+  "CLAIMS_MANUAL": {
+    "5.1":   {"title":"Worker RTW obligations","url":"https://www.worksafe.vic.gov.au/claims-manual-worksafe-agents"},
+    "5.1.1": {"title":"Assess worker's reasonable efforts","url":"https://www1.worksafe.vic.gov.au/.../5.1.1.htm"},
+    "5.1.2": {"title":"Issuing warning letters","url":"https://www1.worksafe.vic.gov.au/.../5.1.2.htm"},
+    "5.1.3": {"title":"Suspending weekly payments","url":"https://www1.worksafe.vic.gov.au/.../5.1.3.htm"},
+    "5.1.6": {"title":"Worker interview process","url":"https://www1.worksafe.vic.gov.au/.../5.1.6.htm"}
+  },
+  "source_version": "2025-09-19",
+  "checksum": "replace-with-sha256"
+}
+
+
+⸻
+
+7. Letter templates (Markdown)
+
+7.1 invite_planning_meeting.md
+
+---
+title: "Invitation to Planning Meeting"
+legislation_refs:
+  - WIRC s104
+  - WIRC s105
+  - WIRC s111
+deadline_days: 7
+---
+
+Dear {{worker.name}},
+
+Under **s104–s105** of the WIRC Act, we are planning your return to work and must consult with you.
+Under **s111**, you are required to participate reasonably in this planning.
+
+Meeting: {{meeting.datetime}} at {{meeting.location}} (tele/onsite)
+Purpose: Confirm current capacity and suitable duties.
+
+Please confirm your attendance by {{deadline_date}}.
+If you have concerns, contact {{case_manager.name}} on {{case_manager.phone}}.
+
+7.2 invite_consultant_doctor.md
+
+---
+title: "Invitation to Consultant Appointment"
+legislation_refs:
+  - WIRC s104
+  - WIRC s113
+deadline_days: 7
+---
+
+This appointment supports capacity assessment under **s113** and RTW planning under **s104**.
+Appointment: {{consult.datetime}} with {{consult.provider}} (tele/onsite)
+Please attend or propose an alternative within {{deadline_days}} days.
+
+7.3 warning_5_1_2.md
+
+---
+title: "Warning – RTW Obligations"
+legislation_refs:
+  - WIRC s111
+  - WIRC s113
+  - Claims Manual 5.1.2
+window_days: 14
+---
+
+We are concerned you may not be complying with your RTW obligations under **s111** and **s113**.
+Actions required within {{window_days}} days:
+- Attend planning meeting on {{meeting.datetime}}
+- Attend consultant assessment on {{consult.datetime}}
+Failure to comply may result in suspension of weekly payments per **Claims Manual 5.1.3**.
+
+7.4 suspension_5_1_3.md
+
+---
+title: "Notice of Suspension of Weekly Payments – 28 Days"
+legislation_refs:
+  - WIRC s116
+  - Claims Manual 5.1.3
+suspension_days: 28
+---
+
+Your weekly payments will be suspended for {{suspension_days}} days unless you comply with the following:
+- {{required_actions}}
+
+If you do not comply by {{suspension_end_date}}, your payments may be terminated in accordance with **s116** and **5.1.3**.
+You have appeal rights as outlined by the Agent.
+
+
+⸻
+
+8. Backend API (minimal)
+
+8.1 Routes
+	•	GET /api/rtw/steps → list mapped steps (from rtw_flow_map.json)
+	•	GET /api/legislation/:source/:id → section summary (from act_and_manual.json)
+	•	GET /api/templates → list letter templates (names + front-matter)
+	•	GET /api/templates/:name → template body (MD)
+	•	POST /api/letters/render → input {template, caseId, tokens} → returns populated MD/HTML & logs {legislation_refs}
+	•	POST /api/cases/:id/audit → append {action, legislation_refs, source_version, checksum}
+
+8.2 Types (TS)
+
+type LegRef = { source: "WIRC" | "CLAIMS_MANUAL"; id: string; title?: string };
+
+type Step = {
+  id: string;
+  label: string;
+  legislation_refs: LegRef[];
+  claims_manual_refs: string[];
+};
+
+type SectionNode = {
+  title: string;
+  summary?: string;
+  url?: string;
+  source_url?: string;
+  version?: string;
+};
+
+
+⸻
+
+9. Frontend (key components)
+	•	StepBoard.tsx: Column for each step; shows current case position; CTA buttons (Invite, Plan, Warn, Suspend).
+	•	LegChip.tsx: Small chip “WIRC s113” → on click opens LegislationPanel.
+	•	LegislationPanel.tsx: Right drawer shows section title, summary, “Open official source” link.
+	•	TemplatePreview.tsx: Select template → preview with tokens → “Send & Log”.
+
+UX rules
+	•	Every CTA that generates a letter must display cited sections and ask for confirmation.
+	•	On send, write a case audit entry with {section_id, version, source_url, checksum}.
+
+⸻
+
+10. Data Model (minimal, additive to your case schema)
+
+Case {
+  id: string
+  worker: { id, name, email, phone }
+  agent: { name, email }
+  treating_gp?: { name, email, phone }
+  step: "eligibility_0_28" | "month_2" | "month_3" | "non_compliance"
+  deadlines: {
+    planning?: ISOString
+    interview_notice?: ISOString
+    warning_until?: ISOString
+    suspension_until?: ISOString
+  }
+  audit: AuditEntry[]
+}
+
+AuditEntry {
+  id: string
+  at: ISOString
+  actor: { id, name }
+  action: string                 // e.g., "LETTER_SENT: warning_5_1_2"
+  legislation_refs: LegRef[]     // persisted from template front-matter
+  source_version: string         // from JSON
+  checksum: string               // from JSON
+  payload?: any                  // token snapshot (for forensic trace)
+}
+
+
+⸻
+
+11. Validation & Versioning
+	•	On backend boot, validate that every legislation_ref in rtw_flow_map.json exists in act_and_manual.json.
+	•	Compute SHA-256 of act_and_manual.json and store as checksum.
+	•	Expose /api/legislation/version → {source_version, checksum} for UI footer.
+
+⸻
+
+12. Security & Privacy
+	•	Letters contain personal info → sign URLs for downloads (time-limited).
+	•	Restrict /api/templates mutations to admins.
+	•	Log access to legislation content for audit.
+	•	Do not store full statutory text; link to official sources.
+
+⸻
+
+13. Non-Functional
+	•	Reliability: Template rendering must degrade gracefully (if legislation JSON missing, block send with clear error).
+	•	Performance: Content JSON cached in memory; reload only on admin publish.
+	•	i18n: Text tokens kept in templates; legislation summaries in English.
+
+⸻
+
+14. Acceptance Tests
+	1.	Mapping visible: On Eligibility step, UI shows chips for s104, s105, s111, s113.
+	2.	Panel content: Clicking “WIRC s113” loads summary + “Open official source” link.
+	3.	Letter generation: Selecting “Warning (5.1.2)” injects sections s111, s113, and “5.1.2” into the footer.
+	4.	Deadlines: Warning uses 14-day default; Suspension uses 28-day default; editable but not < statutory minimums.
+	5.	Audit: After sending warning, case audit contains {action:"LETTER_SENT: warning_5_1_2", legislation_refs:[...], source_version, checksum}.
+	6.	Refusal loop: If worker declines two invites within Eligibility, system suggests “Agent Worker Interview” (s115/5.1.6).
+	7.	Version bump: Updating act_and_manual.json updates footer “Source last updated” and new checksum; old audits remain intact.
+
+⸻
+
+15. Seeding (optional, for demo)
+	•	Create one sample case in month_2, with pending planning meeting.
+	•	Pre-fill tokens for a Warning letter; allow 1-click render to verify flow.
+
+⸻
+
+16. Developer Notes
+	•	Keep official PDFs/links under /knowledge/legislation/.
+	•	Curate only what you need into JSON/MD; keep it short and factual.
+	•	Add unit tests for validateLegRefs.ts and checksum.ts.
+
+⸻
+
+17. Admin Ops
+	•	Small admin page: upload refreshed act_and_manual.json and rtw_flow_map.json.
+	•	On publish, backend validates & restarts content cache.
+
+⸻
+
+18. Glossary (short)
+	•	OR Provider: Occupational Rehabilitation provider.
+	•	IME: Independent Medical Examiner.
+	•	Manual 5.1.x: WorkSafe Claims Manual, Worker RTW obligations and enforcement sections.
+
+⸻
+
+Done.
+
+You can copy this spec as-is into your repo. If you want, I can also supply the four Markdown templates and the two JSON files (rtw_flow_map.json, act_and_manual.json) pre-filled so you can drop them straight into /apps/backend/src/knowledge/.

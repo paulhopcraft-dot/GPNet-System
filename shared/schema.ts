@@ -12,6 +12,15 @@ export const tickets = pgTable("tickets", {
   status: text("status").notNull().default("NEW"),
   priority: text("priority").default("medium"), // "low", "medium", "high", "urgent"
   companyName: text("company_name"),
+  
+  // RTW COMPLEX CLAIMS - WORKFLOW FIELDS
+  rtwStep: text("rtw_step").default("eligibility_0_28"), // Current workflow position
+  workplaceJurisdiction: text("workplace_jurisdiction").default("VIC"), // Australian state
+  complianceStatus: text("compliance_status").default("compliant"), // "compliant", "at_risk", "non_compliant"
+  lastParticipationDate: text("last_participation_date"), // Last worker participation
+  nextDeadlineDate: text("next_deadline_date"), // Next critical deadline
+  nextDeadlineType: text("next_deadline_type"), // "planning_meeting", "warning_expiry", "suspension_expiry"
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -305,3 +314,168 @@ export const rtwPlanSchema = z.object({
 });
 
 export type RtwPlanFormData = z.infer<typeof rtwPlanSchema>;
+
+// ===============================================
+// RTW COMPLEX CLAIMS - LEGISLATION COMPLIANCE
+// ===============================================
+
+// Legislation documents storage (WIRC Act, Claims Manual, RTW Specifications)
+export const legislationDocuments = pgTable("legislation_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  source: text("source").notNull(), // "WIRC", "CLAIMS_MANUAL", "RTW_SPEC"
+  sectionId: text("section_id").notNull(), // "s104", "5.1.2", etc.
+  title: text("title").notNull(),
+  summary: text("summary"),
+  content: text("content"),
+  sourceUrl: text("source_url"),
+  version: text("version").notNull(),
+  checksum: text("checksum").notNull(),
+  documentType: text("document_type").notNull(), // "act", "manual", "specification"
+  jurisdiction: text("jurisdiction").notNull().default("VIC"), // "VIC", "NSW", etc.
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// RTW workflow step tracking
+export const rtwWorkflowSteps = pgTable("rtw_workflow_steps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  stepId: text("step_id").notNull(), // "eligibility_0_28", "month_2", "month_3", "non_compliance"
+  status: text("status").default("pending"), // "pending", "in_progress", "completed", "escalated"
+  startDate: text("start_date"),
+  deadlineDate: text("deadline_date"),
+  completedDate: text("completed_date"),
+  legislationRefs: jsonb("legislation_refs"), // Array of {source, id, title}
+  escalationReason: text("escalation_reason"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Compliance audit trail (critical for legal defense)
+export const complianceAudit = pgTable("compliance_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  action: text("action").notNull(), // "LETTER_SENT: warning_5_1_2", "STEP_ESCALATED", etc.
+  actorId: text("actor_id").notNull(),
+  actorName: text("actor_name").notNull(),
+  legislationRefs: jsonb("legislation_refs"), // Persisted from template/action
+  sourceVersion: text("source_version").notNull(),
+  checksum: text("checksum").notNull(),
+  templateUsed: text("template_used"), // Template name if letter sent
+  payload: jsonb("payload"), // Token snapshot for forensic trace
+  result: text("result"), // "sent", "failed", "scheduled"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Worker participation tracking (enhanced)
+export const workerParticipationEvents = pgTable("worker_participation_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  workflowStepId: varchar("workflow_step_id").references(() => rtwWorkflowSteps.id),
+  eventType: text("event_type").notNull(), // "planning_meeting", "consultant_appointment", "interview", "assessment"
+  eventDate: text("event_date").notNull(),
+  scheduledDate: text("scheduled_date"), // When it was supposed to happen
+  participationStatus: text("participation_status").notNull(), // "attended", "no_show", "refused", "rescheduled", "partial"
+  legislationBasis: jsonb("legislation_basis"), // Which sections require this participation
+  noticeGivenDate: text("notice_given_date"),
+  noticePeriodDays: integer("notice_period_days"), // How many days notice given
+  reasonForNonParticipation: text("reason_for_non_participation"),
+  evidenceAttachmentId: varchar("evidence_attachment_id").references(() => attachments.id),
+  stakeholderInvolved: varchar("stakeholder_involved").references(() => stakeholders.id), // Doctor, etc.
+  complianceNotes: text("compliance_notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Letter templates with legislation references
+export const letterTemplates = pgTable("letter_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // "invite_planning_meeting", "warning_5_1_2", etc.
+  title: text("title").notNull(),
+  content: text("content").notNull(), // Markdown content with tokens
+  legislationRefs: jsonb("legislation_refs"), // Default legislation references
+  defaultDeadlineDays: integer("default_deadline_days"),
+  templateType: text("template_type").notNull(), // "invitation", "warning", "suspension", "notice"
+  jurisdiction: text("jurisdiction").notNull().default("VIC"),
+  isActive: boolean("is_active").default(true),
+  version: text("version").default("1.0"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Generated letters tracking
+export const generatedLetters = pgTable("generated_letters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  templateId: varchar("template_id").references(() => letterTemplates.id).notNull(),
+  workflowStepId: varchar("workflow_step_id").references(() => rtwWorkflowSteps.id),
+  recipientType: text("recipient_type").notNull(), // "worker", "doctor", "insurer", "employer"
+  recipientEmail: text("recipient_email"),
+  recipientName: text("recipient_name"),
+  subject: text("subject").notNull(),
+  content: text("content").notNull(), // Final populated content
+  tokens: jsonb("tokens"), // All tokens used for population
+  legislationRefs: jsonb("legislation_refs"), // Legislation cited in this letter
+  deadlineDate: text("deadline_date"), // If letter includes deadline
+  status: text("status").default("draft"), // "draft", "sent", "failed", "scheduled"
+  sentAt: timestamp("sent_at"),
+  generatedBy: text("generated_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Schema definitions for new tables
+export const insertLegislationDocumentSchema = createInsertSchema(legislationDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertRtwWorkflowStepSchema = createInsertSchema(rtwWorkflowSteps).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertComplianceAuditSchema = createInsertSchema(complianceAudit).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertWorkerParticipationEventSchema = createInsertSchema(workerParticipationEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertLetterTemplateSchema = createInsertSchema(letterTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertGeneratedLetterSchema = createInsertSchema(generatedLetters).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Type definitions for new tables
+export type InsertLegislationDocument = z.infer<typeof insertLegislationDocumentSchema>;
+export type LegislationDocument = typeof legislationDocuments.$inferSelect;
+
+export type InsertRtwWorkflowStep = z.infer<typeof insertRtwWorkflowStepSchema>;
+export type RtwWorkflowStep = typeof rtwWorkflowSteps.$inferSelect;
+
+export type InsertComplianceAudit = z.infer<typeof insertComplianceAuditSchema>;
+export type ComplianceAudit = typeof complianceAudit.$inferSelect;
+
+export type InsertWorkerParticipationEvent = z.infer<typeof insertWorkerParticipationEventSchema>;
+export type WorkerParticipationEvent = typeof workerParticipationEvents.$inferSelect;
+
+export type InsertLetterTemplate = z.infer<typeof insertLetterTemplateSchema>;
+export type LetterTemplate = typeof letterTemplates.$inferSelect;
+
+export type InsertGeneratedLetter = z.infer<typeof insertGeneratedLetterSchema>;
+export type GeneratedLetter = typeof generatedLetters.$inferSelect;
