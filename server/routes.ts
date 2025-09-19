@@ -1186,6 +1186,144 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===============================================
+  // RTW WORKFLOW ENGINE API
+  // ===============================================
+
+  // Initialize RTW workflow for a new case
+  app.post("/api/tickets/:ticketId/rtw-workflow/initialize", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      // Validate input
+      const initSchema = z.object({
+        injuryDate: z.string().min(1, "Injury date is required").refine(
+          (date) => !isNaN(Date.parse(date)), 
+          "Invalid date format"
+        )
+      });
+      
+      const { injuryDate } = initSchema.parse(req.body);
+
+      // Import workflow engine
+      const { createRtwWorkflowEngine } = await import('./rtwWorkflowEngine');
+      const workflowEngine = createRtwWorkflowEngine(storage);
+
+      const workflowStep = await workflowEngine.initializeWorkflow(ticketId, new Date(injuryDate));
+
+      console.log(`Initialized RTW workflow for ticket ${ticketId}`);
+      res.json({ success: true, workflowStep });
+
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid input", details: error.errors });
+      }
+      console.error("Error initializing RTW workflow:", error);
+      res.status(500).json({ error: "Failed to initialize RTW workflow" });
+    }
+  });
+
+  // Complete a workflow step
+  app.patch("/api/rtw-workflow/:stepId/complete", async (req, res) => {
+    try {
+      const { stepId } = req.params;
+      
+      // Validate input
+      const completeSchema = z.object({
+        outcome: z.enum(["completed", "escalated", "terminated", "withdrawn"], {
+          errorMap: () => ({ message: "Invalid outcome value" })
+        }),
+        completedBy: z.string().min(1, "Completed by is required"),
+        notes: z.string().optional()
+      });
+      
+      const { outcome, completedBy, notes } = completeSchema.parse(req.body);
+
+      const { createRtwWorkflowEngine } = await import('./rtwWorkflowEngine');
+      const workflowEngine = createRtwWorkflowEngine(storage);
+
+      await workflowEngine.completeWorkflowStep(stepId, outcome, completedBy, notes);
+
+      console.log(`Completed workflow step ${stepId} with outcome: ${outcome}`);
+      res.json({ success: true });
+
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid input", details: error.errors });
+      }
+      console.error("Error completing workflow step:", error);
+      res.status(500).json({ error: "Failed to complete workflow step" });
+    }
+  });
+
+  // Record worker participation event
+  app.post("/api/tickets/:ticketId/worker-participation", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      // Validate input
+      const participationSchema = z.object({
+        eventType: z.string().min(1, "Event type is required"),
+        participationLevel: z.enum(["full", "partial", "none", "refused"], {
+          errorMap: () => ({ message: "Invalid participation level" })
+        }),
+        notes: z.string().optional()
+      });
+      
+      const { eventType, participationLevel, notes } = participationSchema.parse(req.body);
+
+      const { createRtwWorkflowEngine } = await import('./rtwWorkflowEngine');
+      const workflowEngine = createRtwWorkflowEngine(storage);
+
+      await workflowEngine.recordWorkerParticipation(ticketId, eventType, participationLevel, notes);
+
+      console.log(`Recorded worker participation for ticket ${ticketId}`);
+      res.json({ success: true });
+
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid input", details: error.errors });
+      }
+      console.error("Error recording worker participation:", error);
+      res.status(500).json({ error: "Failed to record worker participation" });
+    }
+  });
+
+  // Get workflow summary for a ticket
+  app.get("/api/tickets/:ticketId/rtw-workflow/summary", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+
+      const { createRtwWorkflowEngine } = await import('./rtwWorkflowEngine');
+      const workflowEngine = createRtwWorkflowEngine(storage);
+
+      const summary = await workflowEngine.getWorkflowSummary(ticketId);
+
+      res.json(summary);
+
+    } catch (error) {
+      console.error("Error getting workflow summary:", error);
+      res.status(500).json({ error: "Failed to get workflow summary" });
+    }
+  });
+
+  // Process workflow progression (for scheduled tasks)
+  app.post("/api/rtw-workflow/process-progression", async (req, res) => {
+    try {
+      const { createRtwWorkflowEngine } = await import('./rtwWorkflowEngine');
+      const workflowEngine = createRtwWorkflowEngine(storage);
+
+      await workflowEngine.processWorkflowProgression();
+
+      console.log("Processed RTW workflow progression for all active cases");
+      res.json({ success: true, message: "Workflow progression processed" });
+
+    } catch (error) {
+      console.error("Error processing workflow progression:", error);
+      res.status(500).json({ error: "Failed to process workflow progression" });
+    }
+  });
+
   app.post("/api/test/submit-form", async (req, res) => {
     try {
       // This endpoint simulates a form submission for testing
