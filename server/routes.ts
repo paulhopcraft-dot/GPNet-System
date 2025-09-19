@@ -1072,10 +1072,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { ticketId } = req.params;
       const workflowData = req.body;
 
-      const step = await storage.createRtwWorkflowStep({
-        ticketId,
-        ...workflowData
-      });
+      // Remove ticketId from body and ensure route param takes precedence
+      const { ticketId: bodyTicketId, ...cleanWorkflowData } = workflowData;
+      
+      const stepData = {
+        ticketId, // Route parameter always takes precedence
+        ...cleanWorkflowData
+      };
+
+      const step = await storage.createRtwWorkflowStep(stepData);
 
       // Update ticket RTW status
       await storage.updateTicketRtwStatus(
@@ -1128,9 +1133,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { ticketId } = req.params;
       const auditData = req.body;
 
+      // Remove ticketId from body and ensure route param takes precedence
+      const { ticketId: bodyTicketId, ...cleanAuditData } = auditData;
+      
       const audit = await storage.createComplianceAudit({
-        ticketId,
-        ...auditData
+        ticketId, // Route parameter always takes precedence
+        ...cleanAuditData
       });
 
       console.log(`Created compliance audit for ticket ${ticketId}`);
@@ -1160,9 +1168,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { ticketId } = req.params;
       const eventData = req.body;
 
+      // Remove ticketId from body and ensure route param takes precedence
+      const { ticketId: bodyTicketId, ...cleanEventData } = eventData;
+      
       const event = await storage.createWorkerParticipationEvent({
-        ticketId,
-        ...eventData
+        ticketId, // Route parameter always takes precedence
+        ...cleanEventData
       });
 
       console.log(`Created participation event for ticket ${ticketId}`);
