@@ -29,6 +29,9 @@ interface DashboardStats {
 
 interface DashboardCase {
   ticketId: string;
+  caseType: "pre_employment" | "injury";
+  claimType?: string | null;
+  priority?: string | null;
   status: string;
   createdAt: string;
   workerName: string;
@@ -46,6 +49,7 @@ export default function Dashboard() {
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [caseTypeFilter, setCaseTypeFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   // Fetch dashboard statistics
@@ -104,12 +108,13 @@ export default function Dashboard() {
 
   const filteredCases = (cases || []).filter((caseItem: DashboardCase) => {
     const matchesStatus = statusFilter === "all" || caseItem.status === statusFilter;
+    const matchesCaseType = caseTypeFilter === "all" || caseItem.caseType === caseTypeFilter;
     const matchesSearch = searchQuery === "" || 
       caseItem.workerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       caseItem.ticketId.includes(searchQuery) ||
       caseItem.company.toLowerCase().includes(searchQuery.toLowerCase());
     
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesCaseType && matchesSearch;
   });
 
   // Handle loading states
@@ -153,10 +158,10 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">
-              Pre-Employment Dashboard
+              GPNet Case Dashboard
             </h1>
             <p className="text-muted-foreground mt-1">
-              Manage and review pre-employment health assessments
+              Manage and review pre-employment health assessments and workplace injury cases
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -203,6 +208,17 @@ export default function Dashboard() {
                   <SelectItem value="COMPLETE">Complete</SelectItem>
                 </SelectContent>
               </Select>
+
+              <Select value={caseTypeFilter} onValueChange={setCaseTypeFilter}>
+                <SelectTrigger className="w-full sm:w-48" data-testid="select-case-type-filter">
+                  <SelectValue placeholder="Filter by case type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Case Types</SelectItem>
+                  <SelectItem value="pre_employment">Pre-Employment</SelectItem>
+                  <SelectItem value="injury">Workplace Injury</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex gap-2">
@@ -218,12 +234,17 @@ export default function Dashboard() {
           </div>
 
           {/* Active filters display */}
-          {(statusFilter !== "all" || searchQuery) && (
+          {(statusFilter !== "all" || caseTypeFilter !== "all" || searchQuery) && (
             <div className="flex items-center gap-2 mt-3">
               <span className="text-sm text-muted-foreground">Active filters:</span>
               {statusFilter !== "all" && (
                 <Badge variant="secondary" className="text-xs">
                   Status: {statusFilter}
+                </Badge>
+              )}
+              {caseTypeFilter !== "all" && (
+                <Badge variant="secondary" className="text-xs">
+                  Type: {caseTypeFilter === "pre_employment" ? "Pre-Employment" : "Injury"}
                 </Badge>
               )}
               {searchQuery && (
@@ -253,6 +274,9 @@ export default function Dashboard() {
                 <CaseCard
                   key={caseItem.ticketId}
                   ticketId={caseItem.ticketId}
+                  caseType={caseItem.caseType}
+                  claimType={caseItem.claimType}
+                  priority={caseItem.priority}
                   workerName={caseItem.workerName}
                   roleApplied={caseItem.roleApplied}
                   company={caseItem.company}

@@ -421,6 +421,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           return {
             ticketId: ticket.id,
+            caseType: ticket.caseType,
+            claimType: ticket.claimType || null,
+            priority: ticket.priority || null,
             status: ticket.status,
             createdAt: ticket.createdAt,
             workerName: worker ? `${worker.firstName} ${worker.lastName}` : "Unknown",
@@ -463,6 +466,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const caseDetails = {
         ticketId: ticket.id,
+        caseType: ticket.caseType,
+        claimType: ticket.claimType || null,
+        priority: ticket.priority || null,
         status: ticket.status,
         createdAt: ticket.createdAt,
         workerName: worker ? `${worker.firstName} ${worker.lastName}` : "Unknown",
