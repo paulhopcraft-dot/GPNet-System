@@ -140,7 +140,7 @@ const SKELETON_RESPONSES = {
       templateId,
       generatedAt: new Date().toISOString(),
       disclaimer: "DISCLAIMER: This report was generated with limited functionality. Professional review required.",
-      fit_classification: "Fit without restriction" as const,
+      fit_classification: "Fit" as const,
       legislation_refs: [],
     },
     body_markdown: `# ${templateId.replace('_', ' ').toUpperCase()} - TECHNICAL ISSUE
@@ -170,7 +170,7 @@ Technical difficulties prevented full report generation. Manual review required.
   }),
   
   classify: {
-    fit_classification: "Fit without restriction" as const,
+    fit_classification: "Fit" as const,
     risk_flags: ["technical_limitation"],
     suggested_restrictions: [],
   },
