@@ -1,0 +1,417 @@
+Amazing — I’ve merged everything you told me into your template and produced a single, ready-to-hand-to-devs specification. This is GPNet Build Template (Spec + Implementation Plan, with Examples) — Fully Blended, v1.0. If you want a Word/PDF after this, say the word and I’ll generate it.
+
+⸻
+
+GPNet Build Template (Spec + Implementation Plan, with Examples)
+
+Enhanced for Replit Development — Blended with Full Case Management Specification
+
+⸻
+
+Part 1 — Sections 1 to 10
+
+1. Executive Summary
+
+Problem: Employers, HR, and consultants struggle to manage health-related cases end-to-end (injury, mental health, prevention, exit). Paper/email trails fragment. Workers don’t always engage. Doctors, insurers, and regulators need defensible documentation and clear RTW (Return-to-Work) plans.
+
+Users: HR/Managers (employers), Workers, Treating Practitioners (GPs, physios, psychologists), Consultants/Case Managers, Insurer/WorkCover stakeholders (injury only).
+
+Key Goals / KPIs:
+	•	Generate Level-1 report from a worker check in <10 minutes
+	•	90% worker form completion (with automated reminders)
+	•	100% RTW/Adjustment Plan issuance whenever restrictions exist
+	•	<48h doctor sign-off or assumed agreed before plan start (if no response)
+	•	Zero “orphan” emails/tickets (100% CaseID-threaded in Freshdesk)
+	•	Weekly Care Checks sent 100% of active cases; plateau detected within 2 weeks
+
+Scope (v1):
+	•	Case types: Pre-Employment, Injury, Prevention, Mental Health, Exit
+	•	Michelle (AI widget): typed dialogue (voice/WhatsApp in v2)
+	•	JotForm + Freshdesk integration (source of truth in v1)
+	•	Level-1 reports, RTW/Adjustment Plans, doctor e-sign, reminders/escalations
+	•	Automated weekly Care Checks; diagnostic escalation; specialist coordination
+	•	Precedents library (structure + placeholders)
+	•	Predictive hooks (risk tier, non-participation likelihood) for future use
+
+Out of scope (v1):
+	•	Full native forms (keep JotForm)
+	•	SSO/OAuth, multi-language UI
+	•	Advanced analytics dashboards (store features now; visualize later)
+	•	Automated legal actions (IR pathway generates packs; HR/Legal decide)
+
+Deadline & Success: Pilot in 6–8 weeks. Success = live client can raise cases, send checks, receive reports, get an RTW/Adjustment Plan, and run weekly Care Checks with escalations — all visible in Freshdesk.
+
+⸻
+
+2. Scope
+
+In (v1):
+	•	Case creation via Michelle (typed); case classification & IDs
+	•	JotForm worker checks (with hidden CaseGUID/TicketID/CompanyID)
+	•	Freshdesk ticketing (emails, PDFs, notes, custom fields)
+	•	Report Levels 1–2 (consolidation of uploaded clinical docs)
+	•	RTW Plans (doctor e-sign, distribution, WorkCover routing if flagged)
+	•	Adjustment Plans (for Prevention/MH; no insurer)
+	•	Care Checks (weekly email, trend analysis, practitioner accountability)
+	•	Diagnostic escalation & specialist orchestration
+	•	Exit Check flow, reminders, final notice
+	•	Precedents Library (structure, tags; content to be uploaded)
+	•	Inherent Requirements pathway (IR guidance pending — placeholder)
+
+Out:
+	•	Native forms, mobile apps, voice/WhatsApp (v2), advanced analytics UI, SSO
+
+⸻
+
+3. References & Dependencies
+	•	Freshdesk (tickets, emails, attachments, custom fields, webhooks)
+	•	JotForm (forms, prefill via URL params, hidden fields, webhook)
+	•	Email: Freshdesk outbound or SES via backend for doctor e-sign links
+	•	Storage: Freshdesk + optional object store (S3/Supabase) + Postgres
+	•	Auth: Simple app auth (Admin/Consultant/Employer roles); Freshdesk API keys
+	•	Future: OHS Act & WorkCover Claims Manual (uploaded to knowledge base), Specialists directory
+
+⸻
+
+4. Problem Statement
+
+Turn messy, manual, email-heavy case handling into a single, auditable flow that keeps momentum towards safe RTW — capturing every step, coordinating all parties, and producing defensible, policy-aligned documents.
+
+⸻
+
+5. Goals & Non-Goals
+
+Goals:
+	•	One-button case creation; Michelle routes to correct check
+	•	JotForm submission → Level-1 report + RTW/Adjustment Plan
+	•	Weekly Care Checks maintain momentum (improve / stall / worsen)
+	•	Doctor sign-off with explicit right to vary constraints; non-response → assumed agreed before plan start
+	•	WorkCover paths auto-include required parties; evidence bundles ready
+
+Non-Goals:
+	•	Replacing specialist medical opinion; Michelle orchestrates only
+	•	Automated legal outcomes (IR decisions are human-approved)
+	•	Multi-language & voice/WhatsApp (v2)
+
+⸻
+
+6. User Stories & Acceptance Criteria
+
+US-001 (Employer): As HR, I can describe a situation in plain language; Michelle classifies the case and collects worker details.
+	•	Given HR types “Paul cut his finger”, When I submit, Then Michelle chooses Injury Check and asks for worker email/role/time, etc.
+
+US-010 (Worker Invite): As HR, I preview and send a personalised worker email with a JotForm link.
+	•	Given worker email on file, When I click Send, Then worker receives “Dear {FirstName}…” with magic link.
+
+US-020 (Report): As a consultant, I get a Level-1 PDF automatically after the worker submits.
+	•	Given JotForm submission, When webhook fires, Then PDF + manager note post to Freshdesk ticket.
+
+US-030 (RTW Plan): As HR, I’m alerted to a draft RTW Plan with constraints & suggested duties.
+	•	Given report shows restrictions, When I open alert, Then I can accept/modify duties and send to doctor for e-sign.
+
+US-040 (Doctor Sign-off): As a doctor, I can vary constraints and e-sign via link.
+	•	Given doctor link, When I approve or amend, Then signed plan PDF posts to the ticket; if no reply by start-1 day, mark assumed agreed.
+
+US-050 (Care Checks): As Michelle, I send weekly check-ins and escalate plateau/worsening.
+	•	Given active plan, When worker completes check, Then status updates (Improving/Stalled/Worsening) and manager/doctor notified as needed.
+
+US-060 (Exit): As HR, I send an Exit Check and reminders; if not completed, a final notice is issued.
+	•	Given Exit case, When worker doesn’t respond after 3 reminders, Then final notice is sent and case marked Not Completed.
+
+⸻
+
+7. API Contract (core, v1)
+
+POST /ingest/freshdesk
+Purpose: Receive Freshdesk/JotForm payloads (ticket updates, submissions)
+Body: { ticket_id, company_external_id, case_guid, payload_html, attachments[] }
+Resp: { ok: true }
+
+POST /cases
+Purpose: Create case from employer input (via Michelle)
+Body: { employer_id, company_external_id, worker: {name,email,role,site}, narrative, type? }
+Resp: { case_guid, ticket_id, check_type }
+
+POST /cases/:case_guid/send-invite
+Purpose: Create prefilled JotForm URL and push email via Freshdesk
+Body: { check_type }
+Resp: { ok: true, link }
+
+POST /cases/:case_guid/generate-report
+Purpose: Convert parsed submission to Level-1 report PDF
+Body: { }
+Resp: { pdf_url, fit_classification, restrictions[] }
+
+POST /plans/:case_guid/rtw/draft
+Purpose: Build RTW plan from report + job templates
+Body: { }
+Resp: { plan_id, plan_json }
+
+POST /plans/:plan_id/doctor-invite
+Purpose: Email secure link to doctor for e-sign or variation
+Body: { doctor_name, clinic_email, start_date }
+Resp: { ok: true }
+
+POST /plans/:plan_id/doctor-sign
+Purpose: Doctor approves/varies constraints and signs
+Body: { decision: "approve"|"amend", amendments_text, signature_blob }
+Resp: { plan_pdf_url, status: "signed"|"amended" }
+
+POST /care-checks/:case_guid/weekly
+Purpose: Send weekly Care Check invite
+Body: { channel: "email" }
+Resp: { ok: true }
+
+POST /care-checks/:case_guid/ingest
+Purpose: Ingest worker replies; update case status, trigger actions
+Body: { answers[], pain_trend, duties_ok, notes }
+Resp: { status: "improving"|"stalled"|"worsening", actions[] }
+
+Errors: INVALID_IDS, TICKET_NOT_FOUND, DOC_SIGN_WINDOW_OPEN, PLAN_START_BLOCKED, ALREADY_SIGNED, NOT_ALLOWED_ROLE.
+
+⸻
+
+8. Data Model & Storage (key entities)
+	•	Case: case_guid (uuid, pk), ticket_id, company_external_id, type (preemployment|injury|prevention|mh|exit), status, risk_tier, created_at.
+	•	Worker: worker_id, name, email, role, site, doctor_name, clinic_name, clinic_email.
+	•	Invite: case_guid, link, sent_at, channel, edited_by_hr, email_body_hash.
+	•	Submission: case_guid, jotform_submission_id, received_at, snapshot_json, pdf_url.
+	•	Report: report_id, case_guid, level (1|2|3), fit_classification, restrictions[], pdf_url, created_at.
+	•	Plan: plan_id, case_guid, type (rtw|adjustment), version, constraints[], duties[], review_date, status (draft|signed|amended|active|suspended|closed), pdf_url.
+	•	Event: event_id, case_guid, type (reminder|non_participation|certificate|absence|diagnostic|escalation), payload, created_at.
+	•	ChecklistAtRisk: checklist_id, case_guid, items_json, score, tier, top_drivers[], completed_by, completed_at.
+	•	Precedent: precedent_id, title, jurisdiction, tags[], file_url.
+	•	SpecialistOpinion: specialist_id, case_guid, discipline, diagnosis, constraints[], prognosis, pdf_url, received_at.
+
+Storage strategy: Freshdesk remains source of truth for attachments/notes. DB stores metadata/JSON for analytics. Large docs → object store with signed URLs.
+
+⸻
+
+9. Integrations
+	•	Freshdesk (tickets, notes, custom fields, email send, webhooks)
+	•	JotForm (prefill + hidden fields; webhook)
+	•	Email (Freshdesk; SES for doctor e-sign links if preferred)
+	•	Optional SMS/WhatsApp (v2)
+	•	PDF service (serverless or library) for reports/plans
+
+⸻
+
+10. Security & Privacy
+	•	Role-based access: Admin, Consultant, Employer(HR).
+	•	Sessions: 12h access token; refresh 7d.
+	•	PHI encrypted at rest; TLS in transit.
+	•	CaseID (GUID) in email subject/footer for threading.
+	•	Doctor e-sign links: single-use, expire in 5–7 days.
+	•	Audit log for all plan/report/notice generations and signatures.
+
+⸻
+
+Part 2 — Sections 11 to 20
+
+11. Error Handling & Edge Cases
+	•	Expired worker link → “This link has expired. Request a new link from your manager.”
+	•	Doctor e-sign after start-1 day → “Plan start imminent; please amend start date or proceed as assumed agreed.”
+	•	Duplicate submissions → de-dupe by ticket_id + submission_id.
+	•	Missing doctor email → prompt HR at case creation; allow “no doctor on file”.
+
+⸻
+
+12. Roles & Permissions
+	•	Employer/HR: Create cases, send invites, review drafts, confirm duties, see plans.
+	•	Consultant: Review data, generate reports, configure templates.
+	•	Admin: All the above + precedents library management.
+	•	Doctor (external): Link-based sign page only.
+
+⸻
+
+13. UI/UX Notes (UX Contract)
+	•	Michelle open prompt: “Tell me your concern in your own words.”
+	•	Case classification badges: Injury / Prevention / Mental Health / Exit
+	•	RTW Draft banner: “Doctor has identified medical constraints. Review suggested duties.”
+	•	Doctor page includes exact text: “You may add to or vary the medical constraints identified above.”
+	•	Status chips: Improving / Stalled / Worsening / Non-participating
+
+⸻
+
+14. Notifications & Emails (core events)
+	•	Worker Invite; Reminder #1 (48h); Reminder #2 (96h)
+	•	Manager Escalation (non-completion, 2h after #2)
+	•	Doctor Invite to Sign; Doctor Reminder (2 days); Assumed Agreed notice (start-1 day)
+	•	Care Check Weekly; Plateau alerts to manager; Worsening alert to doctor+manager
+	•	Exit Check: 2-day, then daily x3, then final notice
+
+⸻
+
+15. Logging & Audit
+	•	Log: case create, invites, reminders, submissions, report gen, plan draft/confirm/sign, distribution list, care check results, escalations, evidence bundles.
+	•	Retain logs min 2 years; Admin can export.
+
+⸻
+
+16. Metrics & Monitoring
+	•	KPIs: form completion rate, time to report, % plans with doctor sign, % cases improving in 2 weeks, reminder efficacy.
+	•	Tech: webhook error rate, PDF gen time (<10s), API p95 latency <1s.
+
+⸻
+
+17. Performance & Scaling
+	•	Target: 1k active cases; 100 concurrent submissions; 20 PDFs/minute.
+	•	Auto-scale backend workers; queue for PDFs.
+	•	Replit dev resource notes; plan migration to managed Postgres/object store.
+
+⸻
+
+18. Non-Functional Requirements
+	•	Uptime 99.9%
+	•	WCAG 2.2 AA
+	•	Rate limits on auth & ingest endpoints
+	•	Observability: tracing for webhook → parse → PDF → Freshdesk postback
+
+⸻
+
+19. Risks & Mitigations
+	•	Orphan emails → Mitigation: CaseGUID in subject/footer + inbound parser; auto-attach; disambiguation prompt if multiple matches.
+	•	Worker non-participation → reminders + manager dialogue + formal notices + insurer escalation (injury).
+	•	Doctor non-response → 2-day reminder; assumed agreed before start.
+	•	Legal tone → use Precedents Library only; final HR/legal approval required.
+
+⸻
+
+20. Implementation Plan (20 Expanded Steps)
+
+(Your 0–20 steps retained, plus inserts where relevant to our flows)
+
+Additions/overrides:
+	•	Step 1 Schema: include Case/Plan/Report/Submission/Event/ChecklistAtRisk tables above.
+	•	Step 2 Routes: include /ingest/freshdesk, /plans/*, /care-checks/*.
+	•	Step 7 Report: Level-1 generator; Level-2 consolidation of uploaded docs.
+	•	Step 8 Email: ensure CaseGUID threading; Freshdesk automation rules.
+	•	Step 10 Staging: seed job templates + light duties pool; sample precedents.
+	•	Step 11 Tests: E2E for injury → report → RTW plan → doctor sign.
+	•	Step 17 Dashboard: show KPIs (completion, improving %).
+
+⸻
+
+Part 3 — Sections 21 to 29 (Enhanced)
+
+21. Testing & Acceptance
+
+Add scenarios:
+	•	INJ-001 Injury case → Level-1 PDF posted to ticket
+	•	RTW-002 Doctor varies constraints and e-signs; plan v3 stored
+	•	CAR-003 Weekly Care Checks detect plateau and email doctor
+	•	WKC-004 WorkCover flagged → distribution list includes agent/case manager/OR
+	•	EXI-005 Exit check non-completion triggers final notice
+
+DoD: All above pass; audit shows end-to-end trail for one complex case.
+
+⸻
+
+22. Appendices
+	•	Glossary: CaseGUID, Fit Classification, RTW/Adjustment Plan, “Assumed agreed” rule (doctor).
+	•	Payload examples for each endpoint (invite, report, plan, care check).
+	•	Diagram: Case flow (Employer → Michelle → JotForm → Freshdesk → Report/Plan → Care Checks → Escalations).
+
+⸻
+
+23. Handover Checklist
+	•	✅ Freshdesk API keys, webhooks, custom fields (case_guid, check_type, risk_tier, fit_classification)
+	•	✅ JotForm hidden fields mapped (company_external_id, ticket_id, case_guid, check_type, worker_name/email)
+	•	✅ Job templates + default light duties uploaded
+	•	✅ Precedents Library placeholders created
+	•	✅ OHS Act & Claims Manual upload slots ready (vComplex)
+
+⸻
+
+24. Data Retention & Deletion Policy
+	•	Tickets & attached PDFs follow employer/regulator policy (e.g., 7 years).
+	•	Analytics JSON (de-identified) retained for model training.
+	•	“Right to be forgotten” → PII anonymised; case metadata retained for compliance.
+
+⸻
+
+25. Backup, Recovery, and Disaster Plan
+	•	DB nightly snapshots; object store versioning; quarterly restore drills.
+	•	RTO 4h; RPO 1h.
+
+⸻
+
+26. Browser & Device Support
+	•	Primary: Chrome/Safari/Firefox/Edge (latest 2).
+	•	Mobile web supported for worker flows (voice in v2).
+	•	IE unsupported.
+
+⸻
+
+27. Cost Monitoring & Optimization
+	•	PDF gen and email sends are main drivers.
+	•	Alerts: >$50/day PDFs, >5k emails/day.
+	•	Cache plan/report regeneration; batch email sends.
+
+⸻
+
+28. Rollback Plan
+	•	Blue/green deploy; revert to previous image; DB migrations backward-compatible.
+	•	Quick toggle to pause doctor e-sign while rolling back.
+
+⸻
+
+29. Post-Launch Activities
+	•	Hour-1: watch webhook failures & PDF timings
+	•	Day-1: pilot feedback triage
+	•	Week-1: retro; plan v1.1 (voice/WhatsApp, analytics UI)
+
+⸻
+
+Addendum A — Detailed Case Flows (Blended Content)
+
+A1. Natural-Language Intake & Triage (Michelle)
+	•	Paths: Injury / Prevention / Mental Health / Exit / Attendance / Mixed
+	•	One text box or voice (v2). Disambiguation questions; at-risk checklist offered for non-preemployment cases.
+	•	Severe injury delay rule: hold sending the Injury Check 48–72h.
+
+A2. Injury Check → Level-1 Report
+	•	Worker JotForm → Freshdesk → webhook → parse → Level-1 PDF + manager note.
+	•	Fit classification & restrictions auto-generated.
+
+A3. RTW Plan Engine (Injury)
+	•	Draft from restrictions + job templates + light duties pool.
+	•	Manager dialogue; plan PDF; doctor e-sign with exact text:
+“You may add to or vary the medical constraints identified above.”
+	•	Non-response flow: 2-day reminder; assumed agreed by start-1 day.
+
+A4. Adjustment Plans (Prevention & MH)
+	•	Same format but simpler; no insurer/WorkCover distribution.
+
+A5. Distribution
+	•	Always Worker/Manager/Doctor; add WorkCover stakeholders if flagged (agent, case manager, OR consultant).
+	•	Parties list printed at bottom of plan.
+
+A6. Care Checks (Weekly)
+	•	Email (v1) → link → Michelle asks 3–4 Qs; status updates: Improving/Stalled/Worsening/Non-participating.
+	•	Plateau → doctor accountability email; Worsening → immediate pause/review.
+
+A7. Escalations after Plan
+	•	Non-attendance/refusal/duties too hard/certificate conflicts → classify & act (amend, suspend, escalate).
+	•	Evidence bundles auto-built for insurer/WorkSafe (injury only).
+
+A8. Diagnostic Escalation & Specialists
+	•	“Diagnosis Unclear” detection → suggest scan/specialist referral; comparative summary across multiple opinions.
+
+A9. Exit Check
+	•	Invite + reminders (2d, 4d, 6d) + final notice; short report if completed.
+
+A10. Inherent Requirements Pathway (IR)
+	•	Preconditions: attempted duties, plans, doctor input, evidence bundle.
+	•	Generate IR pack & notices from Precedents Library; HR/Legal finalise.
+
+A11. Precedents Library (Placeholder)
+	•	Structured repository; tags by case/jurisdiction; Michelle only pulls from approved documents.
+
+A12. Momentum Principle
+	•	Every worker response updates status, informs manager, and triggers next step. No case drifts.
+
+⸻
+
+Locked: GPNet Full Specification v1.0 (Blended).
+If you’d like, I can now export this as a .docx or PDF and attach; or generate a one-page system flow diagram to accompany it.
