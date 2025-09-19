@@ -152,7 +152,7 @@ ${getDisclaimer()}
 Technical difficulties prevented full report generation. Manual review required.
 
 ## Fit Classification
-**Fit without restriction** (default classification due to technical limitations)
+**Fit** (default classification due to technical limitations)
 
 ## Recommendations
 - Technical review required
@@ -272,7 +272,7 @@ export async function llmReport(request: z.infer<typeof ReportRequest>): Promise
         templateId: request.templateId,
         generatedAt: new Date().toISOString(),
         disclaimer,
-        fit_classification: result.meta?.fit_classification || "Fit without restriction",
+        fit_classification: result.meta?.fit_classification || "Fit",
         legislation_refs: validRefs,
       },
       body_markdown: result.body_markdown || SKELETON_RESPONSES.report(request.templateId).body_markdown,
@@ -313,7 +313,7 @@ export async function llmClassify(request: z.infer<typeof ClassifyRequest>): Pro
     logAudit(auditData);
     
     return {
-      fit_classification: result.fit_classification || "Fit without restriction",
+      fit_classification: result.fit_classification || "Fit",
       risk_flags: result.risk_flags || [],
       suggested_restrictions: result.suggested_restrictions || [],
     };
@@ -386,14 +386,14 @@ RESPONSE FORMAT:
 function getReportPrompt(templateId: string, inputData: any): { system: string; user: string } {
   const prompts = {
     injury_check: {
-      system: `Generate an Injury Check report. Use the template structure. Default fit classification is "Fit without restriction" unless evidence suggests otherwise. Cite only valid legislation IDs from the JSON database. Always insert the disclaimer verbatim. Use neutral, professional tone.
+      system: `Generate an Injury Check report. Use the template structure. Default fit classification is "Fit" unless evidence suggests otherwise. Cite only valid legislation IDs from the JSON database. Always insert the disclaimer verbatim. Use neutral, professional tone.
 
 REQUIRED SECTIONS: Disclaimer, Summary, Fit Classification, Recommendations, Health Overview, Physical Health, Emotional Wellbeing, Work & Social Impacts, Lifestyle, Support Provided, Health Outlook, Appendix A.
 
 RESPONSE FORMAT:
 {
   "meta": {
-    "fit_classification": "Fit without restriction",
+    "fit_classification": "Fit",
     "legislation_refs": ["WIRC s113"]
   },
   "body_markdown": "# Report content here..."
