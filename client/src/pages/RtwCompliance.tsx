@@ -294,11 +294,12 @@ export default function RtwCompliance() {
 
       {selectedTicketId && (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
             <TabsTrigger value="workflow" data-testid="tab-workflow">Workflow Steps</TabsTrigger>
             <TabsTrigger value="participation" data-testid="tab-participation">Participation</TabsTrigger>
             <TabsTrigger value="compliance" data-testid="tab-compliance">Compliance</TabsTrigger>
+            <TabsTrigger value="letters" data-testid="tab-letters">Letters</TabsTrigger>
             <TabsTrigger value="legislation" data-testid="tab-legislation">Legislation</TabsTrigger>
           </TabsList>
 
@@ -826,6 +827,45 @@ export default function RtwCompliance() {
             </div>
           </TabsContent>
 
+          {/* Letters Tab */}
+          <TabsContent value="letters" className="space-y-6">
+            <h3 className="text-lg font-semibold">Letter Generation & Management</h3>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Template Selection & Generation */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Generate Letter
+                  </CardTitle>
+                  <CardDescription>
+                    Create letters from templates with legislation backing
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <LetterGenerationForm selectedTicketId={selectedTicketId} />
+                </CardContent>
+              </Card>
+
+              {/* Generated Letters List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Generated Letters
+                  </CardTitle>
+                  <CardDescription>
+                    Letters created for this case
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <GeneratedLettersList selectedTicketId={selectedTicketId} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
           {/* Legislation Tab */}
           <TabsContent value="legislation" className="space-y-6">
             <h3 className="text-lg font-semibold">RTW Legislation Reference</h3>
@@ -901,6 +941,296 @@ export default function RtwCompliance() {
           </TabsContent>
         </Tabs>
       )}
+    </div>
+  );
+}
+
+// Letter Generation Form Component
+function LetterGenerationForm({ selectedTicketId }: { selectedTicketId: string }) {
+  const { toast } = useToast();
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // Fetch letter templates
+  const { data: templates, isLoading: templatesLoading } = useQuery({
+    queryKey: ["/api/letter-templates"],
+  });
+
+  // Generate letter mutation
+  const generateLetterMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await fetch(`/api/tickets/${selectedTicketId}/letters/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) throw new Error('Failed to generate letter');
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Letter generated successfully" });
+      setSelectedTemplate(null);
+      // Invalidate the generated letters query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", selectedTicketId, "letters"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to generate letter", variant: "destructive" });
+    },
+  });
+
+  const handleGenerateLetter = (formData: any) => {
+    if (!selectedTemplate) return;
+    
+    setIsGenerating(true);
+    generateLetterMutation.mutate({
+      templateId: selectedTemplate.id,
+      recipientType: formData.recipientType,
+      recipientEmail: formData.recipientEmail,
+      recipientName: formData.recipientName,
+      tokens: formData.tokens,
+    });
+    setIsGenerating(false);
+  };
+
+  if (templatesLoading) {
+    return <div className="text-center">Loading templates...</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Template Selection */}
+      <div className="space-y-2">
+        <Label>Select Letter Template</Label>
+        <Select onValueChange={(value) => {
+          const template = templates?.find((t: any) => t.id === value);
+          setSelectedTemplate(template);
+        }}>
+          <SelectTrigger data-testid="select-template">
+            <SelectValue placeholder="Choose a template..." />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.isArray(templates) && templates.map((template: any) => (
+              <SelectItem key={template.id} value={template.id}>
+                {template.title} ({template.templateType})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {selectedTemplate && (
+        <LetterTokenForm 
+          template={selectedTemplate} 
+          onGenerate={handleGenerateLetter}
+          isGenerating={isGenerating}
+        />
+      )}
+    </div>
+  );
+}
+
+// Letter Token Form Component  
+function LetterTokenForm({ template, onGenerate, isGenerating }: { 
+  template: any; 
+  onGenerate: (data: any) => void;
+  isGenerating: boolean;
+}) {
+  const [tokens, setTokens] = useState<Record<string, string>>({});
+  const [recipientType, setRecipientType] = useState("worker");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [recipientName, setRecipientName] = useState("");
+
+  // Extract tokens from template content
+  const extractTokens = (content: string) => {
+    const tokenRegex = /\{\{([^}]+)\}\}/g;
+    const foundTokens = new Set<string>();
+    let match;
+    while ((match = tokenRegex.exec(content)) !== null) {
+      foundTokens.add(match[1]);
+    }
+    return Array.from(foundTokens);
+  };
+
+  const templateTokens = extractTokens(template.content);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onGenerate({
+      recipientType,
+      recipientEmail,
+      recipientName,
+      tokens,
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="p-4 border rounded-lg bg-muted/50">
+        <h4 className="font-medium mb-2">{template.title}</h4>
+        <p className="text-sm text-muted-foreground mb-2">
+          Type: {template.templateType} | Deadline: {template.defaultDeadlineDays} days
+        </p>
+        {template.legislationRefs && (
+          <div className="text-xs">
+            <strong>Legislation:</strong> {JSON.parse(template.legislationRefs).map((ref: any) => ref.section).join(", ")}
+          </div>
+        )}
+      </div>
+
+      {/* Recipient Details */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Recipient Type</Label>
+          <Select value={recipientType} onValueChange={setRecipientType}>
+            <SelectTrigger data-testid="select-recipient-type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="worker">Worker</SelectItem>
+              <SelectItem value="doctor">Doctor</SelectItem>
+              <SelectItem value="insurer">Insurer</SelectItem>
+              <SelectItem value="employer">Employer</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Recipient Name</Label>
+          <Input
+            value={recipientName}
+            onChange={(e) => setRecipientName(e.target.value)}
+            placeholder="Enter recipient name"
+            data-testid="input-recipient-name"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Recipient Email</Label>
+        <Input
+          type="email"
+          value={recipientEmail}
+          onChange={(e) => setRecipientEmail(e.target.value)}
+          placeholder="Enter email address"
+          data-testid="input-recipient-email"
+        />
+      </div>
+
+      {/* Token Inputs */}
+      {templateTokens.length > 0 && (
+        <div className="space-y-3">
+          <Label>Letter Content Fields</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {templateTokens.map((token) => (
+              <div key={token} className="space-y-1">
+                <Label className="text-xs font-medium">{token}</Label>
+                <Input
+                  value={tokens[token] || ""}
+                  onChange={(e) => setTokens(prev => ({ ...prev, [token]: e.target.value }))}
+                  placeholder={`Enter ${token}`}
+                  className="text-sm"
+                  data-testid={`input-token-${token}`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Button 
+        type="submit" 
+        disabled={isGenerating || !recipientName}
+        className="w-full"
+        data-testid="button-generate-letter"
+      >
+        {isGenerating ? "Generating..." : "Generate Letter"}
+      </Button>
+    </form>
+  );
+}
+
+// Generated Letters List Component
+function GeneratedLettersList({ selectedTicketId }: { selectedTicketId: string }) {
+  const { data: letters, isLoading } = useQuery({
+    queryKey: ["/api/tickets", selectedTicketId, "letters"],
+    enabled: !!selectedTicketId,
+  });
+
+  if (isLoading) {
+    return <div className="text-center">Loading letters...</div>;
+  }
+
+  if (!Array.isArray(letters) || letters.length === 0) {
+    return (
+      <div className="text-center text-muted-foreground">
+        No letters generated yet
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {letters.map((letter: any) => (
+        <div key={letter.id} className="p-3 border rounded-lg space-y-2">
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium text-sm">{letter.subject}</h4>
+            <Badge variant={letter.status === "sent" ? "default" : "secondary"}>
+              {letter.status}
+            </Badge>
+          </div>
+          <div className="text-xs text-muted-foreground">
+            To: {letter.recipientName} ({letter.recipientType})
+            {letter.recipientEmail && ` - ${letter.recipientEmail}`}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Created: {new Date(letter.createdAt).toLocaleDateString()}
+            {letter.deadlineDate && ` | Deadline: ${letter.deadlineDate}`}
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => {
+                // Create a preview window/modal with letter content
+                const newWindow = window.open("", "_blank", "width=800,height=600");
+                if (newWindow) {
+                  newWindow.document.write(`
+                    <html>
+                      <head><title>Letter Preview</title></head>
+                      <body style="font-family: Arial, sans-serif; padding: 20px; white-space: pre-wrap;">
+                        <h2>${letter.subject}</h2>
+                        <hr>
+                        ${letter.content}
+                      </body>
+                    </html>
+                  `);
+                }
+              }}
+              data-testid={`button-preview-${letter.id}`}
+            >
+              Preview
+            </Button>
+            {letter.status === "draft" && (
+              <Button 
+                size="sm"
+                onClick={() => {
+                  // Mark as sent (this would typically send the email)
+                  fetch(`/api/letters/${letter.id}/status`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'sent' }),
+                  }).then(() => {
+                    queryClient.invalidateQueries({ queryKey: ["/api/tickets", selectedTicketId, "letters"] });
+                  });
+                }}
+                data-testid={`button-send-${letter.id}`}
+              >
+                Mark as Sent
+              </Button>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
