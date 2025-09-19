@@ -277,7 +277,7 @@ export default function RtwCompliance() {
                 <SelectContent>
                   {(tickets as any[])?.map((ticket: any) => (
                     <SelectItem key={ticket.ticketId} value={ticket.ticketId}>
-                      #{ticket.ticketId} - {ticket.workerName} ({ticket.company || 'No Company'})
+                      #{ticket.ticketId} - {ticket.workerName || 'No worker name'} ({ticket.company || 'No Company'})
                     </SelectItem>
                   )) || []}
                 </SelectContent>
@@ -354,7 +354,7 @@ export default function RtwCompliance() {
                     <div key={index} className="flex items-center gap-4 p-3 border rounded-lg">
                       <div className="flex-1">
                         <p className="font-medium">{step.stepType} - {step.stepId}</p>
-                        <p className="text-sm text-muted-foreground">Due: {step.dueDate}</p>
+                        <p className="text-sm text-muted-foreground">Due: {step.deadlineDate}</p>
                       </div>
                       {getStatusBadge(step.status)}
                     </div>
@@ -506,7 +506,7 @@ export default function RtwCompliance() {
                         {getStatusBadge(step.status)}
                       </div>
                       <CardDescription>
-                        {step.stepType} • Due: {step.dueDate}
+                        {step.stepId} • Due: {step.deadlineDate}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
