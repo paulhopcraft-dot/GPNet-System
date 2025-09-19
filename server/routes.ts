@@ -1335,6 +1335,157 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===============================================
+  // LETTER TEMPLATE API - FOR MICHELLE INTEGRATION
+  // ===============================================
+
+  // Get all letter templates
+  app.get("/api/letter-templates", async (req, res) => {
+    try {
+      const templates = await storage.getAllLetterTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching letter templates:", error);
+      res.status(500).json({ error: "Failed to fetch letter templates" });
+    }
+  });
+
+  // Get templates by type
+  app.get("/api/letter-templates/type/:templateType", async (req, res) => {
+    try {
+      const { templateType } = req.params;
+      const templates = await storage.getLetterTemplatesByType(templateType);
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching letter templates by type:", error);
+      res.status(500).json({ error: "Failed to fetch letter templates" });
+    }
+  });
+
+  // Get specific letter template
+  app.get("/api/letter-templates/:templateId", async (req, res) => {
+    try {
+      const { templateId } = req.params;
+      const template = await storage.getLetterTemplate(templateId);
+      
+      if (!template) {
+        return res.status(404).json({ error: "Letter template not found" });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      console.error("Error fetching letter template:", error);
+      res.status(500).json({ error: "Failed to fetch letter template" });
+    }
+  });
+
+  // Create new letter template
+  app.post("/api/letter-templates", async (req, res) => {
+    try {
+      const templateData = req.body;
+      
+      const template = await storage.createLetterTemplate(templateData);
+      
+      console.log(`Created letter template: ${template.name}`);
+      res.json({ success: true, template });
+    } catch (error) {
+      console.error("Error creating letter template:", error);
+      res.status(500).json({ error: "Failed to create letter template" });
+    }
+  });
+
+  // Generate letter from template for a ticket
+  app.post("/api/tickets/:ticketId/letters/generate", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const { templateId, recipientType, recipientEmail, recipientName, tokens } = req.body;
+      
+      // Get the template
+      const template = await storage.getLetterTemplate(templateId);
+      if (!template) {
+        return res.status(404).json({ error: "Letter template not found" });
+      }
+      
+      // Get ticket and related data for token replacement
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+      
+      // Basic token replacement (extend this with more sophisticated engine)
+      let content = template.content;
+      let subject = template.title;
+      
+      // Replace common tokens
+      const allTokens = {
+        ticketId: ticket.id,
+        workerName: tokens?.workerName || "Worker", 
+        companyName: ticket.companyName || "Company",
+        currentDate: new Date().toLocaleDateString(),
+        deadlineDate: tokens?.deadlineDate || "",
+        ...tokens
+      };
+      
+      // Simple token replacement
+      Object.entries(allTokens).forEach(([key, value]) => {
+        const tokenPattern = new RegExp(`{{${key}}}`, 'g');
+        content = content.replace(tokenPattern, String(value));
+        subject = subject.replace(tokenPattern, String(value));
+      });
+      
+      // Create generated letter record
+      const generatedLetter = await storage.createGeneratedLetter({
+        ticketId,
+        templateId,
+        recipientType,
+        recipientEmail: recipientEmail || "",
+        recipientName: recipientName || "",
+        subject,
+        content,
+        tokens: allTokens,
+        legislationRefs: template.legislationRefs,
+        deadlineDate: tokens?.deadlineDate,
+        status: "draft",
+        generatedBy: "Michelle AI"
+      });
+      
+      console.log(`Generated letter ${generatedLetter.id} for ticket ${ticketId}`);
+      res.json({ success: true, letter: generatedLetter });
+      
+    } catch (error) {
+      console.error("Error generating letter:", error);
+      res.status(500).json({ error: "Failed to generate letter" });
+    }
+  });
+
+  // Get generated letters for a ticket
+  app.get("/api/tickets/:ticketId/letters", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const letters = await storage.getGeneratedLettersByTicket(ticketId);
+      res.json(letters);
+    } catch (error) {
+      console.error("Error fetching generated letters:", error);
+      res.status(500).json({ error: "Failed to fetch generated letters" });
+    }
+  });
+
+  // Update letter status (when sent, etc.)
+  app.patch("/api/letters/:letterId/status", async (req, res) => {
+    try {
+      const { letterId } = req.params;
+      const { status } = req.body;
+      
+      const letter = await storage.updateGeneratedLetterStatus(letterId, status);
+      
+      console.log(`Updated letter ${letterId} status to ${status}`);
+      res.json({ success: true, letter });
+    } catch (error) {
+      console.error("Error updating letter status:", error);
+      res.status(500).json({ error: "Failed to update letter status" });
+    }
+  });
+
   app.post("/api/test/submit-form", async (req, res) => {
     try {
       // This endpoint simulates a form submission for testing
