@@ -1486,6 +1486,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // LLM Adapter Service endpoints per CR-GPNet-LLM-001 specification
+  const { llmChat, llmReport, llmClassify, llmLookup, ChatRequest, ReportRequest, ClassifyRequest, LookupRequest } = await import('./llmAdapter.js');
+
+  // Michelle chat endpoint - uses gpt-4o-mini
+  app.post("/api/llm/chat", async (req, res) => {
+    try {
+      const validationResult = ChatRequest.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid chat request", 
+          details: fromZodError(validationResult.error).toString() 
+        });
+      }
+
+      const result = await llmChat(validationResult.data);
+      res.json(result);
+    } catch (error) {
+      console.error("Error in LLM chat:", error);
+      res.status(500).json({ error: "Chat service temporarily unavailable" });
+    }
+  });
+
+  // Report generation endpoint - uses gpt-4.1
+  app.post("/api/llm/report", async (req, res) => {
+    try {
+      const validationResult = ReportRequest.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid report request", 
+          details: fromZodError(validationResult.error).toString() 
+        });
+      }
+
+      const result = await llmReport(validationResult.data);
+      res.json(result);
+    } catch (error) {
+      console.error("Error in LLM report:", error);
+      res.status(500).json({ error: "Report generation temporarily unavailable" });
+    }
+  });
+
+  // Classification endpoint - uses gpt-4o-mini
+  app.post("/api/llm/classify", async (req, res) => {
+    try {
+      const validationResult = ClassifyRequest.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid classify request", 
+          details: fromZodError(validationResult.error).toString() 
+        });
+      }
+
+      const result = await llmClassify(validationResult.data);
+      res.json(result);
+    } catch (error) {
+      console.error("Error in LLM classify:", error);
+      res.status(500).json({ error: "Classification service temporarily unavailable" });
+    }
+  });
+
+  // Legislation lookup endpoint - uses gpt-4o-mini  
+  app.post("/api/llm/lookup", async (req, res) => {
+    try {
+      const validationResult = LookupRequest.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid lookup request", 
+          details: fromZodError(validationResult.error).toString() 
+        });
+      }
+
+      const result = await llmLookup(validationResult.data);
+      res.json(result);
+    } catch (error) {
+      console.error("Error in LLM lookup:", error);
+      res.status(500).json({ error: "Lookup service temporarily unavailable" });
+    }
+  });
+
   app.post("/api/test/submit-form", async (req, res) => {
     try {
       // This endpoint simulates a form submission for testing
