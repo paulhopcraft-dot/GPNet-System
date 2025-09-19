@@ -24,6 +24,7 @@ import {
   type InsertWorkerParticipationEvent,
   type InsertComplianceAudit 
 } from "@shared/schema";
+import { MichelleChat } from "@/components/MichelleChat";
 
 // Extended schemas with additional frontend validation
 const rtwWorkflowStepFormSchema = insertRtwWorkflowStepSchema.extend({
@@ -294,12 +295,13 @@ export default function RtwCompliance() {
 
       {selectedTicketId && (
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
             <TabsTrigger value="workflow" data-testid="tab-workflow">Workflow Steps</TabsTrigger>
             <TabsTrigger value="participation" data-testid="tab-participation">Participation</TabsTrigger>
             <TabsTrigger value="compliance" data-testid="tab-compliance">Compliance</TabsTrigger>
             <TabsTrigger value="letters" data-testid="tab-letters">Letters</TabsTrigger>
+            <TabsTrigger value="michelle" data-testid="tab-michelle">Michelle AI</TabsTrigger>
             <TabsTrigger value="legislation" data-testid="tab-legislation">Legislation</TabsTrigger>
           </TabsList>
 
@@ -864,6 +866,20 @@ export default function RtwCompliance() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* Michelle AI Tab */}
+          <TabsContent value="michelle" className="space-y-6">
+            <h3 className="text-lg font-semibold">Michelle AI Assistant</h3>
+            <p className="text-muted-foreground">
+              Chat with Michelle, our AI-powered workplace health assistant. She can help answer questions about 
+              your injury, return to work process, and provide guidance on compliance requirements.
+            </p>
+            
+            <MichelleChat 
+              ticketId={selectedTicketId}
+              conversationId={`rtw-${selectedTicketId}`}
+            />
           </TabsContent>
 
           {/* Legislation Tab */}
