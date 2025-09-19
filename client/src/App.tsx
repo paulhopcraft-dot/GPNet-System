@@ -10,6 +10,7 @@ import InjuryFormPage from "@/pages/InjuryForm";
 import RtwPlans from "@/pages/RtwPlans";
 import Stakeholders from "@/pages/Stakeholders";
 import FitForWorkAssessment from "@/pages/FitForWorkAssessment";
+import RtwCompliance from "@/pages/RtwCompliance";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/form" component={WorkerForm} />
       <Route path="/injury" component={InjuryFormPage} />
+      <Route path="/rtw-compliance" component={RtwCompliance} />
       <Route path="/cases/:ticketId/rtw-plans" component={RtwPlans} />
       <Route path="/cases/:ticketId/stakeholders" component={Stakeholders} />
       <Route path="/cases/:ticketId/assessment" component={FitForWorkAssessment} />
