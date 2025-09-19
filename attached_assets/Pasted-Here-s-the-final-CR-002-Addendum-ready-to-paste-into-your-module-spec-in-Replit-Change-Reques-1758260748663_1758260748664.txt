@@ -1,0 +1,68 @@
+Here’s the final CR-002 Addendum (ready to paste into your module spec in Replit):
+
+⸻
+
+Change Requests (CR Log)
+
+CR-002 — Roles Split + WorkCover Conditions
+
+Date: 19 Sept 2025
+Status: Applied
+Scope Impact: Roles & Permissions, Data Model, Notifications, Audit
+
+Summary:
+The GPNet system must distinguish between core roles (always present) and WorkCover-specific roles (only when claimType = workcover). Pre-Employment remains simple, while Injury/RTW/Rehab modules expand to include insurer-side stakeholders.
+
+⸻
+
+Updated Roles
+
+Core Roles (always available):
+	•	Admin: Full system access.
+	•	Manager (Employer): Creates cases; sees sanitised summaries and fit/restrictions.
+	•	Worker / Candidate: Completes forms; views their own submissions.
+	•	Consultant (GPNet): Reviews full submissions; finalises reports.
+	•	AI Agent (System Assistant): Always active; drafts summaries, generates reports, powers the widget.
+
+WorkCover-Specific Roles (only active if claimType = WorkCover):
+	•	Insurance Company Contact / Case Manager: Read-only summaries + restrictions.
+	•	Insurance Agent (external rep): Insurer-side stakeholder; sees case progress and Fit outcome; no edit rights.
+	•	Treating Doctor: Uploads certificates; may view clinical notes (consent-based).
+	•	Occupational Rehab Consultant (ORC): Adds rehab plans/updates; sees rehab-relevant restrictions.
+	•	Rehabilitation Provider: Optional, tied to ORC involvement; narrow update rights.
+
+⸻
+
+Data Model Deltas
+	•	Extend Case: add claimType enum (none | workcover | other_insurance).
+	•	Add ExternalParty + Stakeholder tables to capture Insurance Agent, Insurance Contact, Doctors, ORC, Rehab.
+	•	Rule: WorkCover roles only materialise if claimType='workcover'.
+	•	Pre-Employment always defaults to claimType='none'.
+
+⸻
+
+Notifications Deltas
+	•	WorkCover cases:
+	•	Insurance Contact, Insurance Agent, and ORC notified if Fit = with restrictions or not fit.
+	•	Treating Doctor notified only in Injury/RTW/Rehab flows.
+	•	Pre-Employment: unchanged (Manager, Consultant, Admin only).
+
+⸻
+
+Acceptance Tests (new)
+	•	ROLE-MC-001: Pre-Employment → claimType='none'; no extra stakeholders.
+	•	ROLE-MC-002: Injury case converted to WorkCover → Insurance Contact + Insurance Agent added; raw notes hidden.
+	•	ROLE-MC-003: Assign ORC → Rehab tab visible; ORC uploads plan.
+	•	ROLE-MC-004: WorkCover case Fit = “with restrictions” → Insurance Contact + Insurance Agent + ORC notified.
+
+⸻
+
+📌 Notes:
+	•	AI Agent = always present in all modules.
+	•	Insurance Agent = WorkCover-only.
+	•	Managers, Insurance, and ORC/Rehab always see sanitised summaries only.
+	•	Oakley (insurer’s doctor) is not part of Pre-Employment.
+
+⸻
+
+Do you also want me to create a Role Matrix Table (modules vs. roles) so the Replit team has a one-glance view alongside this addendum?
