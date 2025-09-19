@@ -374,7 +374,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Jotform webhook endpoint for receiving form submissions
   app.post("/api/webhook/jotform", async (req, res) => {
     try {
-      console.log("Received Jotform webhook:", req.body);
+      console.log("Received Jotform webhook - processing pre-employment form");
       
       // Validate the form data
       const validationResult = preEmploymentFormSchema.safeParse(req.body);
@@ -398,6 +398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create ticket
       const ticket = await storage.createTicket({
+        workerId: worker.id,
         caseType: "pre_employment",
         status: "NEW",
       });
@@ -423,13 +424,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update ticket status to AWAITING_REVIEW
       await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
 
-      console.log(`Created case ${ticket.id} for ${worker.firstName} ${worker.lastName}`);
+      // Automatically create Freshdesk ticket if integration is available
+      let freshdeskInfo = null;
+      try {
+        const { freshdeskService } = await import("./freshdeskService");
+        
+        if (freshdeskService.isAvailable()) {
+          // Check for existing Freshdesk mapping to prevent duplicates
+          const existingMapping = await storage.getFreshdeskTicketByGpnetId(ticket.id);
+          if (existingMapping) {
+            console.log(`Freshdesk ticket already exists for case ${ticket.id}, skipping creation`);
+            freshdeskInfo = {
+              freshdeskTicketId: existingMapping.freshdeskTicketId,
+              freshdeskUrl: existingMapping.freshdeskUrl
+            };
+            
+            // Log idempotent skip
+            await storage.createFreshdeskSyncLog(
+              freshdeskService.createSyncLog(
+                ticket.id,
+                existingMapping.freshdeskTicketId,
+                'create',
+                'to_freshdesk',
+                'skipped',
+                { trigger: 'auto_pre_employment', reason: 'idempotent_skip' }
+              )
+            );
+          } else {
+            // Get updated ticket 
+            const updatedTicket = await storage.getTicket(ticket.id);
+            if (updatedTicket) {
+              const freshdeskTicket = await freshdeskService.createTicket(updatedTicket, worker);
+            
+              if (freshdeskTicket) {
+                // Store mapping in database
+                const mapping = await storage.createFreshdeskTicket({
+                  gpnetTicketId: ticket.id,
+                  freshdeskTicketId: freshdeskTicket.id,
+                  freshdeskUrl: `https://${process.env.FRESHDESK_DOMAIN}.freshdesk.com/a/tickets/${freshdeskTicket.id}`,
+                  syncStatus: 'synced',
+                  freshdeskData: freshdeskTicket
+                });
+
+                // Log successful sync
+                await storage.createFreshdeskSyncLog(
+                  freshdeskService.createSyncLog(
+                    ticket.id,
+                    freshdeskTicket.id,
+                    'create',
+                    'to_freshdesk',
+                    'success',
+                    { freshdeskTicket, trigger: 'auto_pre_employment' }
+                  )
+                );
+
+                freshdeskInfo = {
+                  freshdeskTicketId: freshdeskTicket.id,
+                  freshdeskUrl: mapping.freshdeskUrl
+                };
+
+                console.log(`Auto-created Freshdesk ticket ${freshdeskTicket.id} for case ${ticket.id}`);
+              }
+            }
+          }
+        } else {
+          // Log that Freshdesk integration is not configured
+          await storage.createFreshdeskSyncLog(
+            freshdeskService.createSyncLog(
+              ticket.id,
+              null,
+              'create',
+              'to_freshdesk',
+              'skipped',
+              { trigger: 'auto_pre_employment', reason: 'Freshdesk integration not configured' }
+            )
+          );
+        }
+      } catch (freshdeskError) {
+        console.error("Failed to auto-create Freshdesk ticket:", freshdeskError);
+        
+        // Log failed attempt
+        try {
+          const { freshdeskService } = await import("./freshdeskService");
+          await storage.createFreshdeskSyncLog(
+            freshdeskService.createSyncLog(
+              ticket.id,
+              null,
+              'create',
+              'to_freshdesk',
+              'failed',
+              { trigger: 'auto_pre_employment' },
+              freshdeskError instanceof Error ? freshdeskError.message : 'Unknown error'
+            )
+          );
+        } catch (logError) {
+          console.error("Failed to log Freshdesk error:", logError);
+        }
+      }
+
+      console.log(`Created pre-employment case ${ticket.id}`);
 
       res.json({
         success: true,
         ticketId: ticket.id,
         status: "AWAITING_REVIEW",
         message: "Form processed successfully",
+        freshdeskInfo
       });
 
     } catch (error) {
@@ -444,7 +544,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Injury webhook endpoint for receiving injury form submissions
   app.post("/api/webhook/injury", async (req, res) => {
     try {
-      console.log("Received injury webhook:", req.body);
+      console.log("Received injury webhook - processing injury form");
       
       // Validate the injury form data
       const validationResult = injuryFormSchema.safeParse(req.body);
@@ -526,7 +626,117 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update ticket status to ANALYSING
       await storage.updateTicketStatus(ticket.id, "ANALYSING");
 
-      console.log(`Created injury case ${ticket.id} for ${worker.firstName} ${worker.lastName}`);
+      // Automatically create Freshdesk ticket if integration is available
+      let freshdeskInfo = null;
+      try {
+        const { freshdeskService } = await import("./freshdeskService");
+        
+        if (freshdeskService.isAvailable()) {
+          // Check for existing Freshdesk mapping to prevent duplicates
+          const existingMapping = await storage.getFreshdeskTicketByGpnetId(ticket.id);
+          if (existingMapping) {
+            console.log(`Freshdesk ticket already exists for injury case ${ticket.id}, skipping creation`);
+            freshdeskInfo = {
+              freshdeskTicketId: existingMapping.freshdeskTicketId,
+              freshdeskUrl: existingMapping.freshdeskUrl
+            };
+            
+            // Log idempotent skip
+            await storage.createFreshdeskSyncLog(
+              freshdeskService.createSyncLog(
+                ticket.id,
+                existingMapping.freshdeskTicketId,
+                'create',
+                'to_freshdesk',
+                'skipped',
+                { trigger: 'auto_injury', reason: 'idempotent_skip' }
+              )
+            );
+          } else {
+            // Get updated ticket
+            const updatedTicket = await storage.getTicket(ticket.id);
+            if (updatedTicket) {
+              const freshdeskTicket = await freshdeskService.createTicket(updatedTicket, worker);
+            
+              if (freshdeskTicket) {
+                // Store mapping in database
+                const mapping = await storage.createFreshdeskTicket({
+                  gpnetTicketId: ticket.id,
+                  freshdeskTicketId: freshdeskTicket.id,
+                  freshdeskUrl: `https://${process.env.FRESHDESK_DOMAIN}.freshdesk.com/a/tickets/${freshdeskTicket.id}`,
+                  syncStatus: 'synced',
+                  freshdeskData: freshdeskTicket
+                });
+
+                // Log successful sync
+                await storage.createFreshdeskSyncLog(
+                  freshdeskService.createSyncLog(
+                    ticket.id,
+                    freshdeskTicket.id,
+                    'create',
+                    'to_freshdesk',
+                    'success',
+                    { 
+                      freshdeskTicket, 
+                      trigger: 'auto_injury',
+                      claimType: formData.claimType,
+                      severity: formData.severity 
+                    }
+                  )
+                );
+
+                freshdeskInfo = {
+                  freshdeskTicketId: freshdeskTicket.id,
+                  freshdeskUrl: mapping.freshdeskUrl
+                };
+
+                console.log(`Auto-created Freshdesk ticket ${freshdeskTicket.id} for injury case ${ticket.id}`);
+              }
+            }
+          }
+        } else {
+          // Log that Freshdesk integration is not configured
+          await storage.createFreshdeskSyncLog(
+            freshdeskService.createSyncLog(
+              ticket.id,
+              null,
+              'create',
+              'to_freshdesk',
+              'skipped',
+              { 
+                trigger: 'auto_injury', 
+                claimType: formData.claimType,
+                reason: 'Freshdesk integration not configured' 
+              }
+            )
+          );
+        }
+      } catch (freshdeskError) {
+        console.error("Failed to auto-create Freshdesk ticket for injury:", freshdeskError);
+        
+        // Log failed attempt
+        try {
+          const { freshdeskService } = await import("./freshdeskService");
+          await storage.createFreshdeskSyncLog(
+            freshdeskService.createSyncLog(
+              ticket.id,
+              null,
+              'create',
+              'to_freshdesk',
+              'failed',
+              { 
+                trigger: 'auto_injury',
+                claimType: formData.claimType 
+              },
+              freshdeskError instanceof Error ? freshdeskError.message : 'Unknown error'
+            )
+          );
+        } catch (logError) {
+          console.error("Failed to log Freshdesk error:", logError);
+        }
+      }
+
+      console.log(`Created injury case ${ticket.id}`);
 
       res.json({
         success: true,
@@ -535,6 +745,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         claimType: formData.claimType,
         status: "ANALYSING",
         message: `Injury report processed successfully. ${formData.claimType === 'workcover' ? 'WorkCover claim processing initiated.' : 'Standard claim processing initiated.'}`,
+        freshdeskInfo
       });
 
     } catch (error) {
