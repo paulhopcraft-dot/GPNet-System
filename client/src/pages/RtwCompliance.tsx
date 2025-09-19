@@ -1072,7 +1072,18 @@ function LetterTokenForm({ template, onGenerate, isGenerating }: {
         </p>
         {template.legislationRefs && (
           <div className="text-xs">
-            <strong>Legislation:</strong> {JSON.parse(template.legislationRefs).map((ref: any) => ref.section).join(", ")}
+            <strong>Legislation:</strong> {
+              (() => {
+                try {
+                  const refs = typeof template.legislationRefs === 'string' 
+                    ? JSON.parse(template.legislationRefs) 
+                    : template.legislationRefs;
+                  return Array.isArray(refs) ? refs.map((ref: any) => ref.section).join(", ") : "";
+                } catch (e) {
+                  return "Legislation references available";
+                }
+              })()
+            }
           </div>
         )}
       </div>

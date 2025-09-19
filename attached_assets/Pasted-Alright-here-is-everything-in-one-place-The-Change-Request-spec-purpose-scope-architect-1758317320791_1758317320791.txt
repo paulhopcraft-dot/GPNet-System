@@ -1,0 +1,252 @@
+Alright ✅ — here is everything in one place:
+	•	The Change Request spec (purpose → scope → architecture → guardrails → deliverables → acceptance criteria → QA/testing).
+	•	The full Prompt Library (Section 12).
+	•	The dual-model routing rules (Michelle on gpt-4o-mini, reports on gpt-4.1).
+	•	The mini test script so you/Agent 3 can verify it’s wired correctly.
+
+⸻
+
+Change Request: CR-GPNet-LLM-001
+
+Title: Integration of Large Language Model (LLM) Adapter Service into GPNet
+
+⸻
+
+1. Purpose
+
+Add an LLM Adapter Service into GPNet so the system can:
+	•	Automatically generate Injury, Prevention, New Starter, Exit, and Mental Health reports in GPNet templates.
+	•	Power “Michelle”, a conversational assistant that adapts to worker responses.
+	•	Provide compliant references to the Workplace Injury Rehabilitation & Compensation Act 2013 (ss104–116) and WorkSafe Claims Manual (5.1–5.1.6).
+
+⸻
+
+2. Scope
+
+In scope
+	•	LLM Adapter with strict rules/guardrails.
+	•	Report generation with disclaimer, Fit Classification, recommendations, legislation refs.
+	•	Conversational assistant.
+	•	Classifier to convert text → Fit classification + risks.
+	•	Legislation lookup that resolves IDs to titles/links only.
+	•	Audit logging.
+	•	Fallback skeleton if LLM fails.
+
+Out of scope
+	•	Hosting model weights locally.
+	•	Free-form queries outside GPNet workflows.
+
+⸻
+
+3. Architecture
+
+[Frontend: Recruiter/HR/Worker] 
+     ⬇
+[Case Workflow Engine / Michelle Chatbot]
+     ⬇
+[LLM Adapter Service] ──→ [OpenAI ChatGPT API]
+                         ↕
+        [Templates + Legislation JSON + Prompts]
+
+	•	Adapter enforces templates, JSON citations, logging.
+	•	Workflow engine decides when to call the LLM.
+
+⸻
+
+4. Functions
+
+A. Report Generation
+	•	5 types: Injury, Prevention, New Starter, Exit, Mental Health.
+	•	Always: Disclaimer, Summary, Fit Classification, Recommendations, Sections, Appendix A.
+	•	Fit = “Fit without restriction” unless evidence indicates otherwise.
+	•	Cite IDs only.
+
+B. Conversational Assistant (Michelle)
+	•	1 question at a time.
+	•	Extract structured fields.
+	•	Flag psychosocial risks.
+	•	Escalate if self-harm.
+
+C. Classifier
+	•	Input: free text + hints.
+	•	Output: Fit classification + risks + restrictions.
+
+D. Legislation Lookup
+	•	Input: list of IDs.
+	•	Output: title + URL from JSON only.
+
+⸻
+
+5. Guardrails
+	•	Cite only IDs from JSON.
+	•	Disclaimer always included verbatim.
+	•	Log {templateId, refs, version, checksum}.
+	•	Skeleton output if LLM unavailable.
+
+⸻
+
+6. Deliverables
+	•	Service: llmAdapter (/llm/report, /llm/chat, /llm/classify, /llm/lookup).
+	•	Templates: Markdown files in /knowledge/templates/.
+	•	Legislation JSON.
+	•	Chatbot UI module.
+	•	Audit log integration.
+
+⸻
+
+7. Acceptance Criteria
+	•	Reports <5s, include disclaimer + Fit Classification.
+	•	Chatbot always returns reply + 1–3 next questions.
+	•	Classifier returns JSON only.
+	•	Lookup resolves only JSON IDs.
+	•	Logs show model used + refs.
+	•	Fallback works.
+
+⸻
+
+8. Risks
+	•	Dependency on OpenAI API.
+	•	Slightly longer build time.
+	•	Risk of hallucinations (guardrails reduce).
+
+⸻
+
+9. QA & Testing Requirements
+	•	2000+ automated test cases.
+	•	≥95% coverage.
+	•	Must test happy paths, edge cases, failures, escalation.
+	•	CI/CD must block merges on guardrail test failures.
+	•	Test results exported.
+
+⸻
+
+10. Prompt Library – Expanded
+
+12.1 Injury Check
+	•	System: generate Injury Check report.
+	•	Rules: template-bound, default Fit = unrestricted, IDs only, disclaimer required.
+	•	Sections: Disclaimer, Summary, Fit Classification, Recommendations, Health Overview, Physical Health, Emotional Wellbeing, Work & Social Impacts, Lifestyle, Support Provided, Health Outlook, Appendix A.
+	•	Output: YAML with meta + body_markdown.
+
+12.2 Prevention Check
+	•	System: generate Prevention Check.
+	•	Same rules.
+	•	Sections: Disclaimer, Summary (concerns, risks, perceived capacity), Fit Classification, Recommendations (preventive/ergonomic), Health Overview, Physical Health, Emotional Wellbeing, Work & Social Impacts, Lifestyle, Support Provided, Health Outlook, Appendix A.
+
+12.3 New Starter Check
+	•	System: generate onboarding check.
+	•	Sections: Disclaimer, Summary (role demands, capacity, red flags), Fit Classification, Recommendations (supports, micro-breaks), Health Overview, Work/Social Impacts, Outlook, Appendix A.
+
+12.4 Exit Check
+	•	System: generate Exit Check.
+	•	Sections: Disclaimer, Summary (issues, exit reasons), Supports Provided, Insights for employer/recruiter, Outlook, Appendix A.
+
+12.5 Mental Health Check
+	•	System: generate Mental Health Check.
+	•	Rules: insert URGENT FLAG if self-harm. Supportive, non-diagnostic.
+	•	Sections: Disclaimer, Summary (psychosocial concerns), Fit Classification, Recommendations (EAP/GP), Psychosocial Factors, Work/Social Impacts, Support Provided, Outlook, Appendix A.
+
+12.6 Michelle Chat
+	•	System: you are Michelle. One question at a time. Extract fields. Supportive tone. Escalate if distress.
+	•	Output: reply_text, next_questions[], extracted_fields{}, flags{risk, compliance, escalation}, legislation_refs[].
+
+12.7 Classifier
+	•	System: classify text + hints. Conservative bias. JSON only.
+	•	Output: fit_classification, risk_flags[], suggested_restrictions[].
+
+12.8 Legislation Lookup
+	•	System: resolve ONLY IDs in JSON. Return title + URL.
+	•	Input: {ids:[…]}, Output: {resolved:[], unresolved:[]}.
+
+⸻
+
+11. Model Selection & Routing
+
+Requirement:
+Use two OpenAI ChatGPT models depending on task.
+
+Assignments
+	•	Conversations (Michelle) → gpt-4o-mini
+	•	Reports → gpt-4.1
+
+Implementation
+
+OPENAI_API_KEY=sk-xxxx
+MODEL_CHAT=gpt-4o-mini
+MODEL_REPORT=gpt-4.1
+
+Routing:
+	•	/llm/chat → MODEL_CHAT
+	•	/llm/report → MODEL_REPORT
+	•	/llm/classify → MODEL_CHAT
+	•	/llm/lookup → MODEL_CHAT
+
+Guardrails
+	•	Reports must always cite valid IDs.
+	•	Disclaimer always inserted.
+	•	Audit logs include {model_used, endpoint, templateId, refs, checksum}.
+	•	If MODEL_REPORT fails → fallback to MODEL_CHAT skeleton.
+
+Acceptance
+	•	Chat replies <2s (p95).
+	•	Reports <10s with disclaimer + refs.
+	•	Logs show correct model used.
+
+⸻
+
+12. Mini Test Script
+
+1. Chat → gpt-4o-mini
+
+curl -X POST /llm/chat -d '{"conversationId":"T1","message":"My wrist hurts"}'
+
+Expect: reply_text + next_questions. Logs show model_used:"gpt-4o-mini".
+
+2. Report → gpt-4.1
+
+curl -X POST /llm/report -d '{"templateId":"injury_check","inputData":{"worker":{"name":"Sam"}}}'
+
+Expect: YAML with disclaimer + fit classification. Logs show model_used:"gpt-4.1".
+
+3. Classify → gpt-4o-mini
+
+curl -X POST /llm/classify -d '{"text":"Wrist pain lifting 8kg"}'
+
+Expect: JSON only. Logs show model_used:"gpt-4o-mini".
+
+4. Lookup → gpt-4o-mini
+
+curl -X POST /llm/lookup -d '{"ids":["WIRC s113","CLAIMS_MANUAL 5.1.2","BAD-ID"]}'
+
+Expect: resolved[] + unresolved[]. Logs show model_used:"gpt-4o-mini".
+
+5. Guardrail Test
+Force invalid ref → Adapter must reject with 400/422.
+
+6. Disclaimer Injection
+Check disclaimer matches template exactly.
+
+7. Fallback
+Simulate MODEL_REPORT down → skeleton report with TODOs. Logs show fallback.
+
+8. Performance
+	•	Chat <2s p95.
+	•	Report <10s p95.
+
+9. Audit Logs must include
+
+{
+  "endpoint":"/llm/report",
+  "model_used":"gpt-4.1",
+  "templateId":"injury_check",
+  "legislation_refs":["WIRC s113"],
+  "source_version":"YYYY-MM-DD",
+  "checksum":"..."
+}
+
+
+⸻
+
+✅ That’s everything consolidated: spec, guardrails, prompt library, dual-model routing, and test script.
+
+Would you like me to also format this as a single PDF/Word file so you’ve got a clean artifact to hand Roylett?
