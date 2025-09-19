@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { preEmploymentFormSchema, type PreEmploymentFormData, injuryFormSchema, type InjuryFormData, rtwPlanSchema } from "@shared/schema";
+import { preEmploymentFormSchema, type PreEmploymentFormData, injuryFormSchema, type InjuryFormData, rtwPlanSchema, insertStakeholderSchema } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -529,7 +529,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Test endpoint for form submission (for demo purposes)
+  // Stakeholder API endpoints
+  
+  // Get stakeholders for a case
+  app.get("/api/cases/:ticketId/stakeholders", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const stakeholders = await storage.getStakeholdersByTicket(ticketId);
+      res.json(stakeholders);
+    } catch (error) {
+      console.error("Error fetching stakeholders:", error);
+      res.status(500).json({ error: "Failed to fetch stakeholders" });
+    }
+  });
+
+  // Get specific stakeholder
+  app.get("/api/stakeholders/:stakeholderId", async (req, res) => {
+    try {
+      const { stakeholderId } = req.params;
+      const stakeholder = await storage.getStakeholder(stakeholderId);
+      
+      if (!stakeholder) {
+        return res.status(404).json({ error: "Stakeholder not found" });
+      }
+      
+      res.json(stakeholder);
+    } catch (error) {
+      console.error("Error fetching stakeholder:", error);
+      res.status(500).json({ error: "Failed to fetch stakeholder" });
+    }
+  });
+
+  // Create new stakeholder
+  app.post("/api/stakeholders", async (req, res) => {
+    try {
+      const stakeholderData = req.body;
+      
+      // Validate stakeholder data
+      const validationResult = insertStakeholderSchema.safeParse(stakeholderData);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid stakeholder data", details: errorMessage });
+      }
+
+      const stakeholder = await storage.createStakeholder(validationResult.data);
+      
+      console.log(`Created stakeholder ${stakeholder.id} for case ${stakeholder.ticketId}`);
+      res.json({ success: true, stakeholder });
+      
+    } catch (error) {
+      console.error("Error creating stakeholder:", error);
+      res.status(500).json({ error: "Failed to create stakeholder" });
+    }
+  });
+
+  // Update stakeholder
+  app.put("/api/stakeholders/:stakeholderId", async (req, res) => {
+    try {
+      const { stakeholderId } = req.params;
+      const updates = req.body;
+      
+      // Validate partial stakeholder updates
+      const partialSchema = insertStakeholderSchema.partial();
+      const validationResult = partialSchema.safeParse(updates);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid stakeholder update data", details: errorMessage });
+      }
+
+      const stakeholder = await storage.updateStakeholder(stakeholderId, validationResult.data);
+      
+      console.log(`Updated stakeholder ${stakeholderId}`);
+      res.json({ success: true, stakeholder });
+      
+    } catch (error) {
+      console.error("Error updating stakeholder:", error);
+      res.status(500).json({ error: "Failed to update stakeholder" });
+    }
+  });
+
+  // Delete stakeholder
+  app.delete("/api/stakeholders/:stakeholderId", async (req, res) => {
+    try {
+      const { stakeholderId } = req.params;
+      
+      await storage.deleteStakeholder(stakeholderId);
+      
+      console.log(`Deleted stakeholder ${stakeholderId}`);
+      res.json({ success: true, message: "Stakeholder deleted successfully" });
+      
+    } catch (error) {
+      console.error("Error deleting stakeholder:", error);
+      res.status(500).json({ error: "Failed to delete stakeholder" });
+    }
+  });
+
   // RTW Plan API endpoints
   
   // Get RTW plans for a ticket
