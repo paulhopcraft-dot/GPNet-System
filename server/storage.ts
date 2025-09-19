@@ -2,15 +2,16 @@ import {
   tickets, workers, formSubmissions, analyses, emails, attachments,
   injuries, stakeholders, rtwPlans,
   legislationDocuments, rtwWorkflowSteps, complianceAudit, workerParticipationEvents,
-  letterTemplates, generatedLetters,
+  letterTemplates, generatedLetters, freshdeskTickets, freshdeskSyncLogs,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
   type Injury, type Stakeholder, type RtwPlan,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
-  type LetterTemplate, type GeneratedLetter,
+  type LetterTemplate, type GeneratedLetter, type FreshdeskTicket, type FreshdeskSyncLog,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis,
   type InsertInjury, type InsertStakeholder, type InsertRtwPlan,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
-  type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter
+  type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter,
+  type InsertFreshdeskTicket, type InsertFreshdeskSyncLog
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -128,6 +129,20 @@ export interface IStorage {
 
   // Ticket RTW Management
   updateTicketRtwStatus(id: string, rtwStep: string, complianceStatus: string, nextDeadline?: { date: string, type: string }): Promise<Ticket>;
+
+  // Freshdesk Integration
+  createFreshdeskTicket(freshdeskTicket: InsertFreshdeskTicket): Promise<FreshdeskTicket>;
+  getFreshdeskTicket(id: string): Promise<FreshdeskTicket | undefined>;
+  getFreshdeskTicketByGpnetId(gpnetTicketId: string): Promise<FreshdeskTicket | undefined>;
+  getFreshdeskTicketByFreshdeskId(freshdeskTicketId: number): Promise<FreshdeskTicket | undefined>;
+  updateFreshdeskTicket(id: string, updates: Partial<InsertFreshdeskTicket>): Promise<FreshdeskTicket>;
+  getAllFreshdeskTickets(): Promise<FreshdeskTicket[]>;
+
+  // Freshdesk Sync Logs
+  createFreshdeskSyncLog(syncLog: InsertFreshdeskSyncLog): Promise<FreshdeskSyncLog>;
+  getFreshdeskSyncLogsByTicket(gpnetTicketId: string): Promise<FreshdeskSyncLog[]>;
+  getFreshdeskSyncLogsByOperation(operation: string): Promise<FreshdeskSyncLog[]>;
+  getFailedFreshdeskSyncLogs(): Promise<FreshdeskSyncLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -736,6 +751,88 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tickets.id, id))
       .returning();
     return ticket;
+  }
+
+  // Freshdesk Integration
+  async createFreshdeskTicket(insertFreshdeskTicket: InsertFreshdeskTicket): Promise<FreshdeskTicket> {
+    const [freshdeskTicket] = await db
+      .insert(freshdeskTickets)
+      .values(insertFreshdeskTicket)
+      .returning();
+    return freshdeskTicket;
+  }
+
+  async getFreshdeskTicket(id: string): Promise<FreshdeskTicket | undefined> {
+    const [freshdeskTicket] = await db
+      .select()
+      .from(freshdeskTickets)
+      .where(eq(freshdeskTickets.id, id));
+    return freshdeskTicket || undefined;
+  }
+
+  async getFreshdeskTicketByGpnetId(gpnetTicketId: string): Promise<FreshdeskTicket | undefined> {
+    const [freshdeskTicket] = await db
+      .select()
+      .from(freshdeskTickets)
+      .where(eq(freshdeskTickets.gpnetTicketId, gpnetTicketId));
+    return freshdeskTicket || undefined;
+  }
+
+  async getFreshdeskTicketByFreshdeskId(freshdeskTicketId: number): Promise<FreshdeskTicket | undefined> {
+    const [freshdeskTicket] = await db
+      .select()
+      .from(freshdeskTickets)
+      .where(eq(freshdeskTickets.freshdeskTicketId, freshdeskTicketId));
+    return freshdeskTicket || undefined;
+  }
+
+  async updateFreshdeskTicket(id: string, updates: Partial<InsertFreshdeskTicket>): Promise<FreshdeskTicket> {
+    const [freshdeskTicket] = await db
+      .update(freshdeskTickets)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(freshdeskTickets.id, id))
+      .returning();
+    return freshdeskTicket;
+  }
+
+  async getAllFreshdeskTickets(): Promise<FreshdeskTicket[]> {
+    return await db
+      .select()
+      .from(freshdeskTickets)
+      .orderBy(desc(freshdeskTickets.createdAt));
+  }
+
+  // Freshdesk Sync Logs
+  async createFreshdeskSyncLog(insertSyncLog: InsertFreshdeskSyncLog): Promise<FreshdeskSyncLog> {
+    const [syncLog] = await db
+      .insert(freshdeskSyncLogs)
+      .values(insertSyncLog)
+      .returning();
+    return syncLog;
+  }
+
+  async getFreshdeskSyncLogsByTicket(gpnetTicketId: string): Promise<FreshdeskSyncLog[]> {
+    return await db
+      .select()
+      .from(freshdeskSyncLogs)
+      .where(eq(freshdeskSyncLogs.gpnetTicketId, gpnetTicketId))
+      .orderBy(desc(freshdeskSyncLogs.createdAt));
+  }
+
+  async getFreshdeskSyncLogsByOperation(operation: string): Promise<FreshdeskSyncLog[]> {
+    return await db
+      .select()
+      .from(freshdeskSyncLogs)
+      .where(eq(freshdeskSyncLogs.operation, operation))
+      .orderBy(desc(freshdeskSyncLogs.createdAt));
+  }
+
+  async getFailedFreshdeskSyncLogs(): Promise<FreshdeskSyncLog[]> {
+    return await db
+      .select()
+      .from(freshdeskSyncLogs)
+      .where(eq(freshdeskSyncLogs.status, 'failed'))
+      .orderBy(desc(freshdeskSyncLogs.createdAt));
   }
 }
 

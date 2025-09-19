@@ -1640,6 +1640,388 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===============================================
+  // FRESHDESK INTEGRATION API ENDPOINTS
+  // ===============================================
+
+  // Import Freshdesk service at top of file (will be handled separately)
+  const { freshdeskService } = await import("./freshdeskService");
+
+  // Create Freshdesk ticket for a GPNet case
+  app.post("/api/freshdesk/tickets", async (req, res) => {
+    try {
+      const { gpnetTicketId } = req.body;
+      
+      if (!gpnetTicketId) {
+        return res.status(400).json({ error: "GPNet ticket ID is required" });
+      }
+
+      // Check if Freshdesk ticket already exists
+      const existingMapping = await storage.getFreshdeskTicketByGpnetId(gpnetTicketId);
+      if (existingMapping) {
+        return res.status(409).json({ 
+          error: "Freshdesk ticket already exists for this case",
+          freshdeskTicketId: existingMapping.freshdeskTicketId 
+        });
+      }
+
+      // Get GPNet ticket details
+      const gpnetTicket = await storage.getTicket(gpnetTicketId);
+      if (!gpnetTicket) {
+        return res.status(404).json({ error: "GPNet ticket not found" });
+      }
+
+      // Get worker data if available
+      let workerData = null;
+      if (gpnetTicket.workerId) {
+        workerData = await storage.getWorker(gpnetTicket.workerId);
+      }
+
+      let freshdeskTicket = null;
+      let syncLog;
+
+      if (freshdeskService.isAvailable()) {
+        try {
+          // Create ticket in Freshdesk
+          freshdeskTicket = await freshdeskService.createTicket(gpnetTicket, workerData);
+          
+          if (freshdeskTicket) {
+            // Store mapping in database
+            const mapping = await storage.createFreshdeskTicket({
+              gpnetTicketId,
+              freshdeskTicketId: freshdeskTicket.id,
+              freshdeskUrl: `https://${process.env.FRESHDESK_DOMAIN}.freshdesk.com/a/tickets/${freshdeskTicket.id}`,
+              syncStatus: 'synced',
+              freshdeskData: freshdeskTicket
+            });
+
+            // Log successful sync
+            syncLog = await storage.createFreshdeskSyncLog(
+              freshdeskService.createSyncLog(
+                gpnetTicketId,
+                freshdeskTicket.id,
+                'create',
+                'to_freshdesk',
+                'success',
+                { freshdeskTicket }
+              )
+            );
+
+            res.status(201).json({
+              success: true,
+              mapping,
+              freshdeskTicket,
+              freshdeskUrl: mapping.freshdeskUrl
+            });
+          } else {
+            throw new Error('Failed to create Freshdesk ticket');
+          }
+        } catch (error) {
+          console.error('Freshdesk ticket creation failed:', error);
+          
+          // Log failed sync
+          syncLog = await storage.createFreshdeskSyncLog(
+            freshdeskService.createSyncLog(
+              gpnetTicketId,
+              null,
+              'create',
+              'to_freshdesk',
+              'failed',
+              { gpnetTicket },
+              error instanceof Error ? error.message : 'Unknown error'
+            )
+          );
+
+          res.status(500).json({ 
+            error: "Failed to create Freshdesk ticket",
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      } else {
+        // Freshdesk not available, log skip
+        syncLog = await storage.createFreshdeskSyncLog(
+          freshdeskService.createSyncLog(
+            gpnetTicketId,
+            null,
+            'create',
+            'to_freshdesk',
+            'skipped',
+            { reason: 'Freshdesk integration not configured' }
+          )
+        );
+
+        res.status(200).json({
+          success: true,
+          message: "Freshdesk integration not configured, ticket creation skipped",
+          gpnetTicketId
+        });
+      }
+    } catch (error) {
+      console.error("Error creating Freshdesk ticket:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Sync GPNet ticket status to Freshdesk
+  app.put("/api/freshdesk/tickets/:gpnetTicketId/sync", async (req, res) => {
+    try {
+      const { gpnetTicketId } = req.params;
+
+      // Get GPNet ticket
+      const gpnetTicket = await storage.getTicket(gpnetTicketId);
+      if (!gpnetTicket) {
+        return res.status(404).json({ error: "GPNet ticket not found" });
+      }
+
+      // Get Freshdesk mapping
+      const mapping = await storage.getFreshdeskTicketByGpnetId(gpnetTicketId);
+      if (!mapping) {
+        return res.status(404).json({ error: "Freshdesk ticket mapping not found" });
+      }
+
+      let syncLog;
+
+      if (freshdeskService.isAvailable()) {
+        try {
+          // Sync status to Freshdesk
+          const updatedTicket = await freshdeskService.syncTicketStatus(
+            gpnetTicket, 
+            mapping.freshdeskTicketId
+          );
+
+          if (updatedTicket) {
+            // Update mapping
+            await storage.updateFreshdeskTicket(mapping.id, {
+              syncStatus: 'synced',
+              freshdeskData: updatedTicket
+            });
+
+            // Log successful sync
+            syncLog = await storage.createFreshdeskSyncLog(
+              freshdeskService.createSyncLog(
+                gpnetTicketId,
+                mapping.freshdeskTicketId,
+                'sync_status',
+                'to_freshdesk',
+                'success',
+                { updatedTicket }
+              )
+            );
+
+            res.json({
+              success: true,
+              syncedAt: new Date().toISOString(),
+              freshdeskTicket: updatedTicket
+            });
+          } else {
+            throw new Error('Failed to sync ticket status');
+          }
+        } catch (error) {
+          console.error('Freshdesk sync failed:', error);
+
+          // Update mapping status
+          await storage.updateFreshdeskTicket(mapping.id, {
+            syncStatus: 'failed'
+          });
+
+          // Log failed sync
+          syncLog = await storage.createFreshdeskSyncLog(
+            freshdeskService.createSyncLog(
+              gpnetTicketId,
+              mapping.freshdeskTicketId,
+              'sync_status',
+              'to_freshdesk',
+              'failed',
+              { gpnetTicket },
+              error instanceof Error ? error.message : 'Unknown error'
+            )
+          );
+
+          res.status(500).json({ 
+            error: "Failed to sync ticket status",
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      } else {
+        // Freshdesk not available, log skip
+        syncLog = await storage.createFreshdeskSyncLog(
+          freshdeskService.createSyncLog(
+            gpnetTicketId,
+            mapping.freshdeskTicketId,
+            'sync_status',
+            'to_freshdesk',
+            'skipped',
+            { reason: 'Freshdesk integration not configured' }
+          )
+        );
+
+        res.json({
+          success: true,
+          message: "Freshdesk integration not configured, sync skipped"
+        });
+      }
+    } catch (error) {
+      console.error("Error syncing to Freshdesk:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Get Freshdesk ticket mapping and sync logs
+  app.get("/api/freshdesk/tickets/:gpnetTicketId", async (req, res) => {
+    try {
+      const { gpnetTicketId } = req.params;
+
+      // Get mapping
+      const mapping = await storage.getFreshdeskTicketByGpnetId(gpnetTicketId);
+      if (!mapping) {
+        return res.status(404).json({ error: "Freshdesk ticket mapping not found" });
+      }
+
+      // Get sync logs
+      const syncLogs = await storage.getFreshdeskSyncLogsByTicket(gpnetTicketId);
+
+      res.json({
+        mapping,
+        syncLogs,
+        freshdeskUrl: mapping.freshdeskUrl,
+        isIntegrationAvailable: freshdeskService.isAvailable()
+      });
+    } catch (error) {
+      console.error("Error getting Freshdesk ticket info:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Get all Freshdesk mappings and sync status
+  app.get("/api/freshdesk/tickets", async (req, res) => {
+    try {
+      const mappings = await storage.getAllFreshdeskTickets();
+      const failedSyncs = await storage.getFailedFreshdeskSyncLogs();
+
+      res.json({
+        mappings,
+        failedSyncs: failedSyncs.slice(0, 10), // Last 10 failed syncs
+        totalMappings: mappings.length,
+        totalFailedSyncs: failedSyncs.length,
+        isIntegrationAvailable: freshdeskService.isAvailable()
+      });
+    } catch (error) {
+      console.error("Error getting Freshdesk mappings:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Add note to Freshdesk ticket
+  app.post("/api/freshdesk/tickets/:gpnetTicketId/notes", async (req, res) => {
+    try {
+      const { gpnetTicketId } = req.params;
+      const { note, isPrivate = false } = req.body;
+
+      if (!note) {
+        return res.status(400).json({ error: "Note content is required" });
+      }
+
+      // Get Freshdesk mapping
+      const mapping = await storage.getFreshdeskTicketByGpnetId(gpnetTicketId);
+      if (!mapping) {
+        return res.status(404).json({ error: "Freshdesk ticket mapping not found" });
+      }
+
+      if (freshdeskService.isAvailable()) {
+        try {
+          const noteResponse = await freshdeskService.addNote(
+            mapping.freshdeskTicketId,
+            note,
+            isPrivate
+          );
+
+          // Log successful note addition
+          await storage.createFreshdeskSyncLog(
+            freshdeskService.createSyncLog(
+              gpnetTicketId,
+              mapping.freshdeskTicketId,
+              'add_note',
+              'to_freshdesk',
+              'success',
+              { note, isPrivate, noteResponse }
+            )
+          );
+
+          res.json({
+            success: true,
+            noteId: noteResponse?.id,
+            addedAt: new Date().toISOString()
+          });
+        } catch (error) {
+          console.error('Failed to add note to Freshdesk:', error);
+
+          // Log failed note addition
+          await storage.createFreshdeskSyncLog(
+            freshdeskService.createSyncLog(
+              gpnetTicketId,
+              mapping.freshdeskTicketId,
+              'add_note',
+              'to_freshdesk',
+              'failed',
+              { note, isPrivate },
+              error instanceof Error ? error.message : 'Unknown error'
+            )
+          );
+
+          res.status(500).json({ 
+            error: "Failed to add note to Freshdesk",
+            details: error instanceof Error ? error.message : 'Unknown error'
+          });
+        }
+      } else {
+        // Log skip
+        await storage.createFreshdeskSyncLog(
+          freshdeskService.createSyncLog(
+            gpnetTicketId,
+            mapping.freshdeskTicketId,
+            'add_note',
+            'to_freshdesk',
+            'skipped',
+            { note, isPrivate, reason: 'Freshdesk integration not configured' }
+          )
+        );
+
+        res.json({
+          success: true,
+          message: "Freshdesk integration not configured, note addition skipped"
+        });
+      }
+    } catch (error) {
+      console.error("Error adding note to Freshdesk:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Check Freshdesk integration status
+  app.get("/api/freshdesk/status", async (req, res) => {
+    try {
+      const isAvailable = freshdeskService.isAvailable();
+      const stats = await storage.getAllFreshdeskTickets();
+      const failedSyncs = await storage.getFailedFreshdeskSyncLogs();
+
+      res.json({
+        isAvailable,
+        hasApiKey: !!process.env.FRESHDESK_API_KEY,
+        hasDomain: !!process.env.FRESHDESK_DOMAIN,
+        totalMappings: stats.length,
+        failedSyncs: failedSyncs.length,
+        configuration: {
+          domain: process.env.FRESHDESK_DOMAIN || null,
+          // Never expose the actual API key
+          apiKeyConfigured: !!process.env.FRESHDESK_API_KEY
+        }
+      });
+    } catch (error) {
+      console.error("Error getting Freshdesk status:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
