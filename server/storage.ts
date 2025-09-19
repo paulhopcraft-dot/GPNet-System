@@ -13,7 +13,7 @@ import {
   type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 
 // Storage interface for GPNet operations
 export interface IStorage {
@@ -64,6 +64,51 @@ export interface IStorage {
     complete: number;
     flagged: number;
   }>;
+
+  // ===============================================
+  // RTW COMPLEX CLAIMS - LEGISLATION COMPLIANCE
+  // ===============================================
+
+  // Legislation Documents
+  createLegislationDocument(document: InsertLegislationDocument): Promise<LegislationDocument>;
+  getLegislationDocument(id: string): Promise<LegislationDocument | undefined>;
+  getLegislationBySourceAndSection(source: string, sectionId: string): Promise<LegislationDocument | undefined>;
+  getLegislationBySource(source: string): Promise<LegislationDocument[]>;
+  getAllLegislation(): Promise<LegislationDocument[]>;
+
+  // RTW Workflow Steps
+  createRtwWorkflowStep(step: InsertRtwWorkflowStep): Promise<RtwWorkflowStep>;
+  getRtwWorkflowStep(id: string): Promise<RtwWorkflowStep | undefined>;
+  getRtwWorkflowStepsByTicket(ticketId: string): Promise<RtwWorkflowStep[]>;
+  getCurrentRtwStep(ticketId: string): Promise<RtwWorkflowStep | undefined>;
+  updateRtwWorkflowStep(id: string, updates: Partial<InsertRtwWorkflowStep>): Promise<RtwWorkflowStep>;
+
+  // Compliance Audit
+  createComplianceAudit(audit: InsertComplianceAudit): Promise<ComplianceAudit>;
+  getComplianceAuditByTicket(ticketId: string): Promise<ComplianceAudit[]>;
+  getComplianceAuditById(id: string): Promise<ComplianceAudit | undefined>;
+
+  // Worker Participation Events
+  createWorkerParticipationEvent(event: InsertWorkerParticipationEvent): Promise<WorkerParticipationEvent>;
+  getWorkerParticipationEventsByTicket(ticketId: string): Promise<WorkerParticipationEvent[]>;
+  getWorkerParticipationEventsByStep(workflowStepId: string): Promise<WorkerParticipationEvent[]>;
+  updateWorkerParticipationEvent(id: string, updates: Partial<InsertWorkerParticipationEvent>): Promise<WorkerParticipationEvent>;
+
+  // Letter Templates
+  createLetterTemplate(template: InsertLetterTemplate): Promise<LetterTemplate>;
+  getLetterTemplate(id: string): Promise<LetterTemplate | undefined>;
+  getLetterTemplateByName(name: string): Promise<LetterTemplate | undefined>;
+  getAllLetterTemplates(): Promise<LetterTemplate[]>;
+  getLetterTemplatesByType(templateType: string): Promise<LetterTemplate[]>;
+
+  // Generated Letters
+  createGeneratedLetter(letter: InsertGeneratedLetter): Promise<GeneratedLetter>;
+  getGeneratedLetter(id: string): Promise<GeneratedLetter | undefined>;
+  getGeneratedLettersByTicket(ticketId: string): Promise<GeneratedLetter[]>;
+  updateGeneratedLetterStatus(id: string, status: string): Promise<GeneratedLetter>;
+
+  // Ticket RTW Management
+  updateTicketRtwStatus(id: string, rtwStep: string, complianceStatus: string, nextDeadline?: { date: string, type: string }): Promise<Ticket>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -271,6 +316,266 @@ export class DatabaseStorage implements IStorage {
     };
 
     return stats;
+  }
+
+  // ===============================================
+  // RTW COMPLEX CLAIMS - LEGISLATION COMPLIANCE IMPLEMENTATIONS
+  // ===============================================
+
+  // Legislation Documents
+  async createLegislationDocument(insertDocument: InsertLegislationDocument): Promise<LegislationDocument> {
+    const [document] = await db
+      .insert(legislationDocuments)
+      .values(insertDocument)
+      .returning();
+    return document;
+  }
+
+  async getLegislationDocument(id: string): Promise<LegislationDocument | undefined> {
+    const [document] = await db
+      .select()
+      .from(legislationDocuments)
+      .where(eq(legislationDocuments.id, id));
+    return document || undefined;
+  }
+
+  async getLegislationBySourceAndSection(source: string, sectionId: string): Promise<LegislationDocument | undefined> {
+    const [document] = await db
+      .select()
+      .from(legislationDocuments)
+      .where(and(
+        eq(legislationDocuments.source, source),
+        eq(legislationDocuments.sectionId, sectionId),
+        eq(legislationDocuments.isActive, true)
+      ));
+    return document || undefined;
+  }
+
+  async getLegislationBySource(source: string): Promise<LegislationDocument[]> {
+    return await db
+      .select()
+      .from(legislationDocuments)
+      .where(and(
+        eq(legislationDocuments.source, source),
+        eq(legislationDocuments.isActive, true)
+      ))
+      .orderBy(legislationDocuments.sectionId);
+  }
+
+  async getAllLegislation(): Promise<LegislationDocument[]> {
+    return await db
+      .select()
+      .from(legislationDocuments)
+      .where(eq(legislationDocuments.isActive, true))
+      .orderBy(legislationDocuments.source, legislationDocuments.sectionId);
+  }
+
+  // RTW Workflow Steps
+  async createRtwWorkflowStep(insertStep: InsertRtwWorkflowStep): Promise<RtwWorkflowStep> {
+    const [step] = await db
+      .insert(rtwWorkflowSteps)
+      .values(insertStep)
+      .returning();
+    return step;
+  }
+
+  async getRtwWorkflowStep(id: string): Promise<RtwWorkflowStep | undefined> {
+    const [step] = await db
+      .select()
+      .from(rtwWorkflowSteps)
+      .where(eq(rtwWorkflowSteps.id, id));
+    return step || undefined;
+  }
+
+  async getRtwWorkflowStepsByTicket(ticketId: string): Promise<RtwWorkflowStep[]> {
+    return await db
+      .select()
+      .from(rtwWorkflowSteps)
+      .where(eq(rtwWorkflowSteps.ticketId, ticketId))
+      .orderBy(desc(rtwWorkflowSteps.createdAt));
+  }
+
+  async getCurrentRtwStep(ticketId: string): Promise<RtwWorkflowStep | undefined> {
+    const [step] = await db
+      .select()
+      .from(rtwWorkflowSteps)
+      .where(and(
+        eq(rtwWorkflowSteps.ticketId, ticketId),
+        eq(rtwWorkflowSteps.status, "in_progress")
+      ))
+      .orderBy(desc(rtwWorkflowSteps.createdAt))
+      .limit(1);
+    return step || undefined;
+  }
+
+  async updateRtwWorkflowStep(id: string, updates: Partial<InsertRtwWorkflowStep>): Promise<RtwWorkflowStep> {
+    const [step] = await db
+      .update(rtwWorkflowSteps)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(rtwWorkflowSteps.id, id))
+      .returning();
+    return step;
+  }
+
+  // Compliance Audit
+  async createComplianceAudit(insertAudit: InsertComplianceAudit): Promise<ComplianceAudit> {
+    const [audit] = await db
+      .insert(complianceAudit)
+      .values(insertAudit)
+      .returning();
+    return audit;
+  }
+
+  async getComplianceAuditByTicket(ticketId: string): Promise<ComplianceAudit[]> {
+    return await db
+      .select()
+      .from(complianceAudit)
+      .where(eq(complianceAudit.ticketId, ticketId))
+      .orderBy(desc(complianceAudit.createdAt));
+  }
+
+  async getComplianceAuditById(id: string): Promise<ComplianceAudit | undefined> {
+    const [audit] = await db
+      .select()
+      .from(complianceAudit)
+      .where(eq(complianceAudit.id, id));
+    return audit || undefined;
+  }
+
+  // Worker Participation Events
+  async createWorkerParticipationEvent(insertEvent: InsertWorkerParticipationEvent): Promise<WorkerParticipationEvent> {
+    const [event] = await db
+      .insert(workerParticipationEvents)
+      .values(insertEvent)
+      .returning();
+    return event;
+  }
+
+  async getWorkerParticipationEventsByTicket(ticketId: string): Promise<WorkerParticipationEvent[]> {
+    return await db
+      .select()
+      .from(workerParticipationEvents)
+      .where(eq(workerParticipationEvents.ticketId, ticketId))
+      .orderBy(desc(workerParticipationEvents.createdAt));
+  }
+
+  async getWorkerParticipationEventsByStep(workflowStepId: string): Promise<WorkerParticipationEvent[]> {
+    return await db
+      .select()
+      .from(workerParticipationEvents)
+      .where(eq(workerParticipationEvents.workflowStepId, workflowStepId))
+      .orderBy(desc(workerParticipationEvents.createdAt));
+  }
+
+  async updateWorkerParticipationEvent(id: string, updates: Partial<InsertWorkerParticipationEvent>): Promise<WorkerParticipationEvent> {
+    const [event] = await db
+      .update(workerParticipationEvents)
+      .set(updates)
+      .where(eq(workerParticipationEvents.id, id))
+      .returning();
+    return event;
+  }
+
+  // Letter Templates
+  async createLetterTemplate(insertTemplate: InsertLetterTemplate): Promise<LetterTemplate> {
+    const [template] = await db
+      .insert(letterTemplates)
+      .values(insertTemplate)
+      .returning();
+    return template;
+  }
+
+  async getLetterTemplate(id: string): Promise<LetterTemplate | undefined> {
+    const [template] = await db
+      .select()
+      .from(letterTemplates)
+      .where(eq(letterTemplates.id, id));
+    return template || undefined;
+  }
+
+  async getLetterTemplateByName(name: string): Promise<LetterTemplate | undefined> {
+    const [template] = await db
+      .select()
+      .from(letterTemplates)
+      .where(and(
+        eq(letterTemplates.name, name),
+        eq(letterTemplates.isActive, true)
+      ));
+    return template || undefined;
+  }
+
+  async getAllLetterTemplates(): Promise<LetterTemplate[]> {
+    return await db
+      .select()
+      .from(letterTemplates)
+      .where(eq(letterTemplates.isActive, true))
+      .orderBy(letterTemplates.templateType, letterTemplates.name);
+  }
+
+  async getLetterTemplatesByType(templateType: string): Promise<LetterTemplate[]> {
+    return await db
+      .select()
+      .from(letterTemplates)
+      .where(and(
+        eq(letterTemplates.templateType, templateType),
+        eq(letterTemplates.isActive, true)
+      ))
+      .orderBy(letterTemplates.name);
+  }
+
+  // Generated Letters
+  async createGeneratedLetter(insertLetter: InsertGeneratedLetter): Promise<GeneratedLetter> {
+    const [letter] = await db
+      .insert(generatedLetters)
+      .values(insertLetter)
+      .returning();
+    return letter;
+  }
+
+  async getGeneratedLetter(id: string): Promise<GeneratedLetter | undefined> {
+    const [letter] = await db
+      .select()
+      .from(generatedLetters)
+      .where(eq(generatedLetters.id, id));
+    return letter || undefined;
+  }
+
+  async getGeneratedLettersByTicket(ticketId: string): Promise<GeneratedLetter[]> {
+    return await db
+      .select()
+      .from(generatedLetters)
+      .where(eq(generatedLetters.ticketId, ticketId))
+      .orderBy(desc(generatedLetters.createdAt));
+  }
+
+  async updateGeneratedLetterStatus(id: string, status: string): Promise<GeneratedLetter> {
+    const [letter] = await db
+      .update(generatedLetters)
+      .set({ status })
+      .where(eq(generatedLetters.id, id))
+      .returning();
+    return letter;
+  }
+
+  // Ticket RTW Management
+  async updateTicketRtwStatus(id: string, rtwStep: string, complianceStatus: string, nextDeadline?: { date: string, type: string }): Promise<Ticket> {
+    const updateData: any = {
+      rtwStep,
+      complianceStatus,
+      updatedAt: new Date()
+    };
+
+    if (nextDeadline) {
+      updateData.nextDeadlineDate = nextDeadline.date;
+      updateData.nextDeadlineType = nextDeadline.type;
+    }
+
+    const [ticket] = await db
+      .update(tickets)
+      .set(updateData)
+      .where(eq(tickets.id, id))
+      .returning();
+    return ticket;
   }
 }
 
