@@ -427,6 +427,33 @@ export const generatedLetters = pgTable("generated_letters", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Freshdesk tickets tracking for bidirectional sync
+export const freshdeskTickets = pgTable("freshdesk_tickets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gpnetTicketId: varchar("gpnet_ticket_id").references(() => tickets.id).notNull(),
+  freshdeskTicketId: integer("freshdesk_ticket_id").notNull().unique(), // Freshdesk's ID
+  freshdeskUrl: text("freshdesk_url"),
+  syncStatus: text("sync_status").default("synced"), // "synced", "pending", "failed", "disabled"
+  lastSyncAt: timestamp("last_sync_at").defaultNow(),
+  freshdeskData: jsonb("freshdesk_data"), // Store full Freshdesk ticket data
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Freshdesk sync logs for tracking sync activities
+export const freshdeskSyncLogs = pgTable("freshdesk_sync_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  gpnetTicketId: varchar("gpnet_ticket_id").references(() => tickets.id),
+  freshdeskTicketId: integer("freshdesk_ticket_id"),
+  operation: text("operation").notNull(), // "create", "update", "sync_status", "sync_notes"
+  direction: text("direction").notNull(), // "to_freshdesk", "from_freshdesk"
+  status: text("status").notNull(), // "success", "failed", "skipped"
+  details: jsonb("details"), // Request/response data
+  errorMessage: text("error_message"),
+  retryCount: integer("retry_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Schema definitions for new tables
 export const insertLegislationDocumentSchema = createInsertSchema(legislationDocuments).omit({
   id: true,
@@ -461,6 +488,17 @@ export const insertGeneratedLetterSchema = createInsertSchema(generatedLetters).
   createdAt: true,
 });
 
+export const insertFreshdeskTicketSchema = createInsertSchema(freshdeskTickets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFreshdeskSyncLogSchema = createInsertSchema(freshdeskSyncLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Type definitions for new tables
 export type InsertLegislationDocument = z.infer<typeof insertLegislationDocumentSchema>;
 export type LegislationDocument = typeof legislationDocuments.$inferSelect;
@@ -479,6 +517,12 @@ export type LetterTemplate = typeof letterTemplates.$inferSelect;
 
 export type InsertGeneratedLetter = z.infer<typeof insertGeneratedLetterSchema>;
 export type GeneratedLetter = typeof generatedLetters.$inferSelect;
+
+export type InsertFreshdeskTicket = z.infer<typeof insertFreshdeskTicketSchema>;
+export type FreshdeskTicket = typeof freshdeskTickets.$inferSelect;
+
+export type InsertFreshdeskSyncLog = z.infer<typeof insertFreshdeskSyncLogSchema>;
+export type FreshdeskSyncLog = typeof freshdeskSyncLogs.$inferSelect;
 
 // RTW Workflow Types
 export type RtwStepId = "eligibility_assessment" | "month_2_review" | "month_3_assessment" | "non_compliance_escalation";
