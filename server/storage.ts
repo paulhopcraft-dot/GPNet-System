@@ -40,7 +40,11 @@ export interface IStorage {
   
   // RTW Plans
   createRtwPlan(plan: InsertRtwPlan): Promise<RtwPlan>;
+  getRtwPlan(id: string): Promise<RtwPlan | undefined>;
   getRtwPlansByTicket(ticketId: string): Promise<RtwPlan[]>;
+  updateRtwPlan(id: string, updates: Partial<InsertRtwPlan>): Promise<RtwPlan>;
+  updateRtwPlanStatus(id: string, status: string): Promise<RtwPlan>;
+  deleteRtwPlan(id: string): Promise<void>;
   
   // Dashboard stats
   getDashboardStats(): Promise<{
@@ -180,11 +184,44 @@ export class DatabaseStorage implements IStorage {
     return plan;
   }
 
+  async getRtwPlan(id: string): Promise<RtwPlan | undefined> {
+    const [plan] = await db
+      .select()
+      .from(rtwPlans)
+      .where(eq(rtwPlans.id, id));
+    return plan || undefined;
+  }
+
   async getRtwPlansByTicket(ticketId: string): Promise<RtwPlan[]> {
     return await db
       .select()
       .from(rtwPlans)
-      .where(eq(rtwPlans.ticketId, ticketId));
+      .where(eq(rtwPlans.ticketId, ticketId))
+      .orderBy(desc(rtwPlans.createdAt));
+  }
+
+  async updateRtwPlan(id: string, updates: Partial<InsertRtwPlan>): Promise<RtwPlan> {
+    const [plan] = await db
+      .update(rtwPlans)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(rtwPlans.id, id))
+      .returning();
+    return plan;
+  }
+
+  async updateRtwPlanStatus(id: string, status: string): Promise<RtwPlan> {
+    const [plan] = await db
+      .update(rtwPlans)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(rtwPlans.id, id))
+      .returning();
+    return plan;
+  }
+
+  async deleteRtwPlan(id: string): Promise<void> {
+    await db
+      .delete(rtwPlans)
+      .where(eq(rtwPlans.id, id));
   }
 
   // Dashboard stats
