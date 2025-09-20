@@ -7,7 +7,7 @@ import {
   type Injury, type Stakeholder, type RtwPlan,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
   type LetterTemplate, type GeneratedLetter, type FreshdeskTicket, type FreshdeskSyncLog,
-  type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis,
+  type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
   type InsertInjury, type InsertStakeholder, type InsertRtwPlan,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
   type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter,
@@ -23,6 +23,7 @@ export interface IStorage {
   getTicket(id: string): Promise<Ticket | undefined>;
   getAllTickets(): Promise<Ticket[]>;
   updateTicketStatus(id: string, status: string): Promise<Ticket>;
+  updateTicketPriority(id: string, priority: string): Promise<Ticket>;
   
   // Workers
   createWorker(worker: InsertWorker): Promise<Worker>;
@@ -136,7 +137,21 @@ export interface IStorage {
   getFreshdeskTicketByGpnetId(gpnetTicketId: string): Promise<FreshdeskTicket | undefined>;
   getFreshdeskTicketByFreshdeskId(freshdeskTicketId: number): Promise<FreshdeskTicket | undefined>;
   updateFreshdeskTicket(id: string, updates: Partial<InsertFreshdeskTicket>): Promise<FreshdeskTicket>;
+  updateFreshdeskTicketStatus(id: string, syncStatus: string): Promise<FreshdeskTicket>;
   getAllFreshdeskTickets(): Promise<FreshdeskTicket[]>;
+  
+  // Correspondence (bidirectional sync)
+  createCorrespondence(correspondenceData: {
+    ticketId: string;
+    direction: string;
+    type: string;
+    subject: string;
+    content: string;
+    senderName: string;
+    senderEmail: string;
+    source: string;
+    externalId?: string;
+  }): Promise<Email | null>;
 
   // Freshdesk Sync Logs
   createFreshdeskSyncLog(syncLog: InsertFreshdeskSyncLog): Promise<FreshdeskSyncLog>;
@@ -168,6 +183,15 @@ export class DatabaseStorage implements IStorage {
     const [ticket] = await db
       .update(tickets)
       .set({ status, updatedAt: new Date() })
+      .where(eq(tickets.id, id))
+      .returning();
+    return ticket;
+  }
+
+  async updateTicketPriority(id: string, priority: string): Promise<Ticket> {
+    const [ticket] = await db
+      .update(tickets)
+      .set({ priority, updatedAt: new Date() })
       .where(eq(tickets.id, id))
       .returning();
     return ticket;
@@ -795,6 +819,15 @@ export class DatabaseStorage implements IStorage {
     return freshdeskTicket;
   }
 
+  async updateFreshdeskTicketStatus(id: string, syncStatus: string): Promise<FreshdeskTicket> {
+    const [freshdeskTicket] = await db
+      .update(freshdeskTickets)
+      .set({ syncStatus, updatedAt: new Date() })
+      .where(eq(freshdeskTickets.id, id))
+      .returning();
+    return freshdeskTicket;
+  }
+
   async getAllFreshdeskTickets(): Promise<FreshdeskTicket[]> {
     return await db
       .select()
@@ -833,6 +866,53 @@ export class DatabaseStorage implements IStorage {
       .from(freshdeskSyncLogs)
       .where(eq(freshdeskSyncLogs.status, 'failed'))
       .orderBy(desc(freshdeskSyncLogs.createdAt));
+  }
+
+  // Correspondence methods (using emails table for bidirectional sync)
+  async createCorrespondence(correspondenceData: {
+    ticketId: string;
+    direction: string;
+    type: string;
+    subject: string;
+    content: string;
+    senderName: string;
+    senderEmail: string;
+    source: string;
+    externalId?: string;
+  }): Promise<Email | null> {
+    // Check for duplicate if externalId provided
+    if (correspondenceData.externalId && correspondenceData.source) {
+      const [existing] = await db
+        .select()
+        .from(emails)
+        .where(and(
+          eq(emails.source, correspondenceData.source),
+          eq(emails.externalId, correspondenceData.externalId)
+        ));
+      
+      if (existing) {
+        console.log(`Correspondence already exists: ${correspondenceData.source}:${correspondenceData.externalId}`);
+        return null;
+      }
+    }
+    
+    // Use emails table structure for correspondence tracking
+    const emailData: InsertEmail = {
+      ticketId: correspondenceData.ticketId,
+      subject: `[${correspondenceData.type.toUpperCase()}] ${correspondenceData.subject}`,
+      body: correspondenceData.content,
+      source: correspondenceData.source,
+      direction: correspondenceData.direction,
+      externalId: correspondenceData.externalId,
+      senderName: correspondenceData.senderName,
+      senderEmail: correspondenceData.senderEmail
+    };
+    
+    const [email] = await db
+      .insert(emails)
+      .values(emailData)
+      .returning();
+    return email;
   }
 }
 
