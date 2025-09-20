@@ -1030,6 +1030,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update case risk level (RAG score)
+  app.put("/api/cases/:ticketId/risk-level", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const { ragScore } = req.body;
+
+      // Validate RAG score
+      if (!ragScore || !["green", "amber", "red"].includes(ragScore)) {
+        return res.status(400).json({ error: "Invalid RAG score. Must be 'green', 'amber', or 'red'" });
+      }
+
+      // Check if case exists
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      // Check if analysis exists
+      let analysis = await storage.getAnalysisByTicket(ticketId);
+      if (!analysis) {
+        // Create basic analysis if none exists
+        analysis = await storage.createAnalysis({
+          ticketId,
+          ragScore,
+          fitClassification: ragScore === "red" ? "not_fit" : ragScore === "amber" ? "fit_with_restrictions" : "fit",
+          recommendations: [],
+          notes: "Manual risk level assignment"
+        });
+      } else {
+        // Update existing analysis
+        analysis = await storage.updateAnalysis(ticketId, { ragScore });
+      }
+
+      res.json({ success: true, ragScore, message: "Risk level updated successfully" });
+    } catch (error) {
+      console.error("Error updating risk level:", error);
+      res.status(500).json({ error: "Failed to update risk level" });
+    }
+  });
+
   // Update case status
   app.put("/api/cases/:ticketId/status", async (req, res) => {
     try {
