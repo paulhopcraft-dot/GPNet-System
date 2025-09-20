@@ -1,10 +1,16 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { preEmploymentFormSchema, type PreEmploymentFormData, injuryFormSchema, type InjuryFormData, rtwPlanSchema, insertStakeholderSchema } from "@shared/schema";
+import { 
+  preEmploymentFormSchema, type PreEmploymentFormData, 
+  injuryFormSchema, type InjuryFormData, 
+  rtwPlanSchema, insertStakeholderSchema,
+  emailRiskAssessmentSchema, manualRiskUpdateSchema 
+} from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { pdfService } from "./pdfService";
+import { riskAssessmentService, type RiskInput } from "./riskAssessmentService";
 
 // Analysis engine for RAG scoring and fit classification
 class AnalysisEngine {
@@ -1030,16 +1036,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update case risk level (RAG score)
+  // Update case risk level (RAG score) - Enhanced with risk assessment service
   app.put("/api/cases/:ticketId/risk-level", async (req, res) => {
     try {
       const { ticketId } = req.params;
-      const { ragScore } = req.body;
-
-      // Validate RAG score
-      if (!ragScore || !["green", "amber", "red"].includes(ragScore)) {
-        return res.status(400).json({ error: "Invalid RAG score. Must be 'green', 'amber', or 'red'" });
+      
+      // Validate request body with Zod
+      const parseResult = manualRiskUpdateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: fromZodError(parseResult.error).toString() 
+        });
       }
+      
+      const { ragScore, reason } = parseResult.data;
 
       // Check if case exists
       const ticket = await storage.getTicket(ticketId);
@@ -1047,26 +1058,243 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Case not found" });
       }
 
+      // Use enhanced risk assessment service for manual updates
+      const riskInputs: RiskInput[] = [{
+        type: 'manual_update',
+        content: { ragScore, reason: reason || 'Manual override' },
+        timestamp: new Date(),
+        source: 'consultant'
+      }];
+
+      const existingAnalysis = await storage.getAnalysisByTicket(ticketId);
+      const assessmentResult = await riskAssessmentService.assessRisk(
+        riskInputs, 
+        existingAnalysis?.ragScore as "green" | "amber" | "red" | undefined
+      );
+
+      // History entry will be created automatically by updateAnalysis
+
       // Check if analysis exists
-      let analysis = await storage.getAnalysisByTicket(ticketId);
+      let analysis = existingAnalysis;
       if (!analysis) {
-        // Create basic analysis if none exists
+        // Create new analysis with enhanced assessment
         analysis = await storage.createAnalysis({
           ticketId,
-          ragScore,
-          fitClassification: ragScore === "red" ? "not_fit" : ragScore === "amber" ? "fit_with_restrictions" : "fit",
-          recommendations: [],
-          notes: "Manual risk level assignment"
+          ragScore: assessmentResult.ragScore,
+          fitClassification: assessmentResult.fitClassification,
+          recommendations: assessmentResult.recommendations,
+          notes: `Manual risk level assignment: ${reason || 'No reason provided'}. Confidence: ${assessmentResult.confidence}%`
         });
       } else {
-        // Update existing analysis
-        analysis = await storage.updateAnalysis(ticketId, { ragScore });
+        // Update existing analysis with enhanced results
+        analysis = await storage.updateAnalysis(ticketId, {
+          ragScore: assessmentResult.ragScore,
+          fitClassification: assessmentResult.fitClassification,
+          recommendations: assessmentResult.recommendations,
+          notes: `${analysis.notes || ''}. Manual override: ${reason || 'No reason provided'}`
+        }, {
+          changeSource: 'manual',
+          changeReason: reason || 'Manual risk level override',
+          triggeredBy: 'consultant',
+          confidence: assessmentResult.confidence
+        });
       }
 
-      res.json({ success: true, ragScore, message: "Risk level updated successfully" });
+      res.json({ 
+        success: true, 
+        ragScore: assessmentResult.ragScore, 
+        confidence: assessmentResult.confidence,
+        riskFactors: assessmentResult.riskFactors,
+        message: "Risk level updated successfully with enhanced assessment" 
+      });
     } catch (error) {
       console.error("Error updating risk level:", error);
       res.status(500).json({ error: "Failed to update risk level" });
+    }
+  });
+
+  // Automatic risk reassessment based on email content
+  app.post("/api/cases/:ticketId/assess-email-risk", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      // Validate request body with Zod
+      const parseResult = emailRiskAssessmentSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: fromZodError(parseResult.error).toString() 
+        });
+      }
+      
+      const { emailContent, subject, sender } = parseResult.data;
+
+      // Check if case exists
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      // Analyze email content for risk indicators
+      const emailAnalysis = riskAssessmentService.analyzeEmailContent(emailContent, subject);
+      
+      // Create risk input for assessment
+      const riskInputs: RiskInput[] = [{
+        type: 'email',
+        content: { content: emailContent, subject },
+        timestamp: new Date(),
+        source: sender || 'unknown'
+      }];
+
+      // Get current analysis
+      const existingAnalysis = await storage.getAnalysisByTicket(ticketId);
+      const currentRagScore = existingAnalysis?.ragScore as "green" | "amber" | "red" | undefined;
+
+      // Only reassess if email indicates risk change
+      let shouldUpdate = false;
+      let assessmentResult = null;
+
+      if (emailAnalysis.urgencyLevel === 'high' || emailAnalysis.urgencyLevel === 'medium') {
+        assessmentResult = await riskAssessmentService.assessRisk(riskInputs, currentRagScore);
+        
+        // Update if risk level changed
+        if (!currentRagScore || assessmentResult.ragScore !== currentRagScore) {
+          shouldUpdate = true;
+        }
+      }
+
+      if (shouldUpdate && assessmentResult) {
+        // Update the analysis (history entry will be created automatically)
+        await storage.updateAnalysis(ticketId, {
+          ragScore: assessmentResult.ragScore,
+          recommendations: [
+            ...(existingAnalysis?.recommendations || []),
+            ...assessmentResult.recommendations
+          ],
+          notes: `${existingAnalysis?.notes || ''}. Email risk assessment (${emailAnalysis.urgencyLevel} urgency): ${emailAnalysis.suggestedAction}`
+        }, {
+          changeSource: 'email',
+          changeReason: `Email analysis detected ${emailAnalysis.urgencyLevel} urgency: ${emailAnalysis.suggestedAction}`,
+          triggeredBy: sender || 'unknown',
+          confidence: assessmentResult.confidence
+        });
+
+        console.log(`Updated risk level for case ${ticketId} based on email analysis: ${currentRagScore} -> ${assessmentResult.ragScore}`);
+      }
+
+      res.json({
+        success: true,
+        emailAnalysis,
+        riskUpdated: shouldUpdate,
+        newRiskLevel: assessmentResult?.ragScore || currentRagScore,
+        suggestedAction: emailAnalysis.suggestedAction
+      });
+
+    } catch (error) {
+      console.error("Error assessing email risk:", error);
+      res.status(500).json({ error: "Failed to assess email risk" });
+    }
+  });
+
+  // Comprehensive risk evaluation that checks if reassessment is needed
+  app.post("/api/cases/:ticketId/evaluate-risk", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+
+      // Check if case exists
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      // Get current analysis and form data
+      const existingAnalysis = await storage.getAnalysisByTicket(ticketId);
+      const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+
+      if (!existingAnalysis) {
+        return res.status(404).json({ error: "No analysis found for case" });
+      }
+
+      // Check if reassessment is needed
+      const lastAssessment = existingAnalysis.createdAt || new Date();
+      const shouldReassess = riskAssessmentService.shouldReassess(
+        lastAssessment,
+        [], // No new inputs for this check
+        existingAnalysis.ragScore
+      );
+
+      // Prepare comprehensive risk inputs
+      const riskInputs: RiskInput[] = [];
+
+      if (formSubmission) {
+        riskInputs.push({
+          type: 'form',
+          content: formSubmission.rawData,
+          timestamp: formSubmission.createdAt || new Date(),
+          source: 'form_submission'
+        });
+      }
+
+      // Perform comprehensive assessment
+      const assessmentResult = await riskAssessmentService.assessRisk(
+        riskInputs,
+        existingAnalysis.ragScore as "green" | "amber" | "red"
+      );
+
+      // Update analysis if needed
+      if (shouldReassess || assessmentResult.ragScore !== existingAnalysis.ragScore) {
+        await storage.updateAnalysis(ticketId, {
+          ragScore: assessmentResult.ragScore,
+          fitClassification: assessmentResult.fitClassification,
+          recommendations: assessmentResult.recommendations,
+          notes: `${existingAnalysis.notes || ''}. Comprehensive risk evaluation completed. Confidence: ${assessmentResult.confidence}%`
+        }, {
+          changeSource: 'auto_reassessment',
+          changeReason: 'Comprehensive risk evaluation completed',
+          triggeredBy: 'system',
+          confidence: assessmentResult.confidence
+        });
+      }
+
+      res.json({
+        success: true,
+        currentRisk: assessmentResult.ragScore,
+        confidence: assessmentResult.confidence,
+        riskFactors: assessmentResult.riskFactors,
+        recommendations: assessmentResult.recommendations,
+        reassessmentNeeded: shouldReassess,
+        assessmentUpdated: shouldReassess || assessmentResult.ragScore !== existingAnalysis.ragScore
+      });
+
+    } catch (error) {
+      console.error("Error evaluating risk:", error);
+      res.status(500).json({ error: "Failed to evaluate risk" });
+    }
+  });
+
+  // Get risk history for a case
+  app.get("/api/cases/:ticketId/risk-history", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+
+      // Check if case exists
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      // Get risk history
+      const riskHistory = await storage.getRiskHistoryByTicket(ticketId);
+      
+      res.json({
+        success: true,
+        ticketId,
+        history: riskHistory
+      });
+
+    } catch (error) {
+      console.error("Error fetching risk history:", error);
+      res.status(500).json({ error: "Failed to fetch risk history" });
     }
   });
 

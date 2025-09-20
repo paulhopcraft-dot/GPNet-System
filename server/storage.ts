@@ -1,14 +1,14 @@
 import { 
   tickets, workers, formSubmissions, analyses, emails, attachments,
-  injuries, stakeholders, rtwPlans,
+  injuries, stakeholders, rtwPlans, riskHistory,
   legislationDocuments, rtwWorkflowSteps, complianceAudit, workerParticipationEvents,
   letterTemplates, generatedLetters, freshdeskTickets, freshdeskSyncLogs,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
-  type Injury, type Stakeholder, type RtwPlan,
+  type Injury, type Stakeholder, type RtwPlan, type RiskHistory,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
   type LetterTemplate, type GeneratedLetter, type FreshdeskTicket, type FreshdeskSyncLog,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
-  type InsertInjury, type InsertStakeholder, type InsertRtwPlan,
+  type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
   type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter,
   type InsertFreshdeskTicket, type InsertFreshdeskSyncLog
@@ -36,7 +36,17 @@ export interface IStorage {
   // Analyses
   createAnalysis(analysis: InsertAnalysis): Promise<Analysis>;
   getAnalysisByTicket(ticketId: string): Promise<Analysis | undefined>;
-  updateAnalysis(ticketId: string, updates: Partial<InsertAnalysis>): Promise<Analysis>;
+  updateAnalysis(ticketId: string, updates: Partial<InsertAnalysis>, historyMetadata?: {
+    changeSource: string;
+    changeReason: string;
+    triggeredBy: string;
+    confidence: number;
+  }): Promise<Analysis>;
+  
+  // Risk History
+  createRiskHistoryEntry(entry: InsertRiskHistory): Promise<RiskHistory>;
+  getRiskHistoryByTicket(ticketId: string): Promise<RiskHistory[]>;
+  getCasesNeedingReassessment(): Promise<{ticketId: string; lastAssessed: Date; currentRisk: string}[]>;
   
   // Injuries
   createInjury(injury: InsertInjury): Promise<Injury>;
@@ -245,13 +255,103 @@ export class DatabaseStorage implements IStorage {
     return analysis || undefined;
   }
 
-  async updateAnalysis(ticketId: string, updates: Partial<InsertAnalysis>): Promise<Analysis> {
+  async updateAnalysis(ticketId: string, updates: Partial<InsertAnalysis>, historyMetadata?: {
+    changeSource: string;
+    changeReason: string;
+    triggeredBy: string;
+    confidence: number;
+  }): Promise<Analysis> {
+    // Get existing analysis to track risk level changes
+    const existingAnalysis = await this.getAnalysisByTicket(ticketId);
+    
+    // Prepare update object - only include timing fields if ragScore is being updated
+    const updateObject: any = { ...updates };
+    if (updates.ragScore) {
+      updateObject.lastAssessedAt = new Date();
+      updateObject.nextReviewAt = this.calculateNextReviewDate(updates.ragScore);
+    }
+    
+    // Update the analysis
     const [analysis] = await db
       .update(analyses)
-      .set(updates)
+      .set(updateObject)
       .where(eq(analyses.ticketId, ticketId))
       .returning();
+
+    // Create history entry if risk level changed
+    if (existingAnalysis && updates.ragScore && existingAnalysis.ragScore !== updates.ragScore) {
+      await this.createRiskHistoryEntry({
+        ticketId,
+        previousRagScore: existingAnalysis.ragScore,
+        newRagScore: updates.ragScore,
+        changeSource: historyMetadata?.changeSource || 'system_update',
+        changeReason: historyMetadata?.changeReason || 'Risk level updated via analysis update',
+        confidence: historyMetadata?.confidence || 100,
+        riskFactors: updates.recommendations || [],
+        triggeredBy: historyMetadata?.triggeredBy || 'system'
+      });
+    }
+
     return analysis;
+  }
+
+  // Risk History methods
+  async createRiskHistoryEntry(entry: InsertRiskHistory): Promise<RiskHistory> {
+    const [historyEntry] = await db
+      .insert(riskHistory)
+      .values(entry)
+      .returning();
+    return historyEntry;
+  }
+
+  async getRiskHistoryByTicket(ticketId: string): Promise<RiskHistory[]> {
+    return await db
+      .select()
+      .from(riskHistory)
+      .where(eq(riskHistory.ticketId, ticketId))
+      .orderBy(desc(riskHistory.timestamp));
+  }
+
+  async getCasesNeedingReassessment(): Promise<{ticketId: string; lastAssessed: Date; currentRisk: string}[]> {
+    // Get all analyses and filter in memory since we need <= comparison
+    const casesWithAnalyses = await db
+      .select({
+        ticketId: analyses.ticketId,
+        lastAssessed: analyses.lastAssessedAt,
+        nextReview: analyses.nextReviewAt,
+        currentRisk: analyses.ragScore
+      })
+      .from(analyses);
+
+    const now = new Date();
+    return casesWithAnalyses
+      .filter(c => c.nextReview && c.nextReview <= now)
+      .map(c => ({
+        ticketId: c.ticketId,
+        lastAssessed: c.lastAssessed || new Date(),
+        currentRisk: c.currentRisk || 'green'
+      }));
+  }
+
+  // Helper method to calculate next review date based on risk level
+  private calculateNextReviewDate(ragScore: string | null): Date {
+    const now = new Date();
+    const nextReview = new Date(now);
+    
+    switch (ragScore) {
+      case 'red':
+        nextReview.setDate(now.getDate() + 3); // 3 days for high risk
+        break;
+      case 'amber':
+        nextReview.setDate(now.getDate() + 7); // 7 days for medium risk
+        break;
+      case 'green':
+      default:
+        nextReview.setDate(now.getDate() + 30); // 30 days for low risk
+        break;
+    }
+    
+    return nextReview;
   }
 
   // Injuries

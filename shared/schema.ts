@@ -55,7 +55,23 @@ export const analyses = pgTable("analyses", {
   ragScore: text("rag_score"), // "green", "amber", "red"
   recommendations: jsonb("recommendations"),
   notes: text("notes"),
+  lastAssessedAt: timestamp("last_assessed_at").defaultNow(),
+  nextReviewAt: timestamp("next_review_at"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Risk history table for audit trail of all risk level changes
+export const riskHistory = pgTable("risk_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  previousRagScore: text("previous_rag_score"), // Previous risk level
+  newRagScore: text("new_rag_score").notNull(), // New risk level
+  changeSource: text("change_source").notNull(), // "manual", "email", "form", "medical_record", "auto_reassessment"
+  changeReason: text("change_reason"), // Reason for the change
+  confidence: integer("confidence"), // Assessment confidence 0-100
+  riskFactors: jsonb("risk_factors"), // Risk factors that triggered the change
+  triggeredBy: text("triggered_by"), // Who/what triggered the change
+  timestamp: timestamp("timestamp").defaultNow(),
 });
 
 // Emails table for thread management
@@ -511,6 +527,11 @@ export const insertFreshdeskSyncLogSchema = createInsertSchema(freshdeskSyncLogs
   createdAt: true,
 });
 
+export const insertRiskHistorySchema = createInsertSchema(riskHistory).omit({
+  id: true,
+  timestamp: true,
+});
+
 // Type definitions for new tables
 export type InsertLegislationDocument = z.infer<typeof insertLegislationDocumentSchema>;
 export type LegislationDocument = typeof legislationDocuments.$inferSelect;
@@ -535,6 +556,21 @@ export type FreshdeskTicket = typeof freshdeskTickets.$inferSelect;
 
 export type InsertFreshdeskSyncLog = z.infer<typeof insertFreshdeskSyncLogSchema>;
 export type FreshdeskSyncLog = typeof freshdeskSyncLogs.$inferSelect;
+
+export type InsertRiskHistory = z.infer<typeof insertRiskHistorySchema>;
+export type RiskHistory = typeof riskHistory.$inferSelect;
+
+// Validation schemas for new API endpoints
+export const emailRiskAssessmentSchema = z.object({
+  emailContent: z.string().min(1, "Email content is required"),
+  subject: z.string().min(1, "Subject is required"),
+  sender: z.string().optional(),
+});
+
+export const manualRiskUpdateSchema = z.object({
+  ragScore: z.enum(["green", "amber", "red"]),
+  reason: z.string().optional(),
+});
 
 // RTW Workflow Types
 export type RtwStepId = "eligibility_assessment" | "month_2_review" | "month_3_assessment" | "non_compliance_escalation";
