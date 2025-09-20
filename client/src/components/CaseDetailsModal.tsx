@@ -21,11 +21,15 @@ import {
   CheckCircle,
   AlertTriangle,
   XCircle,
-  Bot
+  Bot,
+  Shield
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { MichelleChat } from "./MichelleChat";
 import { ReportGenerator } from "./ReportGenerator";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface CaseDetails {
   ticketId: string;
@@ -80,6 +84,29 @@ export default function CaseDetailsModal({
 }: CaseDetailsModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedRecommendations, setEditedRecommendations] = useState<string>("");
+  const { toast } = useToast();
+
+  // Risk level update mutation
+  const updateRiskLevelMutation = useMutation({
+    mutationFn: async ({ ticketId, ragScore }: { ticketId: string; ragScore: "green" | "amber" | "red" }) => {
+      return apiRequest("PUT", `/api/cases/${ticketId}/risk-level`, { ragScore });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cases"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({
+        title: "Risk Level Updated",
+        description: "Case risk level has been updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to update risk level",
+      });
+    },
+  });
 
   if (!caseDetails) return null;
 
@@ -110,6 +137,11 @@ export default function CaseDetailsModal({
   const handleRequestRevisions = () => {
     console.log("Requesting revisions for case:", caseDetails.ticketId);
     onStatusUpdate?.(caseDetails.ticketId, "REVISIONS_REQUIRED");
+  };
+
+  const handleRiskLevelChange = (newRiskLevel: "green" | "amber" | "red") => {
+    console.log("Updating risk level:", caseDetails.ticketId, newRiskLevel);
+    updateRiskLevelMutation.mutate({ ticketId: caseDetails.ticketId, ragScore: newRiskLevel });
   };
 
   return (
@@ -370,6 +402,55 @@ export default function CaseDetailsModal({
                       <Send className="h-4 w-4 mr-1" />
                       Send Email
                     </Button>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <p className="font-medium mb-2 flex items-center gap-2">
+                    <Shield className="h-4 w-4" />
+                    Risk Level Override:
+                  </p>
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Current: <Badge className={ragConfig[caseDetails.ragScore].className.replace('text-', 'bg-').replace('800', '100')}>{ragConfig[caseDetails.ragScore].label}</Badge>
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button
+                        size="sm"
+                        variant={caseDetails.ragScore === "green" ? "default" : "outline"}
+                        onClick={() => handleRiskLevelChange("green")}
+                        disabled={updateRiskLevelMutation.isPending}
+                        className="flex items-center gap-1 text-green-700 border-green-300 hover:bg-green-50 data-[state=active]:bg-green-600"
+                        data-testid="button-risk-green"
+                      >
+                        <CheckCircle className="h-3 w-3" />
+                        Low Risk
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={caseDetails.ragScore === "amber" ? "default" : "outline"}
+                        onClick={() => handleRiskLevelChange("amber")}
+                        disabled={updateRiskLevelMutation.isPending}
+                        className="flex items-center gap-1 text-yellow-700 border-yellow-300 hover:bg-yellow-50 data-[state=active]:bg-yellow-600"
+                        data-testid="button-risk-amber"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Medium Risk
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={caseDetails.ragScore === "red" ? "default" : "outline"}
+                        onClick={() => handleRiskLevelChange("red")}
+                        disabled={updateRiskLevelMutation.isPending}
+                        className="flex items-center gap-1 text-red-700 border-red-300 hover:bg-red-50 data-[state=active]:bg-red-600"
+                        data-testid="button-risk-red"
+                      >
+                        <XCircle className="h-3 w-3" />
+                        High Risk
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>
