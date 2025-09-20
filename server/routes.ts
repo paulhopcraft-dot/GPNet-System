@@ -1,6 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import { storage } from "./storage";
+import authRoutes from "./authRoutes";
 import { 
   preEmploymentFormSchema, type PreEmploymentFormData, 
   injuryFormSchema, type InjuryFormData, 
@@ -378,6 +381,30 @@ const analysisEngine = new AnalysisEngine();
 const injuryAnalysisEngine = new InjuryAnalysisEngine();
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Session configuration for authentication
+  const PgSession = connectPgSimple(session);
+  
+  app.use(session({
+    store: new PgSession({
+      // Use the same DATABASE_URL environment variable
+      conString: process.env.DATABASE_URL,
+      tableName: 'user_sessions', // Session table name  
+      createTableIfMissing: true
+    }),
+    name: 'gpnet.sid',
+    secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    }
+  }));
+
+  // Mount authentication routes
+  app.use('/api/auth', authRoutes);
   
   // Jotform webhook endpoint for receiving form submissions
   app.post("/api/webhook/jotform", async (req, res) => {
