@@ -25,6 +25,11 @@ export interface IStorage {
   updateTicketStatus(id: string, status: string): Promise<Ticket>;
   updateTicketPriority(id: string, priority: string): Promise<Ticket>;
   
+  // Step Tracking
+  updateTicketStep(id: string, nextStep: string, assignedTo?: string): Promise<Ticket>;
+  completeCurrentStep(id: string, completionNotes?: string): Promise<Ticket>;
+  updateTicketStepAndComplete(id: string, nextStep: string, assignedTo?: string, completionNotes?: string): Promise<Ticket>;
+  
   // Workers
   createWorker(worker: InsertWorker): Promise<Worker>;
   getWorker(id: string): Promise<Worker | undefined>;
@@ -202,6 +207,61 @@ export class DatabaseStorage implements IStorage {
     const [ticket] = await db
       .update(tickets)
       .set({ priority, updatedAt: new Date() })
+      .where(eq(tickets.id, id))
+      .returning();
+    return ticket;
+  }
+
+  // Step Tracking Methods
+  async updateTicketStep(id: string, nextStep: string, assignedTo?: string): Promise<Ticket> {
+    const [ticket] = await db
+      .update(tickets)
+      .set({ 
+        nextStep, 
+        assignedTo: assignedTo || null,
+        updatedAt: new Date() 
+      })
+      .where(eq(tickets.id, id))
+      .returning();
+    return ticket;
+  }
+
+  async completeCurrentStep(id: string, completionNotes?: string): Promise<Ticket> {
+    // Get current ticket to move nextStep to lastStep
+    const currentTicket = await this.getTicket(id);
+    if (!currentTicket) {
+      throw new Error(`Ticket ${id} not found`);
+    }
+
+    const [ticket] = await db
+      .update(tickets)
+      .set({ 
+        lastStep: currentTicket.nextStep,
+        lastStepCompletedAt: new Date(),
+        nextStep: null, // Clear next step until a new one is assigned
+        updatedAt: new Date() 
+      })
+      .where(eq(tickets.id, id))
+      .returning();
+    return ticket;
+  }
+
+  async updateTicketStepAndComplete(id: string, nextStep: string, assignedTo?: string, completionNotes?: string): Promise<Ticket> {
+    // Get current ticket to move nextStep to lastStep
+    const currentTicket = await this.getTicket(id);
+    if (!currentTicket) {
+      throw new Error(`Ticket ${id} not found`);
+    }
+
+    const [ticket] = await db
+      .update(tickets)
+      .set({ 
+        lastStep: currentTicket.nextStep,
+        lastStepCompletedAt: new Date(),
+        nextStep,
+        assignedTo: assignedTo || null,
+        updatedAt: new Date() 
+      })
       .where(eq(tickets.id, id))
       .returning();
     return ticket;

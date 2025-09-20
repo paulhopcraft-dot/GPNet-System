@@ -13,6 +13,12 @@ export const tickets = pgTable("tickets", {
   priority: text("priority").default("medium"), // "low", "medium", "high", "urgent"
   companyName: text("company_name"),
   
+  // STEP TRACKING FOR CASE MANAGEMENT (nextStep must ALWAYS be set to maintain workflow)
+  nextStep: text("next_step").default("Initial case review and triage"), // What needs to be done next - ALWAYS required
+  lastStep: text("last_step"), // What was the most recent completed action
+  lastStepCompletedAt: timestamp("last_step_completed_at"), // When the last step was completed
+  assignedTo: text("assigned_to"), // Who is responsible for the next step
+  
   // RTW COMPLEX CLAIMS - WORKFLOW FIELDS
   rtwStep: text("rtw_step").default("eligibility_0_28"), // Current workflow position
   workplaceJurisdiction: text("workplace_jurisdiction").default("VIC"), // Australian state
@@ -570,6 +576,14 @@ export const emailRiskAssessmentSchema = z.object({
 export const manualRiskUpdateSchema = z.object({
   ragScore: z.enum(["green", "amber", "red"]),
   reason: z.string().optional(),
+});
+
+// Step tracking schemas
+export const stepUpdateSchema = z.object({
+  nextStep: z.string().min(1, "Next step is required"),
+  assignedTo: z.string().optional(),
+  completePreviousStep: z.boolean().optional().default(false),
+  completionNotes: z.string().optional()
 });
 
 // RTW Workflow Types

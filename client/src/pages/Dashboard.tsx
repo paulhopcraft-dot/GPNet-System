@@ -39,6 +39,10 @@ interface DashboardCase {
   fitClassification: string;
   recommendations: string[];
   notes: string;
+  nextStep?: string | null;
+  lastStep?: string | null;
+  lastStepCompletedAt?: string | null;
+  assignedTo?: string | null;
 }
 
 interface CasesResponse {
@@ -350,6 +354,10 @@ export default function Dashboard() {
                       status={caseItem.status as any}
                       ragScore={caseItem.ragScore}
                       createdAt={new Date(caseItem.createdAt)}
+                      nextStep={caseItem.nextStep}
+                      lastStep={caseItem.lastStep}
+                      lastStepCompletedAt={caseItem.lastStepCompletedAt}
+                      assignedTo={caseItem.assignedTo}
                       onViewCase={() => handleViewCase(caseItem)}
                     />
                   ))}
