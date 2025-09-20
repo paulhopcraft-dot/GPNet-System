@@ -115,9 +115,7 @@ export default function Dashboard() {
     isLoading: casesLoading, 
     error: casesError 
   } = useQuery<CasesResponse>({ 
-    queryKey: ["/api/cases"],
-    staleTime: 0, // Disable cache for debugging
-    cacheTime: 0
+    queryKey: ["/api/cases"]
   });
 
   // Mutations for updating case data
@@ -193,10 +191,8 @@ export default function Dashboard() {
   };
 
   // Extract cases from response
-  console.log("Debug: casesResponse =", casesResponse);
   const cases: DashboardCase[] = casesResponse?.cases || [];
   const totalCases: number = casesResponse?.total || 0;
-  console.log("Debug: cases =", cases, "totalCases =", totalCases);
   
   // Apply client-side filtering since we're using simple API call
   const filteredCases = cases.filter(caseItem => {
