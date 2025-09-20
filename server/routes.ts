@@ -1858,6 +1858,174 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Import Freshdesk service at top of file (will be handled separately)
   const { freshdeskService } = await import("./freshdeskService");
 
+  /**
+   * FRESHDESK WEBHOOK ENDPOINTS
+   * Handle incoming webhooks from Freshdesk for bidirectional sync
+   */
+
+  // Freshdesk webhook handler - receives updates from Freshdesk
+  app.post("/api/freshdesk/webhook", async (req, res) => {
+    console.log("Received Freshdesk webhook - processing ticket update");
+    
+    // Basic webhook authentication check
+    const webhookSecret = process.env.FRESHDESK_WEBHOOK_SECRET;
+    if (webhookSecret) {
+      const providedSecret = req.headers['x-freshdesk-secret'] || req.headers['authorization'];
+      if (!providedSecret || providedSecret !== webhookSecret) {
+        console.log("Unauthorized webhook request - invalid secret");
+        return res.status(401).json({ error: "Unauthorized webhook request" });
+      }
+    }
+    
+    try {
+      const webhookData = req.body;
+      
+      // Extract ticket data from webhook payload
+      const { ticket_id, ticket_status, ticket_priority, ticket_notes } = webhookData;
+      
+      if (!ticket_id) {
+        return res.status(400).json({ error: "Missing ticket_id in webhook payload" });
+      }
+
+      // Find the corresponding GPNet ticket
+      const freshdeskMapping = await storage.getFreshdeskTicketByFreshdeskId(ticket_id);
+      if (!freshdeskMapping) {
+        console.log(`No GPNet mapping found for Freshdesk ticket ${ticket_id}, skipping`);
+        return res.status(200).json({ message: "No mapping found, webhook ignored" });
+      }
+
+      const gpnetTicketId = freshdeskMapping.gpnetTicketId;
+      const gpnetTicket = await storage.getTicket(gpnetTicketId);
+      
+      if (!gpnetTicket) {
+        console.error(`GPNet ticket ${gpnetTicketId} not found for Freshdesk ticket ${ticket_id}`);
+        return res.status(404).json({ error: "GPNet ticket not found" });
+      }
+
+      let syncUpdates = false;
+      let updateLog: any = { trigger: 'freshdesk_webhook', freshdeskTicketId: ticket_id };
+
+      // Sync status changes from Freshdesk to GPNet
+      if (ticket_status && webhookData.changes?.status) {
+        const freshdeskToGpnetStatus = {
+          2: 'NEW',           // Open -> New
+          3: 'PENDING',       // Pending -> Pending  
+          4: 'COMPLETE',      // Resolved -> Complete
+          5: 'COMPLETE'       // Closed -> Complete
+        };
+
+        const newGpnetStatus = freshdeskToGpnetStatus[ticket_status as keyof typeof freshdeskToGpnetStatus] || gpnetTicket.status;
+        
+        if (newGpnetStatus !== gpnetTicket.status) {
+          await storage.updateTicketStatus(gpnetTicketId, newGpnetStatus);
+          updateLog.statusSync = { from: gpnetTicket.status, to: newGpnetStatus };
+          syncUpdates = true;
+          console.log(`Synced status from Freshdesk: ${gpnetTicket.status} -> ${newGpnetStatus}`);
+        }
+      }
+
+      // Sync priority changes from Freshdesk to GPNet
+      if (ticket_priority && webhookData.changes?.priority) {
+        const freshdeskToGpnetPriority = {
+          1: 'low',
+          2: 'medium', 
+          3: 'high',
+          4: 'urgent'
+        };
+
+        const newGpnetPriority = freshdeskToGpnetPriority[ticket_priority as keyof typeof freshdeskToGpnetPriority] || gpnetTicket.priority;
+        
+        if (newGpnetPriority !== gpnetTicket.priority && newGpnetPriority) {
+          await storage.updateTicketPriority(gpnetTicketId, newGpnetPriority);
+          updateLog.prioritySync = { from: gpnetTicket.priority, to: newGpnetPriority };
+          syncUpdates = true;
+          console.log(`Synced priority from Freshdesk: ${gpnetTicket.priority} -> ${newGpnetPriority}`);
+        }
+      }
+
+      // Handle note/comment sync from Freshdesk to GPNet
+      if (ticket_notes && Array.isArray(ticket_notes)) {
+        let syncedCount = 0;
+        for (const note of ticket_notes) {
+          if (note.body && !note.private) { // Only sync public notes
+            // Create correspondence entry in GPNet with deduplication
+            const result = await storage.createCorrespondence({
+              ticketId: gpnetTicketId,
+              direction: 'inbound',
+              type: 'note',
+              subject: 'Freshdesk Update',
+              content: note.body,
+              senderName: note.user_name || 'Freshdesk User',
+              senderEmail: note.user_email || '',
+              source: 'freshdesk',
+              externalId: note.id?.toString()
+            });
+            
+            if (result) {
+              syncedCount++;
+              syncUpdates = true;
+              console.log(`Synced note from Freshdesk ticket ${ticket_id} to GPNet`);
+            }
+          }
+        }
+        if (syncedCount > 0) {
+          updateLog.noteSync = { count: syncedCount };
+        }
+      }
+
+      // Update sync mapping status and log all webhook events
+      if (syncUpdates) {
+        await storage.updateFreshdeskTicketStatus(freshdeskMapping.id, 'synced');
+      }
+      
+      // Always log webhook events for audit trail
+      await storage.createFreshdeskSyncLog(
+        freshdeskService.createSyncLog(
+          gpnetTicketId,
+          ticket_id,
+          'webhook_update',
+          'from_freshdesk',
+          syncUpdates ? 'success' : 'skipped',
+          updateLog
+        )
+      );
+
+      res.status(200).json({ 
+        success: true, 
+        gpnetTicketId,
+        syncUpdates,
+        message: syncUpdates ? 'Updates synced successfully' : 'No changes to sync'
+      });
+
+    } catch (error) {
+      console.error("Freshdesk webhook processing failed:", error);
+      
+      // Log failed webhook processing
+      try {
+        if (req.body.ticket_id) {
+          const mapping = await storage.getFreshdeskTicketByFreshdeskId(req.body.ticket_id);
+          if (mapping) {
+            await storage.createFreshdeskSyncLog(
+              freshdeskService.createSyncLog(
+                mapping.gpnetTicketId,
+                req.body.ticket_id,
+                'update',
+                'from_freshdesk',
+                'failed',
+                { trigger: 'freshdesk_webhook' },
+                error instanceof Error ? error.message : 'Unknown error'
+              )
+            );
+          }
+        }
+      } catch (logError) {
+        console.error("Failed to log webhook error:", logError);
+      }
+
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  });
+
   // Create Freshdesk ticket for a GPNet case
   app.post("/api/freshdesk/tickets", async (req, res) => {
     try {

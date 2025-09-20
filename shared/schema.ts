@@ -65,6 +65,12 @@ export const emails = pgTable("emails", {
   subject: text("subject").notNull(),
   body: text("body").notNull(),
   sentAt: timestamp("sent_at").defaultNow(),
+  // Bidirectional sync fields
+  source: text("source"), // 'freshdesk', 'gpnet', 'email'
+  direction: text("direction"), // 'inbound', 'outbound'
+  externalId: text("external_id"), // For deduplication
+  senderName: text("sender_name"),
+  senderEmail: text("sender_email"),
 });
 
 // Attachments table
@@ -150,6 +156,11 @@ export const insertAnalysisSchema = createInsertSchema(analyses).omit({
   createdAt: true,
 });
 
+export const insertEmailSchema = createInsertSchema(emails).omit({
+  id: true,
+  sentAt: true,
+});
+
 export const insertInjurySchema = createInsertSchema(injuries).omit({
   id: true,
   createdAt: true,
@@ -179,6 +190,9 @@ export type FormSubmission = typeof formSubmissions.$inferSelect;
 export type InsertAnalysis = z.infer<typeof insertAnalysisSchema>;
 export type Analysis = typeof analyses.$inferSelect;
 
+export type InsertEmail = z.infer<typeof insertEmailSchema>;
+export type Email = typeof emails.$inferSelect;
+
 export type InsertInjury = z.infer<typeof insertInjurySchema>;
 export type Injury = typeof injuries.$inferSelect;
 
@@ -187,8 +201,6 @@ export type Stakeholder = typeof stakeholders.$inferSelect;
 
 export type InsertRtwPlan = z.infer<typeof insertRtwPlanSchema>;
 export type RtwPlan = typeof rtwPlans.$inferSelect;
-
-export type Email = typeof emails.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
 
 // Form validation schema for Pre-Employment Check
