@@ -11,6 +11,7 @@ import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { pdfService } from "./pdfService";
 import { riskAssessmentService, type RiskInput } from "./riskAssessmentService";
+import { chatWithMichelle, clearConversation, getConversationHistory } from "./michelleService";
 
 // Analysis engine for RAG scoring and fit classification
 class AnalysisEngine {
@@ -1173,7 +1174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateAnalysis(ticketId, {
           ragScore: assessmentResult.ragScore,
           recommendations: [
-            ...(existingAnalysis?.recommendations || []),
+            ...(existingAnalysis?.recommendations || [] as any[]),
             ...assessmentResult.recommendations
           ],
           notes: `${existingAnalysis?.notes || ''}. Email risk assessment (${emailAnalysis.urgencyLevel} urgency): ${emailAnalysis.suggestedAction}`
@@ -3219,6 +3220,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error getting Freshdesk status:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Michelle AI Chat Endpoints
+  app.post("/api/michelle/chat", async (req, res) => {
+    try {
+      const { conversationId, message, context } = req.body;
+      
+      if (!message?.trim()) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      const response = await chatWithMichelle(
+        conversationId || `conv_${Date.now()}`,
+        message.trim(),
+        context
+      );
+
+      res.json(response);
+    } catch (error) {
+      console.error("Michelle chat error:", error);
+      res.status(500).json({ error: "Chat service temporarily unavailable" });
+    }
+  });
+
+  app.delete("/api/michelle/conversation/:conversationId", async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      clearConversation(conversationId);
+      res.json({ success: true, message: "Conversation cleared" });
+    } catch (error) {
+      console.error("Clear conversation error:", error);
+      res.status(500).json({ error: "Failed to clear conversation" });
+    }
+  });
+
+  app.get("/api/michelle/conversation/:conversationId/history", async (req, res) => {
+    try {
+      const { conversationId } = req.params;
+      const history = getConversationHistory(conversationId);
+      res.json({ history });
+    } catch (error) {
+      console.error("Get conversation history error:", error);
+      res.status(500).json({ error: "Failed to get conversation history" });
     }
   });
 
