@@ -793,10 +793,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all cases with optional filtering
   app.get("/api/cases", async (req, res) => {
     try {
+      // Extract query parameters for filtering and searching
+      const {
+        status,
+        caseType,
+        claimType,
+        priority,
+        ragScore,
+        fitClassification,
+        search,
+        dateFrom,
+        dateTo,
+        sortBy = 'createdAt',
+        sortOrder = 'desc',
+        limit,
+        offset = '0'
+      } = req.query;
+
       const tickets = await storage.getAllTickets();
       
       // For each ticket, get associated worker and analysis data
-      const cases = await Promise.all(
+      let cases = await Promise.all(
         tickets.map(async (ticket) => {
           const submission = await storage.getFormSubmissionByTicket(ticket.id);
           const analysis = await storage.getAnalysisByTicket(ticket.id);
@@ -813,6 +830,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             priority: ticket.priority || null,
             status: ticket.status,
             createdAt: ticket.createdAt,
+            updatedAt: ticket.updatedAt,
             workerName: worker ? `${worker.firstName} ${worker.lastName}` : "Unknown",
             email: worker?.email || "",
             phone: worker?.phone || "",
@@ -826,7 +844,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
 
-      res.json(cases);
+      // Apply server-side filtering
+      cases = cases.filter(caseItem => {
+        // Status filter
+        if (status && status !== 'all' && caseItem.status !== status) {
+          return false;
+        }
+
+        // Case type filter
+        if (caseType && caseType !== 'all' && caseItem.caseType !== caseType) {
+          return false;
+        }
+
+        // Claim type filter
+        if (claimType && claimType !== 'all' && caseItem.claimType !== claimType) {
+          return false;
+        }
+
+        // Priority filter
+        if (priority && priority !== 'all' && caseItem.priority !== priority) {
+          return false;
+        }
+
+        // RAG score filter
+        if (ragScore && ragScore !== 'all' && caseItem.ragScore !== ragScore) {
+          return false;
+        }
+
+        // Fit classification filter
+        if (fitClassification && fitClassification !== 'all' && caseItem.fitClassification !== fitClassification) {
+          return false;
+        }
+
+        // Date range filter
+        if (dateFrom || dateTo) {
+          if (!caseItem.createdAt) return true; // Skip filtering if no date
+          const caseDate = new Date(caseItem.createdAt);
+          if (dateFrom) {
+            const fromDate = new Date(dateFrom as string);
+            if (caseDate < fromDate) {
+              return false;
+            }
+          }
+          if (dateTo) {
+            const toDate = new Date(dateTo as string);
+            if (caseDate > toDate) {
+              return false;
+            }
+          }
+        }
+
+        // Text search across multiple fields
+        if (search && search !== '') {
+          const searchTerm = (search as string).toLowerCase();
+          const recommendations = Array.isArray(caseItem.recommendations) ? caseItem.recommendations : [];
+          const searchableText = [
+            caseItem.ticketId,
+            caseItem.workerName,
+            caseItem.email,
+            caseItem.phone,
+            caseItem.roleApplied,
+            caseItem.company,
+            caseItem.notes,
+            ...recommendations
+          ].join(' ').toLowerCase();
+
+          if (!searchableText.includes(searchTerm)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      // Apply sorting
+      cases.sort((a, b) => {
+        let aValue: any, bValue: any;
+        
+        switch (sortBy) {
+          case 'createdAt':
+          case 'updatedAt':
+            aValue = new Date(a[sortBy as keyof typeof a] as string);
+            bValue = new Date(b[sortBy as keyof typeof b] as string);
+            break;
+          case 'workerName':
+          case 'status':
+          case 'priority':
+          case 'ragScore':
+            aValue = (a[sortBy as keyof typeof a] as string)?.toLowerCase() || '';
+            bValue = (b[sortBy as keyof typeof b] as string)?.toLowerCase() || '';
+            break;
+          default:
+            aValue = a[sortBy as keyof typeof a] || '';
+            bValue = b[sortBy as keyof typeof b] || '';
+        }
+
+        if (sortOrder === 'asc') {
+          return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+        } else {
+          return aValue > bValue ? -1 : aValue < bValue ? 1 : 0;
+        }
+      });
+
+      // Apply pagination
+      const total = cases.length;
+      if (limit) {
+        const limitNum = parseInt(limit as string);
+        const offsetNum = parseInt(offset as string);
+        cases = cases.slice(offsetNum, offsetNum + limitNum);
+      }
+
+      res.json({
+        cases,
+        total,
+        page: Math.floor(parseInt(offset as string) / parseInt(limit as string || '20')) + 1,
+        hasMore: limit ? (parseInt(offset as string) + parseInt(limit as string)) < total : false
+      });
     } catch (error) {
       console.error("Error fetching cases:", error);
       res.status(500).json({ error: "Failed to fetch cases" });
