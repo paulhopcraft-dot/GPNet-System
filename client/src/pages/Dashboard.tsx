@@ -115,13 +115,9 @@ export default function Dashboard() {
     isLoading: casesLoading, 
     error: casesError 
   } = useQuery<CasesResponse>({ 
-    queryKey: ["/api/cases", buildQueryParams()],
-    queryFn: async () => {
-      const queryString = buildQueryParams();
-      const url = queryString ? `/api/cases?${queryString}` : '/api/cases';
-      const response = await apiRequest("GET", url);
-      return response as unknown as CasesResponse;
-    }
+    queryKey: ["/api/cases"],
+    staleTime: 0, // Disable cache for debugging
+    cacheTime: 0
   });
 
   // Mutations for updating case data
@@ -196,9 +192,47 @@ export default function Dashboard() {
     updateRecommendationsMutation.mutate({ ticketId, recommendations });
   };
 
-  // Extract cases from response (server-side filtering means no client-side filtering needed)
+  // Extract cases from response
+  console.log("Debug: casesResponse =", casesResponse);
   const cases: DashboardCase[] = casesResponse?.cases || [];
   const totalCases: number = casesResponse?.total || 0;
+  console.log("Debug: cases =", cases, "totalCases =", totalCases);
+  
+  // Apply client-side filtering since we're using simple API call
+  const filteredCases = cases.filter(caseItem => {
+    // Status filter
+    if (filters.status !== 'all' && caseItem.status !== filters.status) {
+      return false;
+    }
+    // Case type filter
+    if (filters.caseType !== 'all' && caseItem.caseType !== filters.caseType) {
+      return false;
+    }
+    // Priority filter
+    if (filters.priority !== 'all' && caseItem.priority !== filters.priority) {
+      return false;
+    }
+    // RAG score filter
+    if (filters.ragScore !== 'all' && caseItem.ragScore !== filters.ragScore) {
+      return false;
+    }
+    // Text search
+    if (filters.search) {
+      const searchTerm = filters.search.toLowerCase();
+      const searchableText = [
+        caseItem.ticketId,
+        caseItem.workerName,
+        caseItem.email,
+        caseItem.roleApplied,
+        caseItem.company
+      ].join(' ').toLowerCase();
+      
+      if (!searchableText.includes(searchTerm)) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   // Handle loading states
   if (statsLoading || casesLoading) {
@@ -291,7 +325,7 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">
-                  Cases ({totalCases} total, {cases.length} shown)
+                  Cases ({totalCases} total, {filteredCases.length} shown)
                 </h2>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" data-testid="button-export">
@@ -301,13 +335,13 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {cases.length === 0 ? (
+              {filteredCases.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">No cases found matching your criteria.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {cases.map((caseItem: DashboardCase) => (
+                  {filteredCases.map((caseItem: DashboardCase) => (
                     <CaseCard
                       key={caseItem.ticketId}
                       ticketId={caseItem.ticketId}
