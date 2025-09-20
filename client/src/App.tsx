@@ -12,6 +12,7 @@ import Stakeholders from "@/pages/Stakeholders";
 import FitForWorkAssessment from "@/pages/FitForWorkAssessment";
 import RtwCompliance from "@/pages/RtwCompliance";
 import NotFound from "@/pages/not-found";
+import { MichelleWidget } from "@/components/MichelleWidget";
 
 function Router() {
   return (
@@ -35,6 +36,7 @@ function App() {
         <TooltipProvider>
           <Toaster />
           <Router />
+          <MichelleWidget />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
