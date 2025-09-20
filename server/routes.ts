@@ -5,7 +5,7 @@ import {
   preEmploymentFormSchema, type PreEmploymentFormData, 
   injuryFormSchema, type InjuryFormData, 
   rtwPlanSchema, insertStakeholderSchema,
-  emailRiskAssessmentSchema, manualRiskUpdateSchema 
+  emailRiskAssessmentSchema, manualRiskUpdateSchema, stepUpdateSchema 
 } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -847,6 +847,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             fitClassification: analysis?.fitClassification || "",
             recommendations: analysis?.recommendations || [],
             notes: analysis?.notes || "",
+            // Step tracking fields
+            nextStep: ticket.nextStep || null,
+            lastStep: ticket.lastStep || null,
+            lastStepCompletedAt: ticket.lastStepCompletedAt || null,
+            assignedTo: ticket.assignedTo || null,
           };
         })
       );
@@ -1315,6 +1320,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating status:", error);
       res.status(500).json({ error: "Failed to update status" });
+    }
+  });
+
+  // Update case next step
+  app.put("/api/cases/:ticketId/next-step", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      // Validate request body with Zod
+      const parseResult = stepUpdateSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: fromZodError(parseResult.error).toString() 
+        });
+      }
+      
+      const { nextStep, assignedTo, completePreviousStep, completionNotes } = parseResult.data;
+
+      // Check if case exists
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      let updatedTicket;
+      if (completePreviousStep) {
+        // Complete current step and set new next step
+        updatedTicket = await storage.updateTicketStepAndComplete(ticketId, nextStep, assignedTo, completionNotes);
+      } else {
+        // Just update the next step
+        updatedTicket = await storage.updateTicketStep(ticketId, nextStep, assignedTo);
+      }
+
+      res.json({ 
+        success: true, 
+        message: "Next step updated successfully",
+        ticket: updatedTicket
+      });
+    } catch (error) {
+      console.error("Error updating next step:", error);
+      res.status(500).json({ error: "Failed to update next step" });
+    }
+  });
+
+  // Complete current step and set new next step (ALWAYS requires next step)
+  app.put("/api/cases/:ticketId/complete-step", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      // Validate request body - MUST include nextStep to maintain invariant
+      const completeStepSchema = z.object({
+        nextStep: z.string().min(1, "Next step is required - workers must always have a next step"),
+        assignedTo: z.string().optional(),
+        completionNotes: z.string().optional()
+      });
+      
+      const parseResult = completeStepSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Validation failed", 
+          details: fromZodError(parseResult.error).toString() 
+        });
+      }
+      
+      const { nextStep, assignedTo, completionNotes } = parseResult.data;
+
+      // Check if case exists
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+
+      if (!ticket.nextStep) {
+        return res.status(400).json({ error: "No current step to complete" });
+      }
+
+      // Complete current step AND set new next step to maintain invariant
+      const updatedTicket = await storage.updateTicketStepAndComplete(ticketId, nextStep, assignedTo, completionNotes);
+
+      res.json({ 
+        success: true, 
+        message: "Step completed and new step assigned successfully",
+        ticket: updatedTicket
+      });
+    } catch (error) {
+      console.error("Error completing step:", error);
+      res.status(500).json({ error: "Failed to complete step" });
     }
   });
 

@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Clock, User, Building, Eye } from "lucide-react";
+import { Clock, User, Building, Eye, CheckCircle, ArrowRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 interface CaseCardProps {
@@ -15,6 +15,10 @@ interface CaseCardProps {
   status: "NEW" | "ANALYSING" | "AWAITING_REVIEW" | "REVISIONS_REQUIRED" | "READY_TO_SEND" | "COMPLETE";
   ragScore?: "red" | "amber" | "green";
   createdAt: Date;
+  nextStep?: string | null;
+  lastStep?: string | null;
+  lastStepCompletedAt?: Date | string | null;
+  assignedTo?: string | null;
   onViewCase?: () => void;
 }
 
@@ -63,6 +67,10 @@ export default function CaseCard({
   status,
   ragScore,
   createdAt,
+  nextStep,
+  lastStep,
+  lastStepCompletedAt,
+  assignedTo,
   onViewCase,
 }: CaseCardProps) {
   const handleViewCase = () => {
@@ -147,6 +155,44 @@ export default function CaseCard({
               </Badge>
             </div>
           )}
+          
+          {/* Step tracking information */}
+          <div className="space-y-2 pt-2 border-t">
+            {nextStep && (
+              <div className="flex items-center gap-2 text-sm">
+                <ArrowRight className="h-4 w-4 text-blue-500" />
+                <span className="text-foreground font-medium" data-testid={`text-next-step-${ticketId}`}>
+                  Next: {nextStep}
+                </span>
+                {assignedTo && (
+                  <Badge variant="outline" className="text-xs" data-testid={`badge-assigned-${ticketId}`}>
+                    {assignedTo}
+                  </Badge>
+                )}
+              </div>
+            )}
+            
+            {lastStep && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <CheckCircle className="h-4 w-4 text-green-500" />
+                <span data-testid={`text-last-step-${ticketId}`}>
+                  Last: {lastStep}
+                </span>
+                {lastStepCompletedAt && (
+                  <span className="text-xs" data-testid={`text-last-completed-${ticketId}`}>
+                    ({formatDistanceToNow(new Date(lastStepCompletedAt), { addSuffix: true })})
+                  </span>
+                )}
+              </div>
+            )}
+            
+            {!nextStep && !lastStep && (
+              <div className="flex items-center gap-2 text-sm text-orange-600">
+                <Clock className="h-4 w-4" />
+                <span data-testid={`text-no-steps-${ticketId}`}>⚠️ Missing workflow steps - needs assignment</span>
+              </div>
+            )}
+          </div>
           
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
