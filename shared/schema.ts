@@ -6,6 +6,7 @@ import { z } from "zod";
 // Tickets table for case management
 export const tickets = pgTable("tickets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id), // Tenant isolation - temporarily nullable
   workerId: varchar("worker_id").references(() => workers.id), // Direct link to worker
   caseType: text("case_type").notNull().default("pre_employment"), // "pre_employment", "injury"
   claimType: text("claim_type"), // "standard", "workcover" (for injury cases)
@@ -34,6 +35,7 @@ export const tickets = pgTable("tickets", {
 // Workers table for candidate information
 export const workers = pgTable("workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id), // Tenant isolation - temporarily nullable
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   dateOfBirth: text("date_of_birth").notNull(),
@@ -102,6 +104,154 @@ export const attachments = pgTable("attachments", {
   filename: text("filename").notNull(),
   path: text("path").notNull(),
   uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+// ===============================================
+// MULTI-TENANT ADMIN LAYER
+// ===============================================
+
+// Organizations table for client tenants
+export const organizations = pgTable("organizations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(), // URL-safe identifier
+  status: text("status").notNull().default("active"), // "active", "suspended", "archived"
+  billingStatus: text("billing_status").default("current"), // "current", "overdue", "cancelled"
+  
+  // Configuration
+  settings: jsonb("settings"), // Client-specific configurations
+  features: jsonb("features"), // Feature flags for this client
+  branding: jsonb("branding"), // Client branding configuration
+  
+  // Contact information
+  primaryContactName: text("primary_contact_name"),
+  primaryContactEmail: text("primary_contact_email"),
+  primaryContactPhone: text("primary_contact_phone"),
+  
+  // Metadata
+  isArchived: boolean("is_archived").default(false),
+  archivedAt: timestamp("archived_at"),
+  archivedBy: varchar("archived_by"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Client users table for organization users
+export const clientUsers = pgTable("client_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id).notNull(),
+  
+  // Basic info
+  email: text("email").notNull().unique(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  
+  // Authentication
+  passwordHash: text("password_hash"), // Nullable for SSO-only users
+  lastLoginAt: timestamp("last_login_at"),
+  loginCount: integer("login_count").default(0),
+  
+  // Role and permissions
+  role: text("role").notNull().default("user"), // "admin", "manager", "recruiter", "user"
+  permissions: jsonb("permissions"), // Additional granular permissions
+  
+  // Status
+  status: text("status").notNull().default("active"), // "active", "suspended", "archived"
+  isArchived: boolean("is_archived").default(false),
+  archivedAt: timestamp("archived_at"),
+  archivedBy: varchar("archived_by"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Admin users table for superusers
+export const adminUsers = pgTable("admin_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Basic info
+  email: text("email").notNull().unique(),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  
+  // Authentication
+  passwordHash: text("password_hash").notNull(),
+  mfaSecret: text("mfa_secret"), // TOTP secret for MFA
+  mfaEnabled: boolean("mfa_enabled").default(false),
+  
+  // Session management
+  lastLoginAt: timestamp("last_login_at"),
+  loginCount: integer("login_count").default(0),
+  currentImpersonationTarget: varchar("current_impersonation_target"), // Organization ID being impersonated
+  impersonationStartedAt: timestamp("impersonation_started_at"),
+  
+  // Permissions
+  permissions: jsonb("permissions"), // Admin-level permissions
+  
+  // Status
+  status: text("status").notNull().default("active"), // "active", "suspended"
+  isArchived: boolean("is_archived").default(false),
+  archivedAt: timestamp("archived_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Audit events table for immutable audit log
+export const auditEvents = pgTable("audit_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Event identification
+  eventType: text("event_type").notNull(), // "ADMIN_LOGIN", "IMPERSONATE_START", "MICHELLE_GLOBAL_QUERY", etc.
+  eventCategory: text("event_category").notNull(), // "auth", "admin", "michelle", "data"
+  
+  // Actor information
+  actorId: varchar("actor_id").notNull(), // Admin or user ID
+  actorType: text("actor_type").notNull(), // "admin", "client_user"
+  actorEmail: text("actor_email"),
+  
+  // Target information
+  targetType: text("target_type"), // "organization", "ticket", "user"
+  targetId: varchar("target_id"), // ID of affected entity
+  organizationId: varchar("organization_id").references(() => organizations.id), // Affected organization
+  
+  // Event details
+  action: text("action").notNull(), // Human-readable action description
+  details: jsonb("details"), // Structured event details
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  
+  // Compliance fields
+  result: text("result").notNull(), // "success", "failed", "denied"
+  riskLevel: text("risk_level").default("low"), // "low", "medium", "high", "critical"
+  
+  // Immutable timestamp
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
+// Archive index table for tracking archived entities
+export const archiveIndex = pgTable("archive_index", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Entity identification
+  entityType: text("entity_type").notNull(), // "organization", "ticket", "user"
+  entityId: varchar("entity_id").notNull(),
+  organizationId: varchar("organization_id").references(() => organizations.id),
+  
+  // Archive metadata
+  archivedBy: varchar("archived_by").notNull(), // Admin user ID
+  archiveReason: text("archive_reason"),
+  canRestore: boolean("can_restore").default(true),
+  
+  // Data references
+  originalData: jsonb("original_data"), // Snapshot of entity at archive time
+  relatedEntities: jsonb("related_entities"), // IDs of related archived entities
+  
+  // Timestamps
+  archivedAt: timestamp("archived_at").defaultNow().notNull(),
+  restoredAt: timestamp("restored_at"),
+  restoredBy: varchar("restored_by"),
 });
 
 // Injuries table for injury-specific information
@@ -538,6 +688,35 @@ export const insertRiskHistorySchema = createInsertSchema(riskHistory).omit({
   timestamp: true,
 });
 
+// Schema definitions for multi-tenant admin tables
+export const insertOrganizationSchema = createInsertSchema(organizations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertClientUserSchema = createInsertSchema(clientUsers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAuditEventSchema = createInsertSchema(auditEvents).omit({
+  id: true,
+  timestamp: true,
+});
+
+export const insertArchiveIndexSchema = createInsertSchema(archiveIndex).omit({
+  id: true,
+  archivedAt: true,
+});
+
 // Type definitions for new tables
 export type InsertLegislationDocument = z.infer<typeof insertLegislationDocumentSchema>;
 export type LegislationDocument = typeof legislationDocuments.$inferSelect;
@@ -565,6 +744,38 @@ export type FreshdeskSyncLog = typeof freshdeskSyncLogs.$inferSelect;
 
 export type InsertRiskHistory = z.infer<typeof insertRiskHistorySchema>;
 export type RiskHistory = typeof riskHistory.$inferSelect;
+
+// Type definitions for multi-tenant admin tables
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+export type Organization = typeof organizations.$inferSelect;
+
+export type InsertClientUser = z.infer<typeof insertClientUserSchema>;
+export type ClientUser = typeof clientUsers.$inferSelect;
+
+export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
+export type AdminUser = typeof adminUsers.$inferSelect;
+
+export type InsertAuditEvent = z.infer<typeof insertAuditEventSchema>;
+export type AuditEvent = typeof auditEvents.$inferSelect;
+
+export type InsertArchiveIndex = z.infer<typeof insertArchiveIndexSchema>;
+export type ArchiveIndex = typeof archiveIndex.$inferSelect;
+
+// Authentication and session types
+export const loginSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(1, "Password is required"),
+  mfaCode: z.string().optional(),
+});
+
+export const clientLoginSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(1, "Password is required"),
+  organizationSlug: z.string().min(1, "Organization is required"),
+});
+
+export type LoginRequest = z.infer<typeof loginSchema>;
+export type ClientLoginRequest = z.infer<typeof clientLoginSchema>;
 
 // Validation schemas for new API endpoints
 export const emailRiskAssessmentSchema = z.object({

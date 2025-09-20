@@ -1,0 +1,165 @@
+You can safely merge into one spec section so the build has a single place to reference Admin + Universal Michelle rules.
+Here’s the combined, paste-ready spec with Section 11 (Admin Layer) and Section 11A (Universal Michelle) integrated into one continuous block.
+
+⸻
+
+Section 11 — GPNet Admin Layer + Universal Michelle
+
+11.0 Scope & Objectives
+
+Provide a single Admin (Superuser) login that can create/manage/archive client tenants, impersonate client views, manage templates, and audit every action.
+This section also defines Michelle’s two operating modes:
+	1.	Client-Scoped Michelle — limited to one tenant.
+	2.	Universal Michelle (Admin-only) — platform-wide insights with audit and privacy controls.
+
+⸻
+
+11.1 Roles & Permissions
+	•	Admin (Superuser) — Full system access across all clients; can impersonate; can use Universal Michelle.
+	•	Client Admin / Manager / Recruiter — Only tenant data; Client-Scoped Michelle only.
+	•	Consultant — Cross-tenant view by assignment only.
+	•	Read-Only Auditor — Optional; view audit logs.
+
+Rules
+	•	Strict tenant isolation unless Admin.
+	•	Impersonation banner visible when acting-as client.
+	•	No hard delete — only archive/unarchive.
+
+⸻
+
+11.2 Data Model
+
+Includes new tables in addition to existing case/candidate tables:
+	•	clients — tenant metadata.
+	•	client_users — roles within tenants.
+	•	admin_users — superusers with MFA.
+	•	templates — global + client-specific job descriptions, disclaimers, check flows.
+	•	audit_events — immutable append-only log.
+	•	archive_index — tracks archived entities.
+	•	vector stores — per-tenant indices + vs_global_admin for Universal Michelle (metadata only, PHI split).
+
+⸻
+
+11.3 API Endpoints
+
+Auth
+	•	/admin/v1/auth/* — login, MFA, refresh, logout.
+
+Clients
+	•	/admin/v1/clients — create, update, archive, unarchive, suspend.
+	•	/admin/v1/impersonate/* — start/stop impersonation.
+
+Templates
+	•	/admin/v1/templates — manage global and client-scoped templates.
+	•	/admin/v1/bulk/job-descriptions/upload — multi-client bulk upload.
+
+Michelle Queries
+	•	/client/v1/michelle/query — tenant-only RAG.
+	•	/admin/v1/michelle/query — global query (aggregate, PHI redacted).
+	•	/admin/v1/michelle/elevate — temporary PHI access with justification.
+
+⸻
+
+11.4 Michelle Modes
+
+A) Client-Scoped Michelle
+	•	Users: Client admins, managers, recruiters, consultants.
+	•	Data: Only client_id=current_tenant.
+	•	Behavior: Refuses cross-tenant requests.
+	•	Retrieval: Per-tenant vector index only.
+
+B) Universal Michelle (Admin-only)
+	•	Users: Admins with MFA.
+	•	Data: All clients (active + archived).
+	•	Default: Aggregate insights, no PHI.
+	•	PHI Access: Requires explicit elevation (/michelle/elevate), logged as ADMIN_PRIV_ELEVATE, expires in 15 minutes.
+	•	Retrieval: Queries vs_global_admin; can zoom into tenant indices after elevation.
+
+⸻
+
+11.5 UI/UX
+
+Admin Console
+	•	Dashboard — active/archived/suspended counts, overdue checks, top risk signals.
+	•	Clients — list + impersonate.
+	•	Templates — global library.
+	•	Audit Log — searchable + exportable.
+	•	Settings — MFA, tokens, feature flags.
+
+Michelle (Visual Cues)
+	•	Client Mode: “Michelle — Client View”, scope locked.
+	•	Admin Mode: “Michelle — Universal (Admin)”, with PHI toggle + 15-min expiry banner.
+	•	Cross-tenant attempt in Client Mode: politely refused.
+
+⸻
+
+11.6 Archiving & Restoration
+	•	Archive instead of delete.
+	•	Archived entities read-only; unarchive restores.
+	•	File blobs retained, pointers marked archived.
+	•	Index sweep jobs maintain archive integrity.
+
+⸻
+
+11.7 Audit & Compliance
+	•	Every Admin + Michelle action logged in audit_events.
+	•	New event types: ADMIN_PRIV_ELEVATE, ADMIN_PRIV_EXPIRE, MICHELLE_GLOBAL_QUERY, MICHELLE_TENANT_QUERY, MICHELLE_DRILL_IMPERSONATE.
+	•	Export available to CSV/JSON.
+	•	Immutable append-only log.
+
+⸻
+
+11.8 Security & Non-Functional
+	•	MFA required for Admin.
+	•	Short-lived tokens + refresh; impersonation ≤30 min.
+	•	PHI masked by default in Universal Michelle.
+	•	Rate limits + IP allowlisting on sensitive endpoints.
+	•	Nightly encrypted backups.
+	•	Uptime ≥ 99.9%.
+	•	Feature flags: admin_impersonation, global_templates, universal_michelle, michelle_phi_elevation.
+
+⸻
+
+11.9 Background Jobs
+	•	Archive sweep.
+	•	Template propagation.
+	•	Compliance digest exports.
+	•	Build/refresh vs_global_admin index with metadata.
+
+⸻
+
+11.10 Acceptance Criteria
+	1.	Admin can create, archive, unarchive clients.
+	2.	Client-Scoped Michelle refuses cross-tenant requests.
+	3.	Universal Michelle provides aggregate insights without PHI.
+	4.	PHI access requires elevation, logs audit, expires in 15 min.
+	5.	Impersonation clearly bannered + logged.
+	6.	No API allows hard delete.
+
+⸻
+
+11.11 Example Flows
+
+Client Creation + Impersonation
+	1.	Admin creates client.
+	2.	Seeds job description templates.
+	3.	Impersonates → uploads role → triggers Pre-Employment Check.
+	4.	Stops impersonation → all events logged.
+
+Universal Query + Elevation
+	1.	Admin asks: “Show top 10 clients by overdue checks.” → Universal Michelle responds aggregate-only.
+	2.	Admin elevates PHI access → requests: “List oldest Injury Checks for Marley Spoon with initials + dates.” → PHI revealed for 15 min.
+	3.	Window expires → PHI hidden again.
+
+⸻
+
+11.12 Example Michelle Commands
+	•	Client Mode: “List Prevention Checks overdue >7 days for this client.”
+	•	Universal Mode (aggregate): “Rank all clients by % of overdue Injury Checks.”
+	•	Universal Mode (elevated): “Show top 5 open cases at Client X with worker initials and consultants.”
+
+⸻
+
+✅ This merged version covers both the Admin Console and the Universal vs Client-Scoped Michelle rules in one integrated spec.
+
+Do you want me to also collapse this into the Build Pack v1.1 master doc as “Section 11: Admin + Michelle” so you’ve got a single master spec, or keep it as a stand-alone module you can paste in separately?
