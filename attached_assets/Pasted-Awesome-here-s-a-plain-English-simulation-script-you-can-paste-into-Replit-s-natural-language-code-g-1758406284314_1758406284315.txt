@@ -1,0 +1,172 @@
+Awesome—here’s a plain-English simulation script you can paste into Replit’s natural-language→code generator. It tells the agent exactly what to build and run: a 20-minute simulation that cycles through multiple worker scenarios (long-term absence, modified duties, doctor visits, online medical certificates, workplace accidents), both WorkCover and non-WorkCover, and drives each case to an end state: Full Duties, Modified Duties, or Exit (non-participation / OHS non-compliance).
+
+⸻
+
+GPNet Encapsulation Simulation — Plain-English Test Script
+
+0) Marketing Promise (print this at the start of every case)
+
+“GPNet encapsulates the entire domain — case managers, occupational rehabilitation specialists, medical professionals, and the legal framework — so we can quickly analyze any situation and make a defensible recommendation.”
+
+1) Purpose
+	•	Run a 20-minute simulation (wall-clock) that continuously generates and processes worker cases.
+	•	Each case flows through a state machine with decisions based on facts, time, and participation.
+	•	End states:
+	•	FULL_DUTIES (fit without restrictions)
+	•	MODIFIED_DUTIES (fit with restrictions)
+	•	EXIT_NON_PARTICIPATION (lawful discontinuation due to non-participation / OHS non-compliance)
+	•	Mix of WorkCover and non-WorkCover cases.
+
+2) Case Archetypes (randomly sampled; ensure all appear repeatedly)
+
+Create a generator that yields cases of the following types, with fields shown:
+	1.	Long-Term Absence
+	•	type="LONG_ABSENCE", days_absent ∈ [15, 120], reason may be vague or “medical.”
+	2.	Long-Term Modified Duties
+	•	type="LONG_MODIFIED", current_caps (e.g., lift ≤ 5kg, no overhead, 4h/day), duration ∈ [14, 180] days.
+	3.	Doctor Visit (traditional)
+	•	type="DOCTOR_VISIT", doc_note with capacity; may be “unfit 7 days” or specific restrictions.
+	4.	Online Medical Certificate (OMC) with vague diagnosis
+	•	type="ONLINE_CERT", note="unfit — unspecified condition", duration ∈ [1, 14] days.
+	5.	Workplace Accident
+	•	type="ACCIDENT", mechanism (e.g., slip, strain, struck), injury_region, severity (minor/moderate).
+
+Each case also has:
+	•	workcover: true or false (random, but ~40–60% true to ensure coverage).
+	•	role: e.g., warehouse, production, admin, field.
+	•	risk_flags: e.g., psychosocial risk, repeated OMCs, inconsistent attendance.
+	•	participation_profile: cooperative / inconsistent / non-responsive.
+	•	worker_id: unique string.
+
+3) State Machine (per case)
+
+States:
+	•	INTAKE → TRIAGE → PLAN → CHECK_IN_LOOP → terminal (FULL_DUTIES / MODIFIED_DUTIES / EXIT_NON_PARTICIPATION)
+
+3.1 INTAKE
+	•	Log case details and marketing promise.
+	•	Tag: WorkCover vs non-WorkCover.
+	•	Compute initial Fit Classification (checkbox style):
+	•	Fit without restriction / Fit with restrictions / Not fit (initial).
+	•	If OMC with vague dx: flag verification_required=True.
+
+3.2 TRIAGE (rules)
+	•	If ACCIDENT and severity=moderate → immediate doctor review + early RTW focus.
+	•	If LONG_ABSENCE > 28 days → escalate to case manager + OR provider; set participation_check cadence = 3–5 days.
+	•	If ONLINE_CERT with vague dx → require clarification (clinical specifics, duration, capacity), and propose suitable duties.
+	•	If LONG_MODIFIED > 12 weeks → formal upgrade plan or IME if stalled (WorkCover) / independent review (non-WorkCover).
+
+3.3 PLAN (create a living plan object)
+	•	Always propose Suitable Duties aligned to role and restrictions.
+	•	If WorkCover:
+	•	Reference statutory obligations: certificates of capacity, participation duties, case manager notifications, potential OR provider involvement.
+	•	If non-WorkCover:
+	•	Apply employer policy and OHS duty to provide safe work; still require participation and capacity clarification.
+	•	Set check-in cadence based on risk (e.g., high risk = every 3–5 days; moderate = weekly).
+	•	Define exit criteria for non-participation (e.g., 2–3 missed critical steps + warnings).
+
+3.4 CHECK_IN_LOOP (simulate progress)
+
+Loop ticks represent days (accelerated). On each tick:
+	•	If verification_required (e.g., vague OMC) and worker cooperates:
+	•	Convert to specific capacity (e.g., “no lifting > 5kg, 4h/day for 7 days”).
+	•	If case shows improvement:
+	•	Upgrade capacity (e.g., 4h → 6h → 8h; or lifting tolerance up).
+	•	If stagnant ≥ 21–28 days:
+	•	WorkCover: request IME / case conference; Non-WorkCover: arrange independent review.
+	•	If participation_profile is non-responsive:
+	•	Send structured notices (1st, 2nd, final) citing obligation to participate (WorkCover or employer/OHS policy).
+	•	After threshold (e.g., 3 missed critical steps), transition to EXIT_NON_PARTICIPATION.
+	•	If ALL capacity goals met and duties available:
+	•	Transition to FULL_DUTIES.
+	•	If partial capacity stabilized > 14 days and duties sustainable:
+	•	Transition to MODIFIED_DUTIES.
+	•	Always log next step (call manager, obtain clinical note, schedule review, update certificate, etc.).
+
+4) Decision Rules (examples)
+	•	Return to Work progression (musculoskeletal):
+	•	Week 1–2: 4h/day light, no lifting > 5kg → Week 3–4: 6h/day, lift 10kg → Week 5+: 8h/day, normal.
+	•	Psychosocial flag present + no treatment engagement within 14 days → escalate to psych support and case conference.
+	•	OMC chain (≥2 back-to-back vague OMCs) without clarification → treat as verification_required + enforce participation steps.
+	•	Accident (minor) with early treatment + suitable duties → usually MODIFIED_DUTIES within 3–10 days, FULL_DUTIES by 21–35 days if compliant.
+	•	Long-term modified beyond 12 weeks without upgrade + available duties → IME/review; outcome either MODIFIED_DUTIES (ongoing) or EXIT_NON_PARTICIPATION if refusal.
+
+5) Outputs per Case (log each step)
+	•	Header with worker_id, case type, workcover, role.
+	•	Marketing Promise line (from §0).
+	•	Initial Fit Classification.
+	•	Plan Summary (duties, cadence, verifications).
+	•	Events Timeline (day-by-day significant steps).
+	•	Final Outcome (FULL_DUTIES / MODIFIED_DUTIES / EXIT_NON_PARTICIPATION).
+	•	Reasoning Summary (bulleted).
+	•	Time-to-Outcome (sim-days).
+
+6) Global Metrics (print every 2 minutes and at the end)
+	•	cases processed, by archetype.
+	•	Outcome mix (% full duties, % modified, % exit).
+	•	Median simulated days to outcome (overall + by archetype).
+	•	Participation issues: count of warnings, exits.
+	•	WorkCover vs non-WorkCover comparison (time to outcome, exit rate).
+	•	Top 3 blockers (e.g., capacity clarification delays, duty availability, non-participation).
+
+7) Run Control
+	•	Simulation runs for 20 minutes wall-clock.
+	•	Concurrency: process N active cases at once (pick a sensible default like 25–50).
+	•	Random seed option (e.g., SEED=42) for reproducibility.
+	•	On exit, dump a concise CSV of outcomes plus a human-readable summary.
+
+8) Example Seed Cases (ensure these exact ones are included early)
+	1.	ACCIDENT (WorkCover=true)
+	•	Warehouse strain, severity=moderate, initial “Not fit 5 days,” cooperative.
+	•	Expected: MODIFIED_DUTIES by day 5–10; FULL_DUTIES by ~day 28–35.
+	2.	ONLINE_CERT (WorkCover=false)
+	•	Admin role, vague “unfit 7 days,” inconsistent participation.
+	•	Expected: verification steps; if clarifies → MODIFIED_DUTIES; if misses 3 steps → EXIT_NON_PARTICIPATION.
+	3.	LONG_ABSENCE 45d (WorkCover=true)
+	•	Production role, low participation.
+	•	Expected: case manager + OR provider; if continues non-response → EXIT_NON_PARTICIPATION.
+	4.	LONG_MODIFIED 70d (WorkCover=false)
+	•	Field tech on 4h/day, lifting ≤5kg, duties available, cooperative.
+	•	Expected: Upgrade plan; likely FULL_DUTIES within ~21–28 sim-days.
+	5.	DOCTOR_VISIT (WorkCover=true)
+	•	Certificate: “fit with restrictions 2 weeks,” cooperative, duties limited.
+	•	Expected: MODIFIED_DUTIES, possible FULL_DUTIES if upgrades accepted.
+
+9) Compliance & Language
+	•	Always frame clinical statements as reported/perceived (liability wording).
+	•	Print this standard disclaimer at the end of each case:
+“This report has been reviewed and evaluated against the known physical and psychosocial requirements of the role. The information provided in this report is based on the details available at the time of assessment. Where full role requirements or clinical documentation were not available, reasonable assumptions may have been made. The recommendations provided are intended as general guidance to support injury prevention and sustainable work participation, and should be validated against actual duties and workplace practices where applicable.”
+
+10) Fit Classification (show under summary per case)
+	•	☐ Fit without restriction
+	•	☐ Fit with restrictions
+	•	☐ Not fit
+(Tick the applicable one at each major step; final tick must match the terminal outcome.)
+
+11) Example Log Snippet (format to imitate)
+
+[CASE START] worker=WK-1024 type=ONLINE_CERT workcover=false role=Admin
+— GPNet encapsulates the entire domain — case managers, occupational rehabilitation specialists, medical professionals, and the legal framework — so we can quickly analyze any situation and make a defensible recommendation.
+INTAKE: Initial Fit Classification → Not fit (pending verification).
+TRIAGE: OMC (vague). Action: request capacity specifics + propose duties (phone / email).
+PLAN: Check-ins every 3 days; escalation after 2 missed steps.
+D+3: Worker responded; capacity clarified: 4h/day, no lifting >5kg (7d).
+D+4: Manager confirms suitable duties available; RTW on modified.
+D+11: Upgrade to 6h/day; monitor.
+D+18: Full duties trial approved.
+OUTCOME: FULL_DUTIES (time_to_outcome=18 sim-days).
+REASONING: verification resolved; duties available; progressive upgrade successful.
+[DISCLAIMER PRINTED]
+[CASE END]
+
+12) Pass/Fail Acceptance Criteria
+	•	Must run for ~20 minutes wall-clock and process ≥ 100 cases total (adjust concurrency).
+	•	Each archetype appears at least 10 times.
+	•	Both WorkCover and non-WorkCover present in ≥ 30% of cases each.
+	•	All three terminal outcomes occur at least once; none is 0%.
+	•	Metrics block prints every ~2 minutes and at the end.
+	•	CSV with per-case summary is written at finish.
+
+⸻
+
+If you want, I can also give you a compact “one-page” version of this spec (same content, fewer words) for faster NL→code generation.

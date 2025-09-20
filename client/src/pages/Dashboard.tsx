@@ -5,7 +5,9 @@ import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import CaseCard from "@/components/CaseCard";
 import CaseDetailsModal from "@/components/CaseDetailsModal";
 import AdvancedCaseFilters from "@/components/AdvancedCaseFilters";
+import MichelleDashboardPanel from "@/components/MichelleDashboardPanel";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { useUser } from "@/components/UserContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -67,8 +69,10 @@ interface FilterState {
 }
 
 export default function Dashboard() {
+  const { user } = useUser(); // Get user context
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
   
   // Advanced filter state
   const [filters, setFilters] = useState<FilterState>({
@@ -194,6 +198,30 @@ export default function Dashboard() {
     updateRecommendationsMutation.mutate({ ticketId, recommendations });
   };
 
+  // Event listeners for Michelle's custom events
+  useEffect(() => {
+    const handleMichelleFilterCases = (event: CustomEvent) => {
+      const filterUpdates = event.detail;
+      setFilters(prevFilters => ({
+        ...prevFilters,
+        ...filterUpdates
+      }));
+    };
+
+    const handleMichelleSwitchTab = (event: CustomEvent) => {
+      const { tab } = event.detail;
+      setActiveTab(tab);
+    };
+
+    window.addEventListener('michelle-filter-cases', handleMichelleFilterCases as EventListener);
+    window.addEventListener('michelle-switch-tab', handleMichelleSwitchTab as EventListener);
+
+    return () => {
+      window.removeEventListener('michelle-filter-cases', handleMichelleFilterCases as EventListener);
+      window.removeEventListener('michelle-switch-tab', handleMichelleSwitchTab as EventListener);
+    };
+  }, []);
+
   // Extract cases from response
   const cases: DashboardCase[] = casesResponse?.cases || [];
   const totalCases: number = casesResponse?.total || 0;
@@ -290,6 +318,15 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Michelle Dashboard Panel */}
+        <div className="mb-8">
+          <MichelleDashboardPanel 
+            stats={stats}
+            recentCases={cases.slice(0, 5)} // Pass top 5 recent cases
+            userName={user?.name || "there"}
+          />
+        </div>
+
         {/* Status Board */}
         <div className="mb-8">
           <StatusBoard 
@@ -300,7 +337,7 @@ export default function Dashboard() {
         </div>
 
         {/* Dashboard Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="overview" className="flex items-center gap-2" data-testid="tab-overview">
               <Grid3X3 className="h-4 w-4" />
