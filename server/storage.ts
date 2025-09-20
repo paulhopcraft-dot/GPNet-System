@@ -3,15 +3,18 @@ import {
   injuries, stakeholders, rtwPlans, riskHistory,
   legislationDocuments, rtwWorkflowSteps, complianceAudit, workerParticipationEvents,
   letterTemplates, generatedLetters, freshdeskTickets, freshdeskSyncLogs,
+  organizations, clientUsers, adminUsers, auditEvents, archiveIndex,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
   type Injury, type Stakeholder, type RtwPlan, type RiskHistory,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
   type LetterTemplate, type GeneratedLetter, type FreshdeskTicket, type FreshdeskSyncLog,
+  type Organization, type ClientUser, type AdminUser, type AuditEvent, type ArchiveIndex,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
   type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
   type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter,
-  type InsertFreshdeskTicket, type InsertFreshdeskSyncLog
+  type InsertFreshdeskTicket, type InsertFreshdeskSyncLog,
+  type InsertOrganization, type InsertClientUser, type InsertAdminUser, type InsertAuditEvent, type InsertArchiveIndex
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -173,6 +176,60 @@ export interface IStorage {
   getFreshdeskSyncLogsByTicket(gpnetTicketId: string): Promise<FreshdeskSyncLog[]>;
   getFreshdeskSyncLogsByOperation(operation: string): Promise<FreshdeskSyncLog[]>;
   getFailedFreshdeskSyncLogs(): Promise<FreshdeskSyncLog[]>;
+
+  // ===============================================
+  // MULTI-TENANT AUTHENTICATION & ADMIN
+  // ===============================================
+
+  // Organizations
+  createOrganization(organization: InsertOrganization): Promise<Organization>;
+  getOrganization(id: string): Promise<Organization | undefined>;
+  getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
+  getAllOrganizations(): Promise<Organization[]>;
+  updateOrganization(id: string, updates: Partial<InsertOrganization>): Promise<Organization>;
+  archiveOrganization(id: string, archivedBy: string): Promise<Organization>;
+
+  // Client Users
+  createClientUser(user: InsertClientUser): Promise<ClientUser>;
+  getClientUser(id: string): Promise<ClientUser | undefined>;
+  getClientUserByEmail(email: string, organizationId?: string): Promise<ClientUser | undefined>;
+  getClientUsersByOrganization(organizationId: string): Promise<ClientUser[]>;
+  updateClientUser(id: string, updates: Partial<InsertClientUser>): Promise<ClientUser>;
+  updateClientUserLastLogin(id: string): Promise<ClientUser>;
+
+  // Admin Users
+  createAdminUser(user: InsertAdminUser): Promise<AdminUser>;
+  getAdminUser(id: string): Promise<AdminUser | undefined>;
+  getAdminUserByEmail(email: string): Promise<AdminUser | undefined>;
+  updateAdminUser(id: string, updates: Partial<InsertAdminUser>): Promise<AdminUser>;
+  updateAdminUserLastLogin(id: string): Promise<AdminUser>;
+  setAdminImpersonation(id: string, targetOrgId: string | null): Promise<AdminUser>;
+
+  // Audit Events
+  createAuditEvent(event: InsertAuditEvent): Promise<AuditEvent>;
+  getAuditEvents(filters?: {
+    organizationId?: string;
+    actorId?: string;
+    eventType?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<AuditEvent[]>;
+
+  // Archive Index
+  createArchiveEntry(entry: InsertArchiveIndex): Promise<ArchiveIndex>;
+  getArchivedEntities(entityType?: string, organizationId?: string): Promise<ArchiveIndex[]>;
+  restoreArchivedEntity(id: string, restoredBy: string): Promise<ArchiveIndex>;
+
+  // Multi-tenant data access (add organizationId context to existing methods)
+  getAllTicketsForOrganization(organizationId: string): Promise<Ticket[]>;
+  getDashboardStatsForOrganization(organizationId: string): Promise<{
+    total: number;
+    new: number;
+    inProgress: number;
+    awaiting: number;
+    complete: number;
+    flagged: number;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1073,6 +1130,311 @@ export class DatabaseStorage implements IStorage {
       .values(emailData)
       .returning();
     return email;
+  }
+
+  // ===============================================
+  // MULTI-TENANT AUTHENTICATION & ADMIN IMPLEMENTATIONS
+  // ===============================================
+
+  // Organizations
+  async createOrganization(insertOrganization: InsertOrganization): Promise<Organization> {
+    const [organization] = await db
+      .insert(organizations)
+      .values(insertOrganization)
+      .returning();
+    return organization;
+  }
+
+  async getOrganization(id: string): Promise<Organization | undefined> {
+    const [organization] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, id));
+    return organization || undefined;
+  }
+
+  async getOrganizationBySlug(slug: string): Promise<Organization | undefined> {
+    const [organization] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.slug, slug));
+    return organization || undefined;
+  }
+
+  async getAllOrganizations(): Promise<Organization[]> {
+    return await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.isArchived, false))
+      .orderBy(desc(organizations.createdAt));
+  }
+
+  async updateOrganization(id: string, updates: Partial<InsertOrganization>): Promise<Organization> {
+    const [organization] = await db
+      .update(organizations)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(organizations.id, id))
+      .returning();
+    return organization;
+  }
+
+  async archiveOrganization(id: string, archivedBy: string): Promise<Organization> {
+    const [organization] = await db
+      .update(organizations)
+      .set({ 
+        isArchived: true, 
+        archivedAt: new Date(), 
+        archivedBy,
+        updatedAt: new Date() 
+      })
+      .where(eq(organizations.id, id))
+      .returning();
+    return organization;
+  }
+
+  // Client Users
+  async createClientUser(insertUser: InsertClientUser): Promise<ClientUser> {
+    const [user] = await db
+      .insert(clientUsers)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  async getClientUser(id: string): Promise<ClientUser | undefined> {
+    const [user] = await db
+      .select()
+      .from(clientUsers)
+      .where(eq(clientUsers.id, id));
+    return user || undefined;
+  }
+
+  async getClientUserByEmail(email: string, organizationId?: string): Promise<ClientUser | undefined> {
+    const conditions = [eq(clientUsers.email, email)];
+    
+    if (organizationId) {
+      conditions.push(eq(clientUsers.organizationId, organizationId));
+    }
+    
+    const [user] = await db
+      .select()
+      .from(clientUsers)
+      .where(and(...conditions));
+    
+    return user || undefined;
+  }
+
+  async getClientUsersByOrganization(organizationId: string): Promise<ClientUser[]> {
+    return await db
+      .select()
+      .from(clientUsers)
+      .where(and(
+        eq(clientUsers.organizationId, organizationId),
+        eq(clientUsers.isArchived, false)
+      ))
+      .orderBy(desc(clientUsers.createdAt));
+  }
+
+  async updateClientUser(id: string, updates: Partial<InsertClientUser>): Promise<ClientUser> {
+    const [user] = await db
+      .update(clientUsers)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(clientUsers.id, id))
+      .returning();
+    return user;
+  }
+
+  async updateClientUserLastLogin(id: string): Promise<ClientUser> {
+    // Get current login count first
+    const currentUser = await this.getClientUser(id);
+    const newLoginCount = (currentUser?.loginCount || 0) + 1;
+    
+    const [user] = await db
+      .update(clientUsers)
+      .set({ 
+        lastLoginAt: new Date(),
+        loginCount: newLoginCount,
+        updatedAt: new Date() 
+      })
+      .where(eq(clientUsers.id, id))
+      .returning();
+    return user;
+  }
+
+  // Admin Users
+  async createAdminUser(insertUser: InsertAdminUser): Promise<AdminUser> {
+    const [user] = await db
+      .insert(adminUsers)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  async getAdminUser(id: string): Promise<AdminUser | undefined> {
+    const [user] = await db
+      .select()
+      .from(adminUsers)
+      .where(eq(adminUsers.id, id));
+    return user || undefined;
+  }
+
+  async getAdminUserByEmail(email: string): Promise<AdminUser | undefined> {
+    const [user] = await db
+      .select()
+      .from(adminUsers)
+      .where(eq(adminUsers.email, email));
+    return user || undefined;
+  }
+
+  async updateAdminUser(id: string, updates: Partial<InsertAdminUser>): Promise<AdminUser> {
+    const [user] = await db
+      .update(adminUsers)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(adminUsers.id, id))
+      .returning();
+    return user;
+  }
+
+  async updateAdminUserLastLogin(id: string): Promise<AdminUser> {
+    // Get current login count first
+    const currentUser = await this.getAdminUser(id);
+    const newLoginCount = (currentUser?.loginCount || 0) + 1;
+    
+    const [user] = await db
+      .update(adminUsers)
+      .set({ 
+        lastLoginAt: new Date(),
+        loginCount: newLoginCount,
+        updatedAt: new Date() 
+      })
+      .where(eq(adminUsers.id, id))
+      .returning();
+    return user;
+  }
+
+  async setAdminImpersonation(id: string, targetOrgId: string | null): Promise<AdminUser> {
+    const [user] = await db
+      .update(adminUsers)
+      .set({ 
+        currentImpersonationTarget: targetOrgId,
+        impersonationStartedAt: targetOrgId ? new Date() : null,
+        updatedAt: new Date() 
+      })
+      .where(eq(adminUsers.id, id))
+      .returning();
+    return user;
+  }
+
+  // Audit Events
+  async createAuditEvent(insertEvent: InsertAuditEvent): Promise<AuditEvent> {
+    const [event] = await db
+      .insert(auditEvents)
+      .values(insertEvent)
+      .returning();
+    return event;
+  }
+
+  async getAuditEvents(filters?: {
+    organizationId?: string;
+    actorId?: string;
+    eventType?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<AuditEvent[]> {
+    const conditions = [];
+    
+    if (filters) {
+      if (filters.organizationId) conditions.push(eq(auditEvents.organizationId, filters.organizationId));
+      if (filters.actorId) conditions.push(eq(auditEvents.actorId, filters.actorId));
+      if (filters.eventType) conditions.push(eq(auditEvents.eventType, filters.eventType));
+      // Add date filtering if needed
+    }
+    
+    let query = db.select().from(auditEvents);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    return await query.orderBy(desc(auditEvents.timestamp));
+  }
+
+  // Archive Index
+  async createArchiveEntry(insertEntry: InsertArchiveIndex): Promise<ArchiveIndex> {
+    const [entry] = await db
+      .insert(archiveIndex)
+      .values(insertEntry)
+      .returning();
+    return entry;
+  }
+
+  async getArchivedEntities(entityType?: string, organizationId?: string): Promise<ArchiveIndex[]> {
+    const conditions = [];
+    if (entityType) conditions.push(eq(archiveIndex.entityType, entityType));
+    if (organizationId) conditions.push(eq(archiveIndex.organizationId, organizationId));
+    
+    let query = db.select().from(archiveIndex);
+    
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions));
+    }
+    
+    return await query.orderBy(desc(archiveIndex.archivedAt));
+  }
+
+  async restoreArchivedEntity(id: string, restoredBy: string): Promise<ArchiveIndex> {
+    const [entry] = await db
+      .update(archiveIndex)
+      .set({ 
+        restoredAt: new Date(),
+        restoredBy 
+      })
+      .where(eq(archiveIndex.id, id))
+      .returning();
+    return entry;
+  }
+
+  // Multi-tenant data access
+  async getAllTicketsForOrganization(organizationId: string): Promise<Ticket[]> {
+    return await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.organizationId, organizationId))
+      .orderBy(desc(tickets.createdAt));
+  }
+
+  async getDashboardStatsForOrganization(organizationId: string): Promise<{
+    total: number;
+    new: number;
+    inProgress: number;
+    awaiting: number;
+    complete: number;
+    flagged: number;
+  }> {
+    const allTickets = await this.getAllTicketsForOrganization(organizationId);
+    
+    const stats = {
+      total: allTickets.length,
+      new: allTickets.filter(t => t.status === 'NEW').length,
+      inProgress: allTickets.filter(t => ['ANALYSING', 'IN_PROGRESS'].includes(t.status || '')).length,
+      awaiting: allTickets.filter(t => t.status === 'AWAITING_REVIEW').length,
+      complete: allTickets.filter(t => t.status === 'COMPLETE').length,
+      flagged: 0 // Will need to get flagged count from analyses
+    };
+
+    // Get flagged count by checking analyses for red RAG scores
+    const flaggedTickets = await db
+      .select({ ticketId: analyses.ticketId })
+      .from(analyses)
+      .innerJoin(tickets, eq(analyses.ticketId, tickets.id))
+      .where(and(
+        eq(tickets.organizationId, organizationId),
+        eq(analyses.ragScore, 'red')
+      ));
+    
+    stats.flagged = flaggedTickets.length;
+    
+    return stats;
   }
 }
 
