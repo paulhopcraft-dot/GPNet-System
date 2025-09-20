@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { preEmploymentFormSchema, type PreEmploymentFormData, injuryFormSchema, type InjuryFormData, rtwPlanSchema, insertStakeholderSchema } from "@shared/schema";
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
+import { pdfService } from "./pdfService";
 
 // Analysis engine for RAG scoring and fit classification
 class AnalysisEngine {
@@ -1324,6 +1325,332 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting RTW plan:", error);
       res.status(500).json({ error: "Failed to delete RTW plan" });
+    }
+  });
+
+  // ===============================================
+  // PDF REPORT GENERATION API
+  // ===============================================
+  
+  // Generate case summary report
+  app.get("/api/cases/:ticketId/reports/case-summary", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      // Fetch all necessary data for the case summary
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      
+      // Get worker from ticket workerId or form submission
+      let worker = null;
+      if (ticket.workerId) {
+        worker = await storage.getWorker(ticket.workerId);
+      }
+      
+      // If no worker found from ticket, try to get from form submission
+      if (!worker) {
+        const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+        if (formSubmission && formSubmission.workerId) {
+          worker = await storage.getWorker(formSubmission.workerId);
+        }
+      }
+      
+      // Create a default worker object if none found
+      if (!worker) {
+        worker = {
+          id: "unknown",
+          firstName: "Unknown",
+          lastName: "Worker",
+          email: "unknown@example.com",
+          phone: "",
+          roleApplied: "Unknown Role",
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+      }
+      
+      const analysis = await storage.getAnalysisByTicket(ticketId);
+      const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+      const injury = await storage.getInjuryByTicket(ticketId);
+      const stakeholders = await storage.getStakeholdersByTicket(ticketId);
+      // TODO: Add getEmailsByTicket and getAttachmentsByTicket methods to storage
+      const emails: any[] = [];
+      const attachments: any[] = [];
+      const rtwPlans = await storage.getRtwPlansByTicket(ticketId);
+      const rtwPlan = rtwPlans.length > 0 ? rtwPlans[0] : null;
+      
+      const reportData = {
+        ticket,
+        worker,
+        analysis: analysis || null,
+        formSubmission: formSubmission || null,
+        injury,
+        rtwPlan,
+        stakeholders,
+        emails,
+        attachments,
+        generatedAt: new Date().toISOString(),
+        generatedBy: "GPNet System"
+      };
+      
+      const pdfBuffer = await pdfService.generateCaseSummaryReport(reportData);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="case-summary-${ticketId}.pdf"`);
+      res.send(pdfBuffer);
+      
+      console.log(`Generated case summary report for case ${ticketId}`);
+      
+    } catch (error) {
+      console.error("Error generating case summary report:", error);
+      res.status(500).json({ error: "Failed to generate case summary report" });
+    }
+  });
+
+  // Generate pre-employment assessment report
+  app.get("/api/cases/:ticketId/reports/pre-employment", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      
+      if (ticket.caseType !== "pre_employment") {
+        return res.status(400).json({ error: "This report is only available for pre-employment cases" });
+      }
+      
+      // Get worker from ticket workerId or form submission
+      let worker = null;
+      if (ticket.workerId) {
+        worker = await storage.getWorker(ticket.workerId);
+      }
+      
+      // If no worker found from ticket, try to get from form submission
+      if (!worker) {
+        const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+        if (formSubmission && formSubmission.workerId) {
+          worker = await storage.getWorker(formSubmission.workerId);
+        }
+      }
+      
+      // Create a default worker object if none found
+      if (!worker) {
+        worker = {
+          id: "unknown",
+          firstName: "Unknown",
+          lastName: "Worker", 
+          email: "unknown@example.com",
+          phone: "",
+          roleApplied: "Unknown Role",
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+      }
+      
+      const analysis = await storage.getAnalysisByTicket(ticketId);
+      if (!analysis) {
+        return res.status(400).json({ error: "Analysis not found. Please complete the assessment first." });
+      }
+      
+      const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+      if (!formSubmission) {
+        return res.status(400).json({ error: "Form submission not found. Please complete the pre-employment form first." });
+      }
+      
+      const reportData = {
+        ticket,
+        worker,
+        analysis: analysis,
+        formSubmission: formSubmission,
+        generatedAt: new Date().toISOString(),
+        generatedBy: "GPNet System",
+        companyName: ticket.companyName || "Company Name Not Specified",
+        recommendations: analysis.recommendations || []
+      };
+      
+      const pdfBuffer = await pdfService.generatePreEmploymentReport(reportData);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="pre-employment-assessment-${worker.firstName}-${worker.lastName}.pdf"`);
+      res.send(pdfBuffer);
+      
+      console.log(`Generated pre-employment assessment report for case ${ticketId}`);
+      
+    } catch (error) {
+      console.error("Error generating pre-employment assessment report:", error);
+      res.status(500).json({ error: "Failed to generate pre-employment assessment report" });
+    }
+  });
+
+  // Generate injury report
+  app.get("/api/cases/:ticketId/reports/injury", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      
+      if (ticket.caseType !== "injury") {
+        return res.status(400).json({ error: "This report is only available for injury cases" });
+      }
+      
+      const worker = await storage.getWorker(ticket.workerId!);
+      if (!worker) {
+        return res.status(404).json({ error: "Worker not found" });
+      }
+      
+      const injury = await storage.getInjuryByTicket(ticketId);
+      if (!injury) {
+        return res.status(400).json({ error: "Injury details not found. Please complete the injury report first." });
+      }
+      
+      const analysis = await storage.getAnalysisByTicket(ticketId);
+      const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+      const stakeholders = await storage.getStakeholdersByTicket(ticketId);
+      const rtwPlans = await storage.getRtwPlansByTicket(ticketId);
+      const rtwPlan = rtwPlans.length > 0 ? rtwPlans[0] : null;
+      
+      const reportData = {
+        ticket,
+        worker,
+        injury,
+        formSubmission: formSubmission || null,
+        analysis: analysis || null,
+        stakeholders,
+        rtwPlan,
+        generatedAt: new Date().toISOString(),
+        generatedBy: "GPNet System"
+      };
+      
+      const pdfBuffer = await pdfService.generateInjuryReport(reportData);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="injury-report-${worker.firstName}-${worker.lastName}.pdf"`);
+      res.send(pdfBuffer);
+      
+      console.log(`Generated injury report for case ${ticketId}`);
+      
+    } catch (error) {
+      console.error("Error generating injury report:", error);
+      res.status(500).json({ error: "Failed to generate injury report" });
+    }
+  });
+
+  // Generate compliance audit report
+  app.get("/api/cases/:ticketId/reports/compliance-audit", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      
+      const worker = await storage.getWorker(ticket.workerId!);
+      if (!worker) {
+        return res.status(404).json({ error: "Worker not found" });
+      }
+      
+      // Fetch compliance data
+      const auditTrail = await storage.getComplianceAuditByTicket(ticketId);
+      const workflowSteps = await storage.getRtwWorkflowStepsByTicket(ticketId);
+      const participationEvents = await storage.getWorkerParticipationEventsByTicket(ticketId);
+      const generatedLetters = await storage.getGeneratedLettersByTicket(ticketId);
+      
+      const reportData = {
+        ticket,
+        worker,
+        auditTrail,
+        workflowSteps,
+        participationEvents,
+        generatedLetters,
+        generatedAt: new Date().toISOString(),
+        generatedBy: "GPNet System"
+      };
+      
+      const pdfBuffer = await pdfService.generateComplianceAuditReport(reportData);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="compliance-audit-${ticketId}.pdf"`);
+      res.send(pdfBuffer);
+      
+      console.log(`Generated compliance audit report for case ${ticketId}`);
+      
+    } catch (error) {
+      console.error("Error generating compliance audit report:", error);
+      res.status(500).json({ error: "Failed to generate compliance audit report" });
+    }
+  });
+
+  // Get available reports for a case
+  app.get("/api/cases/:ticketId/reports", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Case not found" });
+      }
+      
+      const availableReports = [
+        {
+          type: "case-summary",
+          name: "Case Summary Report",
+          description: "Comprehensive overview of the case including all details, analysis, and stakeholders",
+          url: `/api/cases/${ticketId}/reports/case-summary`,
+          available: true
+        }
+      ];
+      
+      if (ticket.caseType === "pre_employment") {
+        const analysis = await storage.getAnalysisByTicket(ticketId);
+        const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+        
+        availableReports.push({
+          type: "pre-employment",
+          name: "Pre-Employment Assessment Report",
+          description: "Professional report for employers with fitness classification and recommendations",
+          url: `/api/cases/${ticketId}/reports/pre-employment`,
+          available: !!analysis && !!formSubmission
+        });
+      }
+      
+      if (ticket.caseType === "injury") {
+        const injury = await storage.getInjuryByTicket(ticketId);
+        
+        availableReports.push({
+          type: "injury",
+          name: "Workplace Injury Report",
+          description: "Comprehensive injury documentation for compliance and case management",
+          url: `/api/cases/${ticketId}/reports/injury`,
+          available: !!injury
+        });
+      }
+      
+      // Compliance audit report is available for all cases
+      availableReports.push({
+        type: "compliance-audit",
+        name: "Compliance Audit Report",
+        description: "Legal compliance documentation with full audit trail for defense purposes",
+        url: `/api/cases/${ticketId}/reports/compliance-audit`,
+        available: true
+      });
+      
+      res.json({
+        caseId: ticketId,
+        caseType: ticket.caseType,
+        availableReports
+      });
+      
+    } catch (error) {
+      console.error("Error fetching available reports:", error);
+      res.status(500).json({ error: "Failed to fetch available reports" });
     }
   });
 

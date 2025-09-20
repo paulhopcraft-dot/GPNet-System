@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { MichelleChat } from "./MichelleChat";
+import { ReportGenerator } from "./ReportGenerator";
 
 interface CaseDetails {
   ticketId: string;
@@ -124,9 +125,10 @@ export default function CaseDetailsModal({
         </DialogHeader>
 
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
             <TabsTrigger value="analysis" data-testid="tab-analysis">Analysis</TabsTrigger>
+            <TabsTrigger value="reports" data-testid="tab-reports">Reports</TabsTrigger>
             <TabsTrigger value="michelle" data-testid="tab-michelle">Michelle AI</TabsTrigger>
             <TabsTrigger value="actions" data-testid="tab-actions">Actions</TabsTrigger>
           </TabsList>
@@ -289,6 +291,13 @@ export default function CaseDetailsModal({
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="reports" className="space-y-4">
+            <ReportGenerator 
+              caseId={caseDetails.ticketId} 
+              data-testid="report-generator-modal" 
+            />
           </TabsContent>
 
           <TabsContent value="michelle" className="space-y-4">
