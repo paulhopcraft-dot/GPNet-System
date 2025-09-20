@@ -1,22 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import StatusBoard from "@/components/StatusBoard";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import CaseCard from "@/components/CaseCard";
 import CaseDetailsModal from "@/components/CaseDetailsModal";
+import AdvancedCaseFilters from "@/components/AdvancedCaseFilters";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Plus, Filter, Download, Loader2, BarChart3, Grid3X3 } from "lucide-react";
+import { Plus, Download, Loader2, BarChart3, Grid3X3 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -36,6 +29,7 @@ interface DashboardCase {
   priority?: string | null;
   status: string;
   createdAt: string;
+  updatedAt?: string;
   workerName: string;
   email: string;
   phone: string;
@@ -47,12 +41,45 @@ interface DashboardCase {
   notes: string;
 }
 
+interface CasesResponse {
+  cases: DashboardCase[];
+  total: number;
+  page: number;
+  hasMore: boolean;
+}
+
+interface FilterState {
+  search: string;
+  status: string;
+  caseType: string;
+  claimType: string;
+  priority: string;
+  ragScore: string;
+  fitClassification: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  sortBy: string;
+  sortOrder: string;
+}
+
 export default function Dashboard() {
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [caseTypeFilter, setCaseTypeFilter] = useState<string>("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  
+  // Advanced filter state
+  const [filters, setFilters] = useState<FilterState>({
+    search: "",
+    status: "all",
+    caseType: "all",
+    claimType: "all",
+    priority: "all",
+    ragScore: "all",
+    fitClassification: "all",
+    dateFrom: undefined,
+    dateTo: undefined,
+    sortBy: "createdAt",
+    sortOrder: "desc",
+  });
 
   // Fetch dashboard statistics
   const { 
@@ -63,13 +90,38 @@ export default function Dashboard() {
     queryKey: ["/api/dashboard/stats"] 
   });
 
-  // Fetch all cases
+  // Construct query parameters from filters
+  const buildQueryParams = () => {
+    const params = new URLSearchParams();
+    
+    if (filters.search) params.append('search', filters.search);
+    if (filters.status !== 'all') params.append('status', filters.status);
+    if (filters.caseType !== 'all') params.append('caseType', filters.caseType);
+    if (filters.claimType !== 'all') params.append('claimType', filters.claimType);
+    if (filters.priority !== 'all') params.append('priority', filters.priority);
+    if (filters.ragScore !== 'all') params.append('ragScore', filters.ragScore);
+    if (filters.fitClassification !== 'all') params.append('fitClassification', filters.fitClassification);
+    if (filters.dateFrom) params.append('dateFrom', filters.dateFrom.toISOString());
+    if (filters.dateTo) params.append('dateTo', filters.dateTo.toISOString());
+    if (filters.sortBy) params.append('sortBy', filters.sortBy);
+    if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
+    
+    return params.toString();
+  };
+
+  // Fetch cases with filtering
   const { 
-    data: cases, 
+    data: casesResponse, 
     isLoading: casesLoading, 
     error: casesError 
-  } = useQuery<DashboardCase[]>({ 
-    queryKey: ["/api/cases"] 
+  } = useQuery<CasesResponse>({ 
+    queryKey: ["/api/cases", buildQueryParams()],
+    queryFn: async () => {
+      const queryString = buildQueryParams();
+      const url = queryString ? `/api/cases?${queryString}` : '/api/cases';
+      const response = await apiRequest("GET", url);
+      return response as unknown as CasesResponse;
+    }
   });
 
   // Mutations for updating case data
@@ -92,6 +144,42 @@ export default function Dashboard() {
     },
   });
 
+  // Handle filter changes
+  const handleFiltersChange = (newFilters: FilterState) => {
+    setFilters(newFilters);
+  };
+
+  const handleClearFilters = () => {
+    setFilters({
+      search: "",
+      status: "all",
+      caseType: "all",
+      claimType: "all",
+      priority: "all",
+      ragScore: "all",
+      fitClassification: "all",
+      dateFrom: undefined,
+      dateTo: undefined,
+      sortBy: "createdAt",
+      sortOrder: "desc",
+    });
+  };
+
+  // Count active filters
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filters.search) count++;
+    if (filters.status !== 'all') count++;
+    if (filters.caseType !== 'all') count++;
+    if (filters.claimType !== 'all') count++;
+    if (filters.priority !== 'all') count++;
+    if (filters.ragScore !== 'all') count++;
+    if (filters.fitClassification !== 'all') count++;
+    if (filters.dateFrom) count++;
+    if (filters.dateTo) count++;
+    return count;
+  };
+
   const handleViewCase = (caseData: DashboardCase) => {
     console.log("Opening case details for:", caseData.ticketId);
     setSelectedCase(caseData);
@@ -108,16 +196,9 @@ export default function Dashboard() {
     updateRecommendationsMutation.mutate({ ticketId, recommendations });
   };
 
-  const filteredCases = (cases || []).filter((caseItem: DashboardCase) => {
-    const matchesStatus = statusFilter === "all" || caseItem.status === statusFilter;
-    const matchesCaseType = caseTypeFilter === "all" || caseItem.caseType === caseTypeFilter;
-    const matchesSearch = searchQuery === "" || 
-      caseItem.workerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      caseItem.ticketId.includes(searchQuery) ||
-      caseItem.company.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    return matchesStatus && matchesCaseType && matchesSearch;
-  });
+  // Extract cases from response (server-side filtering means no client-side filtering needed)
+  const cases: DashboardCase[] = casesResponse?.cases || [];
+  const totalCases: number = casesResponse?.total || 0;
 
   // Handle loading states
   if (statsLoading || casesLoading) {
@@ -198,95 +279,35 @@ export default function Dashboard() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
-            {/* Filters and Search */}
-            <div className="mb-6">
-              <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <div className="flex flex-col sm:flex-row gap-3 flex-1">
-                  <Input
-                    placeholder="Search cases, workers, or companies..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="sm:max-w-sm"
-                    data-testid="input-search-cases"
-                  />
-                  
-                  <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-full sm:w-48" data-testid="select-status-filter">
-                      <SelectValue placeholder="Filter by status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="NEW">New</SelectItem>
-                      <SelectItem value="ANALYSING">Analyzing</SelectItem>
-                      <SelectItem value="AWAITING_REVIEW">Awaiting Review</SelectItem>
-                      <SelectItem value="REVISIONS_REQUIRED">Revisions Required</SelectItem>
-                      <SelectItem value="READY_TO_SEND">Ready to Send</SelectItem>
-                      <SelectItem value="COMPLETE">Complete</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={caseTypeFilter} onValueChange={setCaseTypeFilter}>
-                    <SelectTrigger className="w-full sm:w-48" data-testid="select-case-type-filter">
-                      <SelectValue placeholder="Filter by case type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Case Types</SelectItem>
-                      <SelectItem value="pre_employment">Pre-Employment</SelectItem>
-                      <SelectItem value="injury">Workplace Injury</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" data-testid="button-export">
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
-                  <Button variant="outline" size="sm" data-testid="button-filters">
-                    <Filter className="h-4 w-4 mr-2" />
-                    Filters
-                  </Button>
-                </div>
-              </div>
-
-              {/* Active filters display */}
-              {(statusFilter !== "all" || caseTypeFilter !== "all" || searchQuery) && (
-                <div className="flex items-center gap-2 mt-3">
-                  <span className="text-sm text-muted-foreground">Active filters:</span>
-                  {statusFilter !== "all" && (
-                    <Badge variant="secondary" className="text-xs">
-                      Status: {statusFilter}
-                    </Badge>
-                  )}
-                  {caseTypeFilter !== "all" && (
-                    <Badge variant="secondary" className="text-xs">
-                      Type: {caseTypeFilter === "pre_employment" ? "Pre-Employment" : "Injury"}
-                    </Badge>
-                  )}
-                  {searchQuery && (
-                    <Badge variant="secondary" className="text-xs">
-                      Search: {searchQuery}
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </div>
+            {/* Advanced Case Filters */}
+            <AdvancedCaseFilters
+              filters={filters}
+              onFiltersChange={handleFiltersChange}
+              onClearFilters={handleClearFilters}
+              activeFilterCount={getActiveFilterCount()}
+            />
 
             {/* Cases Grid */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">
-                  Recent Cases ({filteredCases.length})
+                  Cases ({totalCases} total, {cases.length} shown)
                 </h2>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" data-testid="button-export">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </Button>
+                </div>
               </div>
 
-              {filteredCases.length === 0 ? (
+              {cases.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">No cases found matching your criteria.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredCases.map((caseItem) => (
+                  {cases.map((caseItem: DashboardCase) => (
                     <CaseCard
                       key={caseItem.ticketId}
                       ticketId={caseItem.ticketId}
