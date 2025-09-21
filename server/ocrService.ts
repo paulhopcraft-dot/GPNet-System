@@ -88,22 +88,95 @@ export class OcrService {
   }
 
   /**
-   * Convert PDF to image for OCR processing
+   * Convert PDF to high-quality image for OCR processing
    */
   private async convertPdfToImage(pdfBuffer: Buffer): Promise<{ buffer: Buffer; contentType: string }> {
     try {
-      // Note: In a production environment, you would use a PDF-to-image conversion library
-      // like pdf-poppler, pdf2pic, or similar. For now, we'll return the original buffer
-      // with a warning that PDF conversion is not implemented.
-      console.warn('PDF to image conversion not implemented. PDF processing may fail.');
+      console.log('Starting PDF to image conversion for OCR processing');
       
-      // Return the PDF buffer as-is - OpenAI Vision can handle some PDFs directly
+      // Import required modules
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const crypto = await import('crypto');
+      
+      // Generate unique temporary file names
+      const tempId = crypto.randomUUID();
+      const tempPdfPath = path.join('/tmp', `input_${tempId}.pdf`);
+      const outputPrefix = `output_${tempId}`;
+      
+      try {
+        // Write PDF buffer to temporary file (pdf-poppler requires file path)
+        await fs.writeFile(tempPdfPath, pdfBuffer);
+        
+        // Dynamic import with CommonJS interop handling
+        const popplerModule = await import('pdf-poppler');
+        const PopplerClass = popplerModule.default || popplerModule;
+        
+        // Instantiate Poppler class (pdf-poppler requires instantiation)
+        const poppler = new (PopplerClass as any)();
+        
+        // Configuration with correct pdf-poppler options
+        const options = {
+          format: 'png',
+          out_dir: '/tmp',
+          out_prefix: outputPrefix,
+          page: 1,
+          dpi: 300  // High DPI for better OCR accuracy
+        };
+
+        // Convert PDF to image using pdf-poppler
+        console.log(`Converting PDF with pdf-poppler: ${tempPdfPath}`);
+        await poppler.convert(tempPdfPath, options);
+        
+        // Check if the output file was created (pdf-poppler outputs as: prefix-1.png)
+        const imagePath = path.join('/tmp', `${outputPrefix}-1.png`);
+        
+        // Verify the converted image file exists
+        try {
+          await fs.access(imagePath);
+        } catch (error) {
+          throw new Error('PDF conversion did not produce expected output file');
+        }
+        const imageBuffer = await fs.readFile(imagePath);
+        
+        // Post-conversion size guard (high DPI PNG can be very large)
+        if (imageBuffer.length > OcrService.MAX_IMAGE_SIZE) {
+          throw new Error(`Converted image too large: ${imageBuffer.length} bytes. Maximum: ${OcrService.MAX_IMAGE_SIZE} bytes`);
+        }
+        
+        console.log(`PDF successfully converted to PNG image: ${imageBuffer.length} bytes`);
+        
+        return {
+          buffer: imageBuffer,
+          contentType: 'image/png'
+        };
+        
+      } finally {
+        // Clean up temporary files regardless of success/failure
+        try {
+          await fs.unlink(tempPdfPath);
+          await fs.unlink(path.join('/tmp', `${outputPrefix}-1.png`));
+        } catch (cleanupError) {
+          console.warn('Failed to cleanup temporary files:', cleanupError);
+        }
+      }
+      
+    } catch (error) {
+      console.error('PDF to image conversion failed:', error);
+      
+      // Check if error is due to missing poppler utilities
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('poppler') || errorMessage.includes('pdftoppm')) {
+        console.warn('Poppler utilities not available. Install poppler-utils for PDF conversion support.');
+      }
+      
+      // Fallback to direct PDF processing with OpenAI Vision
+      console.warn('Falling back to direct PDF processing - OCR accuracy may be reduced');
+      
       return {
         buffer: pdfBuffer,
         contentType: 'application/pdf'
       };
-    } catch (error) {
-      throw new Error(`PDF conversion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

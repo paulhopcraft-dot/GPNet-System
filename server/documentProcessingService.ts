@@ -98,9 +98,9 @@ export class DocumentProcessingService {
       });
 
       // Store document in object storage
-      const fileUrl = await this.storeDocumentFile(attachmentData.buffer, attachmentData.filename, attachmentData.contentType);
+      const storageKey = await this.storeDocumentFile(attachmentData.buffer, attachmentData.filename, attachmentData.contentType);
       
-      await this.logEvent(undefined, jobId, 'storage_completed', 'Document stored in object storage', { fileUrl });
+      await this.logEvent(undefined, jobId, 'storage_completed', 'Document stored in object storage', { storageKey });
 
       // Create medical document record
       const medicalDoc = await this.createMedicalDocument({
@@ -110,7 +110,7 @@ export class DocumentProcessingService {
         sourceId,
         kind: ocrResult.classification.kind,
         originalFilename: attachmentData.filename,
-        fileUrl,
+        fileUrl: storageKey, // Storage key for file retrieval
         contentType: attachmentData.contentType,
         fileSize: attachmentData.size,
         checksum,
@@ -176,16 +176,45 @@ export class DocumentProcessingService {
    * Store document file in object storage
    */
   private async storeDocumentFile(buffer: Buffer, filename: string, contentType: string): Promise<string> {
-    // Generate unique filename to prevent conflicts
-    const timestamp = Date.now();
-    const hash = this.generateChecksum(buffer).substring(0, 8);
-    const ext = filename.split('.').pop() || 'bin';
-    const uniqueFilename = `medical-docs/${timestamp}-${hash}.${ext}`;
+    try {
+      // Generate unique filename to prevent conflicts
+      const timestamp = Date.now();
+      const hash = this.generateChecksum(buffer).substring(0, 8);
+      const ext = filename.split('.').pop() || 'bin';
+      const uniqueFilename = `medical-docs/${timestamp}-${hash}.${ext}`;
 
-    // In a real implementation, this would upload to the configured object storage
-    // For now, return a placeholder URL
-    const baseUrl = process.env.PRIVATE_OBJECT_DIR || '/private/medical-documents';
-    return `${baseUrl}/${uniqueFilename}`;
+      // Get the private object storage directory with fallback
+      const privateDir = process.env.PRIVATE_OBJECT_DIR || '/tmp/private-storage';
+      
+      // Import filesystem modules
+      const fs = await import('fs/promises');
+      const path = await import('path');
+
+      // Ensure the medical-docs subdirectory exists
+      const medicalDocsDir = path.join(privateDir, 'medical-docs');
+      await fs.mkdir(medicalDocsDir, { recursive: true });
+
+      // Full path for the file
+      const filePath = path.join(privateDir, uniqueFilename);
+      
+      // Write the file to object storage
+      await fs.writeFile(filePath, buffer);
+      
+      // Verify the file was written successfully
+      const stats = await fs.stat(filePath);
+      if (stats.size !== buffer.length) {
+        throw new Error(`File size mismatch: expected ${buffer.length}, got ${stats.size}`);
+      }
+
+      console.log(`Document successfully stored in object storage: ${stats.size} bytes`);
+      
+      // Return only the storage key (not absolute path) for security and portability
+      return uniqueFilename;
+
+    } catch (error) {
+      console.error('Failed to store document in object storage:', error);
+      throw new Error(`Object storage upload failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
