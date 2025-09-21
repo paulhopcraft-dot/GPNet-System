@@ -250,9 +250,15 @@ export class FreshdeskImportService {
         };
       }
 
+      // Clean up domain format
+      let domain = process.env.FRESHDESK_DOMAIN;
+      if (domain && !domain.endsWith('.freshdesk.com')) {
+        domain = `${domain}.freshdesk.com`;
+      }
+
       return {
         connected: true,
-        domain: process.env.FRESHDESK_DOMAIN
+        domain: domain
       };
     } catch (error) {
       return {
