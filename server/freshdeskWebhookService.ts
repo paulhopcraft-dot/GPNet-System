@@ -1,5 +1,6 @@
 import { documentProcessingService } from './documentProcessingService.js';
 import type { IStorage } from './storage.js';
+import { getBackgroundJobQueue, type JobData } from './backgroundJobQueue.js';
 
 export interface FreshdeskWebhookEvent {
   type: 'ticket_created' | 'ticket_updated' | 'note_added';
@@ -90,31 +91,23 @@ export class FreshdeskWebhookService {
     console.log(`Processing medical attachment: ${attachment.name} (${attachment.content_type})`);
 
     try {
-      // Download attachment
-      const attachmentData = await this.downloadAttachment(attachment.attachment_url);
-      
-      // Get worker ID from ticket
+      // Get worker ID from ticket  
       const ticket = await this.storage.getTicket(gpnetTicketId);
       if (!ticket || !ticket.workerId) {
         console.warn(`No worker ID found for ticket ${gpnetTicketId}`);
         return;
       }
 
-      // Create processing job
-      const job: AttachmentProcessingJob = {
-        ticketId: gpnetTicketId,
-        attachmentUrl: attachment.attachment_url,
-        companyId: event.ticket.company_id?.toString(),
-        requesterEmail: event.requester?.email,
-        freshdeskTicketId: event.ticket.id,
-        attachmentId: attachment.id,
+      // Create job metadata WITHOUT downloading attachment (download happens in background)
+      const attachmentMetadata = {
+        url: attachment.attachment_url,
         filename: attachment.name,
         contentType: attachment.content_type,
         size: attachment.size
       };
 
-      // Enqueue for processing
-      await this.enqueueDocumentProcessing(job, ticket.workerId, attachmentData);
+      // Enqueue for background processing immediately (no synchronous download)
+      await this.enqueueForBackgroundProcessing(gpnetTicketId, ticket.workerId, attachmentMetadata, event);
 
     } catch (error) {
       console.error(`Failed to process attachment ${attachment.name}:`, error);
@@ -140,6 +133,81 @@ export class FreshdeskWebhookService {
 
     const filename_lower = filename.toLowerCase();
     return medicalKeywords.some(keyword => filename_lower.includes(keyword));
+  }
+
+  /**
+   * Enqueue document for background processing instead of synchronous processing
+   */
+  private async enqueueForBackgroundProcessing(
+    ticketId: string,
+    workerId: string,
+    attachmentMetadata: { url: string; filename: string; contentType: string; size: number },
+    event: FreshdeskWebhookEvent
+  ): Promise<void> {
+    try {
+      const jobQueue = getBackgroundJobQueue();
+      if (!jobQueue) {
+        console.warn('Background job queue not initialized, falling back to synchronous processing');
+        await this.fallbackSynchronousProcessing(ticketId, workerId, attachmentMetadata, event);
+        return;
+      }
+
+      const jobData: JobData = {
+        type: 'document_processing',
+        ticketId,
+        workerId,
+        attachmentData: {
+          url: attachmentMetadata.url,
+          filename: attachmentMetadata.filename,
+          contentType: attachmentMetadata.contentType,
+          size: attachmentMetadata.size,
+          buffer: Buffer.alloc(0) // Empty buffer - actual download happens in background job
+        },
+        sourceId: `freshdesk-${event.ticket.id}`,
+        companyId: event.ticket.company_id?.toString(),
+        requesterEmail: event.requester?.email
+      };
+
+      const jobId = await jobQueue.enqueue(jobData, 'normal');
+      console.log(`Successfully enqueued document processing job ${jobId} for ticket ${ticketId}`);
+
+    } catch (error) {
+      console.error('Failed to enqueue job for background processing:', error);
+      // Fallback to synchronous processing
+      await this.fallbackSynchronousProcessing(ticketId, workerId, attachmentMetadata, event);
+    }
+  }
+
+  /**
+   * Fallback to synchronous processing if background queue fails
+   */
+  private async fallbackSynchronousProcessing(
+    ticketId: string,
+    workerId: string,
+    attachmentMetadata: { url: string; filename: string; contentType: string; size: number },
+    event: FreshdeskWebhookEvent
+  ): Promise<void> {
+    console.log('Using synchronous processing fallback - downloading attachment');
+    
+    // Download attachment for fallback processing
+    const downloadedData = await this.downloadAttachment(attachmentMetadata.url);
+    
+    const processedAttachmentData = {
+      url: attachmentMetadata.url,
+      filename: downloadedData.filename,
+      contentType: downloadedData.contentType,
+      size: downloadedData.size,
+      buffer: downloadedData.buffer
+    };
+
+    await documentProcessingService.processAttachment(
+      ticketId,
+      workerId,
+      processedAttachmentData,
+      `freshdesk-${event.ticket.id}`,
+      event.ticket.company_id?.toString(),
+      event.requester?.email
+    );
   }
 
   /**
