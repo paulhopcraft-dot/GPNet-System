@@ -1,0 +1,110 @@
+Here’s the clean spec version you can paste straight into Roylett — no commentary, just the build instructions.
+
+⸻
+
+GPNet × Freshdesk Integration & Michelle Widget Spec
+
+Roles & Scoping
+	•	Roles: admin, manager, agent, viewer.
+	•	Tenant key: company_id on users, tickets, cases.
+	•	Non-admin requests always filtered by WHERE company_id = :session.company_id.
+	•	Admin bypasses filter; can impersonate company.
+
+Data Model
+	•	companies(id, name, …)
+	•	users(id, company_id, role, name, email, …)
+	•	tickets(id, company_id, fd_id, subject, status, priority, workcover_bool, requester_id, assignee_id, created_at, updated_at, age_days, last_unseen_activity_at, next_action_due_at, requires_action_bool, tags_json, custom_json)
+	•	cases(id, ticket_id, worker_id, current_capacity, next_step_text, next_step_due_at, next_step_set_by, next_step_set_at)
+	•	workers(id, company_id, name, email, role_title, phone, …)
+	•	documents(id, case_id, kind, filename, storage_url, created_at, expires_at, is_current_bool, uploaded_by)
+	•	events(id, case_id, source, kind, occurred_at, performed_by, payload_json)
+
+Freshdesk Integration
+	•	Secrets: FRESHDESK_DOMAIN, FRESHDESK_API_KEY (stored securely).
+	•	Backfill: GET /api/v2/tickets with paging and updated_since; map FD company_id → GPNet company_id.
+	•	Sync: Freshdesk Automation/Webhook → POST /api/integrations/freshdesk/webhook {ticket_id, updated_at} → server fetches full ticket, upserts, appends event.
+	•	Rate limit handling: backoff on 429 using Retry-After.
+
+Manager Dashboard (Tickets Table)
+	•	Default filter: company_id = session.company_id.
+	•	Default sort: requires_action DESC, priority DESC, updated_at DESC.
+	•	Columns: Ticket # (clickable), Worker, Subject, WorkCover, Status, Priority, Age, Last Update, Requires Action, Next Step.
+	•	Filters: Requires Action, Status, WorkCover, Priority, Assigned Agent, Date updated.
+	•	Search: subject, worker, ticket #.
+
+Requires Action Logic
+
+Ticket flagged if any:
+	•	Status in {Open, Pending, Waiting on Manager}.
+	•	next_action_due_at < now().
+	•	last_unseen_activity_at IS NOT NULL.
+	•	Certificate of Capacity missing/expired.
+	•	Rule flags: no next step, overdue follow-up, RTW plan unsigned, SLA risk.
+
+Case Page
+	•	Header: Worker, Role, Company, Ticket #, Status, Priority, WorkCover, Age, Assignee.
+	•	Blocks:
+	1.	Next Step (accept/override).
+	2.	Snapshot (duties, latest certificate, restrictions).
+	3.	Timeline (Freshdesk + GPNet events).
+	4.	Documents (preview + expiry badges).
+	5.	Tasks (open actions).
+	6.	People (worker, manager, doctor, insurer).
+
+Michelle Widget
+	•	Docked bubble on all screens; slide-in panel.
+	•	Header: “Michelle • {Company} — {Role}”.
+	•	Context token from server: {user_id, role, company_id, route, focus_ids, capability_flags}.
+	•	Admin can impersonate company.
+	•	Capabilities:
+	•	Find & open tickets/cases.
+	•	Summarise tickets.
+	•	Set/edit next step.
+	•	Check/request certificates.
+	•	Draft comms (worker/doctor/insurer).
+	•	Update Freshdesk (assign, change status, add note).
+	•	Endpoints:
+	•	GET /api/michelle/search?q=…
+	•	POST /api/michelle/next_step {case_id, text, due_at}
+	•	GET /api/michelle/certificate/status?case_id=…
+	•	POST /api/michelle/email/draft {case_id, to, template, variables}
+	•	POST /api/michelle/freshdesk/update {ticket_id, status|assignee|note}
+	•	All endpoints enforce company_id from session; client-sent company_id ignored.
+
+RBAC & Middleware
+	•	Session includes {user_id, role, company_id}.
+	•	Tenant Guard: inject company filter unless admin.
+	•	Audit log: performed_by_user_id, action, object_type, object_id, company_id, timestamp.
+
+Documents
+	•	Stored in object storage with presigned URLs.
+	•	Track expires_at; compute is_current_bool.
+	•	Virus scan on upload.
+
+Performance & Resilience
+	•	Server-side pagination.
+	•	Widget loads counts first, details on demand.
+	•	If Freshdesk down: show cached data + banner; queue updates.
+
+Security
+	•	HTTPS, HSTS.
+	•	Freshdesk webhook endpoint protected with HMAC.
+	•	Secrets never client-side.
+	•	Role-based checks on actions.
+
+Admin Enhancements
+	•	Global dashboards: SLA risks, expired certificates, overdue next steps.
+	•	Impersonate Company mode.
+	•	Tenant management: create/archive company, map Freshdesk company_id.
+
+Acceptance Criteria
+	•	Manager sees only their company’s tickets; Admin sees all.
+	•	Requires Action badges accurate.
+	•	Case page shows snapshot, timeline, docs, tasks, people.
+	•	Michelle widget available everywhere; can act on scoped tickets.
+	•	Freshdesk updates sync via webhook.
+	•	Certificates flagged correctly as current/expired.
+
+⸻
+
+Do you want me to also flatten this into a step-by-step build checklist (like Roylett “todo” items), or keep it as this high-level structured spec?
