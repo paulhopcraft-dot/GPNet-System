@@ -285,7 +285,7 @@ export class EmailParsingService {
       }
     }
     
-    return [...new Set(dates)];
+    return Array.from(new Set(dates));
   }
   
   /**
@@ -415,7 +415,7 @@ export class EmailParsingService {
       originalSender: parsedEmail.originalSender,
       originalSenderName: parsedEmail.originalSenderName,
       originalRecipient: parsedEmail.originalRecipient,
-      originalSubject: parsedEmail.originalSubject,
+      originalSubject: parsedEmail.originalSubject || null,
       originalDate: parsedEmail.originalDate,
       subject: parsedEmail.subject,
       body: parsedEmail.body,

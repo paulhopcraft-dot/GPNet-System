@@ -17,7 +17,8 @@ import { riskAssessmentService, type RiskInput } from "./riskAssessmentService";
 import { michelle, type MichelleContext, type ConversationResponse } from "./michelle";
 import { requireAuth } from "./authRoutes";
 import { requireAdmin } from "./adminRoutes";
-import { emailProcessingService, type RawEmailData } from "./emailProcessingService";
+import { createEmailProcessingService, type EmailProcessingResult } from "./emailProcessingService";
+import { type RawEmailData } from "./emailParsingService";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -436,6 +437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messageId: z.string().min(1, "Message ID is required"),
         subject: z.string().min(1, "Subject is required"),
         body: z.string().min(1, "Body is required"),
+        htmlBody: z.string().optional(),
         originalSender: z.string().email("Valid sender email required"),
         originalSenderName: z.string().optional(),
         forwardedAt: z.string().optional(),
@@ -453,10 +455,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid email data", details: errorMessage });
       }
       
+      // Convert base64 attachments to RawAttachment format
+      const rawAttachments = (validationResult.data.attachments || []).map(att => ({
+        filename: att.filename,
+        contentType: att.contentType,
+        content: Buffer.from(att.content, 'base64')
+      }));
+      
       const emailData: RawEmailData = {
-        ...validationResult.data,
-        receivedAt: new Date().toISOString(),
-        attachments: validationResult.data.attachments || []
+        messageId: validationResult.data.messageId,
+        from: validationResult.data.originalSender,
+        to: '', // Will be filled by parsing service
+        subject: validationResult.data.subject,
+        body: validationResult.data.body,
+        htmlBody: validationResult.data.htmlBody,
+        date: validationResult.data.forwardedAt ? new Date(validationResult.data.forwardedAt) : new Date(),
+        attachments: rawAttachments
       };
       
       // Process the email through the workflow
@@ -621,7 +635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         attachments: attachments.map(att => ({
           id: att.id,
           filename: att.filename,
-          contentType: att.contentType,
+          contentType: att.mimeType,
           fileSize: att.fileSize,
           uploadedAt: att.uploadedAt
         }))
@@ -680,6 +694,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Admin routes
   const adminRoutes = (await import('./adminRoutes.js')).default;
   app.use('/api/admin', adminRoutes);
+  
+  // Create email processing service instance
+  const emailProcessingService = createEmailProcessingService(storage);
   
   // Jotform webhook endpoint for receiving form submissions
   app.post("/api/webhook/jotform", async (req, res) => {
