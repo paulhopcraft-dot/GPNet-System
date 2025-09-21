@@ -256,7 +256,7 @@ export const auditEvents = pgTable("audit_events", {
   // Target information
   targetType: text("target_type"), // "company", "ticket", "user"
   targetId: varchar("target_id"), // ID of affected entity
-  companyId: varchar("company_id").references(() => companies.id), // Affected company
+  companyId: varchar("company_id").references(() => organizations.id), // Affected company
   
   // Event details
   action: text("action").notNull(), // Human-readable action description
@@ -279,7 +279,7 @@ export const archiveIndex = pgTable("archive_index", {
   // Entity identification
   entityType: text("entity_type").notNull(), // "company", "ticket", "user"
   entityId: varchar("entity_id").notNull(),
-  companyId: varchar("company_id").references(() => companies.id),
+  companyId: varchar("company_id").references(() => organizations.id),
   
   // Archive metadata
   archivedBy: varchar("archived_by").notNull(), // Admin user ID
@@ -306,7 +306,7 @@ export const externalEmails = pgTable("external_emails", {
   
   // Email identification
   ticketId: varchar("ticket_id").references(() => tickets.id), // Linked case (null if unmatched)
-  companyId: varchar("company_id").references(() => companies.id).notNull(),
+  companyId: varchar("company_id").references(() => organizations.id),
   messageId: text("message_id").notNull(), // Original email message ID for deduplication
   
   // Forwarding context
@@ -377,7 +377,7 @@ export const caseProviders = pgTable("case_providers", {
   
   // Relationships
   ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
-  companyId: varchar("company_id").references(() => companies.id),
+  companyId: varchar("company_id").references(() => organizations.id),
   
   // Provider identification
   providerType: text("provider_type").notNull(), // "doctor", "physiotherapist", "insurer", "specialist", "employer_contact"
@@ -451,7 +451,7 @@ export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   
   // Conversation identification  
-  companyId: varchar("company_id").references(() => companies.id), // Null for global/admin conversations
+  companyId: varchar("company_id").references(() => organizations.id), // Null for global/admin conversations
   ticketId: varchar("ticket_id").references(() => tickets.id), // Case-specific conversations
   workerId: varchar("worker_id").references(() => workers.id), // Worker conversations
   
@@ -1058,13 +1058,13 @@ export const insertRiskHistorySchema = createInsertSchema(riskHistory).omit({
 });
 
 // Schema definitions for Freshdesk integration tables
-export const insertCompanySchema = createInsertSchema(companies).omit({
+export const insertCompanySchema = createInsertSchema(organizations).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({
+export const insertUserSchema = createInsertSchema(clientUsers).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -1176,11 +1176,12 @@ export type InsertRiskHistory = z.infer<typeof insertRiskHistorySchema>;
 export type RiskHistory = typeof riskHistory.$inferSelect;
 
 // Type definitions for Freshdesk integration tables
+// Type definitions for Freshdesk integration tables
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
-export type Company = typeof companies.$inferSelect;
+export type Company = typeof organizations.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type User = typeof users.$inferSelect;
+export type User = typeof clientUsers.$inferSelect;
 
 export type InsertCase = z.infer<typeof insertCaseSchema>;
 export type Case = typeof cases.$inferSelect;
@@ -1191,7 +1192,7 @@ export type Document = typeof documents.$inferSelect;
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type Event = typeof events.$inferSelect;
 
-// Legacy types for backward compatibility
+// Legacy type aliases for backward compatibility
 export type InsertOrganization = InsertCompany;
 export type Organization = Company;
 export type InsertClientUser = InsertUser;
