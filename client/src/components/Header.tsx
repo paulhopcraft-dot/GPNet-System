@@ -12,10 +12,11 @@ import {
 import { useUser } from "@/components/UserContext";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 export default function Header() {
   const { user, setUser } = useUser();
+  const [, setLocation] = useLocation();
 
   // Stop impersonation mutation
   const stopImpersonationMutation = useMutation({
@@ -29,10 +30,28 @@ export default function Header() {
     },
   });
 
+  // Logout mutation
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/auth/logout");
+    },
+    onSuccess: () => {
+      // Clear user context and redirect to appropriate login based on user type
+      const isAdmin = user?.userType === 'admin';
+      setUser(null);
+      queryClient.clear();
+      setLocation(isAdmin ? "/login/admin" : "/login/client");
+    },
+  });
+
   const handleStopImpersonation = () => {
     if (confirm("Are you sure you want to stop impersonating? This will return you to your admin account.")) {
       stopImpersonationMutation.mutate();
     }
+  };
+
+  const handleLogout = () => {
+    logoutMutation.mutate();
   };
 
   return (
@@ -152,7 +171,7 @@ export default function Header() {
                 </>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem data-testid="menu-logout">
+              <DropdownMenuItem onClick={handleLogout} data-testid="menu-logout">
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
               </DropdownMenuItem>
