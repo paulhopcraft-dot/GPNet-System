@@ -699,6 +699,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { freshdeskRoutes } = await import('./freshdeskRoutes.js');
   app.use('/api/freshdesk', freshdeskRoutes);
   
+  // Initialize medical document processing services
+  const { initDocumentProcessingService } = await import('./documentProcessingService.js');
+  const { initFreshdeskWebhookService } = await import('./freshdeskWebhookService.js');
+  
+  // Initialize services with storage
+  initDocumentProcessingService(storage);
+  initFreshdeskWebhookService(storage);
+  
+  // Medical document processing routes
+  const { medicalDocumentRoutes } = await import('./medicalDocumentRoutes.js');
+  app.use('/api/medical-documents', medicalDocumentRoutes);
+  
   // Create email processing service instance
   const emailProcessingService = createEmailProcessingService(storage);
   
