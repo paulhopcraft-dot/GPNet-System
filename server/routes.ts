@@ -3512,6 +3512,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PDF Report Generation Endpoints
+  app.get("/api/reports/:ticketId/types", requireAuth, async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+
+      // Get available report types for the ticket
+      const { reportDataService } = await import('./reportDataService.js');
+      const reportTypes = await reportDataService.getAvailableReportTypes(ticketId);
+
+      res.json({ reportTypes });
+    } catch (error) {
+      console.error("Error getting available report types:", error);
+      res.status(500).json({ error: "Failed to get available report types" });
+    }
+  });
+
+  app.post("/api/reports/generate", requireAuth, async (req, res) => {
+    try {
+      const { ticketId, reportType, options } = req.body;
+      const user = req.session.user!;
+
+      if (!ticketId || !reportType) {
+        return res.status(400).json({ error: "Ticket ID and report type are required" });
+      }
+
+      // Import services dynamically to avoid circular dependencies
+      const { reportDataService } = await import('./reportDataService.js');
+      const { pdfService } = await import('./pdfService.js');
+
+      let pdfBuffer: Buffer;
+      const generatedBy = `${user.firstName} ${user.lastName} (${user.email})`;
+
+      // Generate the appropriate report based on type
+      switch (reportType) {
+        case 'pre-employment':
+          const preEmploymentData = await reportDataService.getPreEmploymentReportData(ticketId, generatedBy);
+          pdfBuffer = await pdfService.generatePreEmploymentReport(preEmploymentData, options);
+          break;
+          
+        case 'case-summary':
+          const caseSummaryData = await reportDataService.getCaseSummaryReportData(ticketId, generatedBy);
+          pdfBuffer = await pdfService.generateCaseSummaryReport(caseSummaryData, options);
+          break;
+          
+        case 'injury-report':
+          const injuryData = await reportDataService.getInjuryReportData(ticketId, generatedBy);
+          pdfBuffer = await pdfService.generateInjuryReport(injuryData, options);
+          break;
+          
+        case 'compliance-audit':
+          const auditData = await reportDataService.getComplianceAuditReportData(ticketId, generatedBy);
+          pdfBuffer = await pdfService.generateComplianceAuditReport(auditData, options);
+          break;
+          
+        default:
+          return res.status(400).json({ error: `Unsupported report type: ${reportType}` });
+      }
+
+      // Set appropriate headers for PDF download
+      const fileName = `${reportType}-report-${ticketId}-${new Date().toISOString().split('T')[0]}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+
+      res.send(pdfBuffer);
+
+    } catch (error) {
+      console.error("Error generating PDF report:", error);
+      res.status(500).json({ 
+        error: "Failed to generate PDF report", 
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  app.post("/api/reports/preview", requireAuth, async (req, res) => {
+    try {
+      const { ticketId, reportType } = req.body;
+      const user = req.session.user!;
+
+      if (!ticketId || !reportType) {
+        return res.status(400).json({ error: "Ticket ID and report type are required" });
+      }
+
+      const { reportDataService } = await import('./reportDataService.js');
+      const generatedBy = `${user.firstName} ${user.lastName} (${user.email})`;
+
+      // Get report data for preview (without generating PDF)
+      let reportData: any;
+      switch (reportType) {
+        case 'pre-employment':
+          reportData = await reportDataService.getPreEmploymentReportData(ticketId, generatedBy);
+          break;
+        case 'case-summary':
+          reportData = await reportDataService.getCaseSummaryReportData(ticketId, generatedBy);
+          break;
+        case 'injury-report':
+          reportData = await reportDataService.getInjuryReportData(ticketId, generatedBy);
+          break;
+        case 'compliance-audit':
+          reportData = await reportDataService.getComplianceAuditReportData(ticketId, generatedBy);
+          break;
+        default:
+          return res.status(400).json({ error: `Unsupported report type: ${reportType}` });
+      }
+
+      // Return structured data for preview
+      const preview = {
+        reportType,
+        ticketId,
+        generatedAt: reportData.generatedAt,
+        generatedBy: reportData.generatedBy,
+        worker: reportData.worker,
+        ticket: reportData.ticket,
+        analysis: reportData.analysis,
+        hasFormSubmission: !!reportData.formSubmission,
+        hasRecommendations: !!(reportData.recommendations && reportData.recommendations.length > 0),
+        companyName: reportData.companyName
+      };
+
+      res.json({ preview });
+
+    } catch (error) {
+      console.error("Error generating report preview:", error);
+      res.status(500).json({ 
+        error: "Failed to generate report preview", 
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   // Michelle AI Chat Endpoints with dual mode support
   app.post("/api/michelle/chat", requireAuth, async (req, res) => {
     try {
