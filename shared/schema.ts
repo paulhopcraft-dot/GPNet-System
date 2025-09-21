@@ -3,16 +3,31 @@ import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, unique } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Tickets table for case management
+
+
+// Tickets table for case management - extended for Freshdesk integration
 export const tickets = pgTable("tickets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  organizationId: varchar("organization_id").references(() => organizations.id), // Tenant isolation - temporarily nullable
-  workerId: varchar("worker_id").references(() => workers.id), // Direct link to worker
+  organizationId: varchar("organization_id").references(() => organizations.id), // Keep existing reference
+  workerId: varchar("worker_id").references(() => workers.id), // Keep existing reference
   caseType: text("case_type").notNull().default("pre_employment"), // "pre_employment", "injury"
   claimType: text("claim_type"), // "standard", "workcover" (for injury cases)
   status: text("status").notNull().default("NEW"),
   priority: text("priority").default("medium"), // "low", "medium", "high", "urgent"
   companyName: text("company_name"),
+  
+  // Freshdesk integration fields (new - nullable for incremental migration)
+  fdId: integer("fd_id").unique(), // Freshdesk ticket ID
+  subject: text("subject"), // Ticket subject from Freshdesk
+  workCoverBool: boolean("workcover_bool").default(false),
+  requesterId: varchar("requester_id"), // Freshdesk requester ID
+  assigneeId: varchar("assignee_id"), // Freshdesk assignee ID
+  ageDays: integer("age_days").default(0),
+  lastUnseenActivityAt: timestamp("last_unseen_activity_at"),
+  nextActionDueAt: timestamp("next_action_due_at"),
+  requiresActionBool: boolean("requires_action_bool").default(false),
+  tagsJson: jsonb("tags_json"), // Freshdesk tags array
+  customJson: jsonb("custom_json"), // Custom fields from Freshdesk
   
   // STEP TRACKING FOR CASE MANAGEMENT (nextStep must ALWAYS be set to maintain workflow)
   nextStep: text("next_step").default("Initial case review and triage"), // What needs to be done next - ALWAYS required
@@ -32,10 +47,25 @@ export const tickets = pgTable("tickets", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Workers table for candidate information
+// Cases table for case management workflow
+export const cases = pgTable("cases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  workerId: varchar("worker_id").references(() => workers.id),
+  currentCapacity: integer("current_capacity"), // Worker's current lifting capacity in kg
+  nextStepText: text("next_step_text"),
+  nextStepDueAt: timestamp("next_step_due_at"),
+  nextStepSetBy: varchar("next_step_set_by"), // User ID who set the next step
+  nextStepSetAt: timestamp("next_step_set_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Workers table for candidate information - keep existing structure
 export const workers = pgTable("workers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  organizationId: varchar("organization_id").references(() => organizations.id), // Tenant isolation - temporarily nullable
+  organizationId: varchar("organization_id").references(() => organizations.id), // Keep existing reference
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
   dateOfBirth: text("date_of_birth").notNull(),
@@ -43,6 +73,34 @@ export const workers = pgTable("workers", {
   email: text("email").notNull(),
   roleApplied: text("role_applied").notNull(),
   site: text("site"),
+  
+  // New field for spec compatibility (nullable for incremental migration)
+  roleTitle: text("role_title"), // Job title - maps to roleApplied
+});
+
+// Documents table for document management
+export const documents = pgTable("documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  caseId: varchar("case_id").references(() => cases.id).notNull(),
+  kind: text("kind").notNull(), // "medical_certificate", "capacity_report", "rtw_plan", etc.
+  filename: text("filename").notNull(),
+  storageUrl: text("storage_url").notNull(), // Object storage URL
+  expiresAt: timestamp("expires_at"),
+  isCurrentBool: boolean("is_current_bool").default(true),
+  uploadedBy: varchar("uploaded_by"), // User ID who uploaded
+  
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Events table for audit trail
+export const events = pgTable("events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  caseId: varchar("case_id").references(() => cases.id),
+  source: text("source").notNull(), // "freshdesk", "gpnet", "michelle", "system"
+  kind: text("kind").notNull(), // "status_change", "note_added", "document_uploaded", etc.
+  occurredAt: timestamp("occurred_at").defaultNow(),
+  performedBy: varchar("performed_by"), // User ID who performed the action
+  payloadJson: jsonb("payload_json"), // Event-specific data
 });
 
 // Form submissions table
@@ -110,58 +168,42 @@ export const attachments = pgTable("attachments", {
 // MULTI-TENANT ADMIN LAYER
 // ===============================================
 
-// Organizations table for client tenants
+// Organizations table (legacy - keep for backward compatibility)
 export const organizations = pgTable("organizations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
-  slug: text("slug").notNull().unique(), // URL-safe identifier
-  status: text("status").notNull().default("active"), // "active", "suspended", "archived"
-  billingStatus: text("billing_status").default("current"), // "current", "overdue", "cancelled"
-  
-  // Configuration
-  settings: jsonb("settings"), // Client-specific configurations
-  features: jsonb("features"), // Feature flags for this client
-  branding: jsonb("branding"), // Client branding configuration
-  
-  // Contact information
+  slug: text("slug").notNull().unique(),
+  status: text("status").notNull().default("active"),
+  billingStatus: text("billing_status").default("current"),
+  settings: jsonb("settings"),
+  features: jsonb("features"),
+  branding: jsonb("branding"),
   primaryContactName: text("primary_contact_name"),
   primaryContactEmail: text("primary_contact_email"),
   primaryContactPhone: text("primary_contact_phone"),
-  
-  // Metadata
   isArchived: boolean("is_archived").default(false),
   archivedAt: timestamp("archived_at"),
   archivedBy: varchar("archived_by"),
-  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Client users table for organization users
+// Client users table (legacy - keep for backward compatibility)
 export const clientUsers = pgTable("client_users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: varchar("organization_id").references(() => organizations.id).notNull(),
-  
-  // Basic info
   email: text("email").notNull().unique(),
   firstName: text("first_name").notNull(),
   lastName: text("last_name").notNull(),
-  
-  // Authentication
-  passwordHash: text("password_hash"), // Nullable for SSO-only users
+  passwordHash: text("password_hash"),
   lastLoginAt: timestamp("last_login_at"),
   loginCount: integer("login_count").default(0),
-  
-  // Role and permissions
-  role: text("role").notNull().default("user"), // "admin", "manager", "recruiter", "user"
-  permissions: jsonb("permissions"), // Additional granular permissions
-  
-  // Status
-  status: text("status").notNull().default("active"), // "active", "suspended", "archived"
+  role: text("role").notNull().default("user"),
+  permissions: jsonb("permissions"),
+  status: text("status").notNull().default("active"),
   isArchived: boolean("is_archived").default(false),
   archivedAt: timestamp("archived_at"),
   archivedBy: varchar("archived_by"),
-  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -212,9 +254,9 @@ export const auditEvents = pgTable("audit_events", {
   actorEmail: text("actor_email"),
   
   // Target information
-  targetType: text("target_type"), // "organization", "ticket", "user"
+  targetType: text("target_type"), // "company", "ticket", "user"
   targetId: varchar("target_id"), // ID of affected entity
-  organizationId: varchar("organization_id").references(() => organizations.id), // Affected organization
+  companyId: varchar("company_id").references(() => companies.id), // Affected company
   
   // Event details
   action: text("action").notNull(), // Human-readable action description
@@ -235,9 +277,9 @@ export const archiveIndex = pgTable("archive_index", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   
   // Entity identification
-  entityType: text("entity_type").notNull(), // "organization", "ticket", "user"
+  entityType: text("entity_type").notNull(), // "company", "ticket", "user"
   entityId: varchar("entity_id").notNull(),
-  organizationId: varchar("organization_id").references(() => organizations.id),
+  companyId: varchar("company_id").references(() => companies.id),
   
   // Archive metadata
   archivedBy: varchar("archived_by").notNull(), // Admin user ID
@@ -264,7 +306,7 @@ export const externalEmails = pgTable("external_emails", {
   
   // Email identification
   ticketId: varchar("ticket_id").references(() => tickets.id), // Linked case (null if unmatched)
-  organizationId: varchar("organization_id").references(() => organizations.id).notNull(),
+  companyId: varchar("company_id").references(() => companies.id).notNull(),
   messageId: text("message_id").notNull(), // Original email message ID for deduplication
   
   // Forwarding context
@@ -304,7 +346,7 @@ export const externalEmails = pgTable("external_emails", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   // Unique constraint for idempotency - prevents duplicate processing
-  uniqueOrgMessage: unique().on(table.organizationId, table.messageId),
+  uniqueOrgMessage: unique().on(table.companyId, table.messageId),
 }));
 
 // Email attachments table for external email attachments
@@ -335,7 +377,7 @@ export const caseProviders = pgTable("case_providers", {
   
   // Relationships
   ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
-  organizationId: varchar("organization_id").references(() => organizations.id),
+  companyId: varchar("company_id").references(() => companies.id),
   
   // Provider identification
   providerType: text("provider_type").notNull(), // "doctor", "physiotherapist", "insurer", "specialist", "employer_contact"
@@ -409,7 +451,7 @@ export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   
   // Conversation identification  
-  organizationId: varchar("organization_id").references(() => organizations.id), // Null for global/admin conversations
+  companyId: varchar("company_id").references(() => companies.id), // Null for global/admin conversations
   ticketId: varchar("ticket_id").references(() => tickets.id), // Case-specific conversations
   workerId: varchar("worker_id").references(() => workers.id), // Worker conversations
   
@@ -1015,17 +1057,33 @@ export const insertRiskHistorySchema = createInsertSchema(riskHistory).omit({
   timestamp: true,
 });
 
-// Schema definitions for multi-tenant admin tables
-export const insertOrganizationSchema = createInsertSchema(organizations).omit({
+// Schema definitions for Freshdesk integration tables
+export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertClientUserSchema = createInsertSchema(clientUsers).omit({
+export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const insertCaseSchema = createInsertSchema(cases).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDocumentSchema = createInsertSchema(documents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertEventSchema = createInsertSchema(events).omit({
+  id: true,
+  occurredAt: true,
 });
 
 export const insertAdminUserSchema = createInsertSchema(adminUsers).omit({
@@ -1117,12 +1175,27 @@ export type FreshdeskSyncLog = typeof freshdeskSyncLogs.$inferSelect;
 export type InsertRiskHistory = z.infer<typeof insertRiskHistorySchema>;
 export type RiskHistory = typeof riskHistory.$inferSelect;
 
-// Type definitions for multi-tenant admin tables
-export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
-export type Organization = typeof organizations.$inferSelect;
+// Type definitions for Freshdesk integration tables
+export type InsertCompany = z.infer<typeof insertCompanySchema>;
+export type Company = typeof companies.$inferSelect;
 
-export type InsertClientUser = z.infer<typeof insertClientUserSchema>;
-export type ClientUser = typeof clientUsers.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+
+export type InsertCase = z.infer<typeof insertCaseSchema>;
+export type Case = typeof cases.$inferSelect;
+
+export type InsertDocument = z.infer<typeof insertDocumentSchema>;
+export type Document = typeof documents.$inferSelect;
+
+export type InsertEvent = z.infer<typeof insertEventSchema>;
+export type Event = typeof events.$inferSelect;
+
+// Legacy types for backward compatibility
+export type InsertOrganization = InsertCompany;
+export type Organization = Company;
+export type InsertClientUser = InsertUser;
+export type ClientUser = User;
 
 export type InsertAdminUser = z.infer<typeof insertAdminUserSchema>;
 export type AdminUser = typeof adminUsers.$inferSelect;
