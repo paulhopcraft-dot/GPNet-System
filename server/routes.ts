@@ -14,7 +14,7 @@ import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { pdfService } from "./pdfService";
 import { riskAssessmentService, type RiskInput } from "./riskAssessmentService";
-import { chatWithMichelle, clearConversation, getConversationHistory, getMichelleDataContext, UserContext } from "./michelleService";
+import { michelle, type MichelleContext, type ConversationResponse } from "./michelle";
 import { requireAuth } from "./authRoutes";
 
 // Analysis engine for RAG scoring and fit classification
@@ -3264,22 +3264,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Message is required" });
       }
 
-      // Build user context from session with impersonation handling
+      // Build Michelle context from session with impersonation handling
       const isImpersonating = req.session.user!.isImpersonating || false;
-      const userContext: UserContext = {
-        userId: req.session.user!.id,
-        userType: isImpersonating ? 'client' : req.session.user!.role,
+      const michelleContext: MichelleContext = {
+        conversationType: context?.mode === "universal" ? "universal_admin" : 
+                         context?.ticketId ? "case_specific" : "client_scoped",
         organizationId: isImpersonating ? req.session.user!.impersonationTarget : req.session.user!.organizationId,
-        permissions: isImpersonating ? [] : (req.session.user!.permissions || []),
-        phiAccess: isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('phi-access') || false)),
-        isSuperuser: isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('superuser') || false))
+        ticketId: context?.ticketId || undefined,
+        workerId: context?.workerId || undefined,
+        userRole: req.session.user!.role as 'admin' | 'client_user',
+        isImpersonating
       };
 
-      const response = await chatWithMichelle(
-        conversationId || `conv_${Date.now()}`,
+      let currentConversationId = conversationId;
+      
+      // Start new conversation if none provided
+      if (!currentConversationId) {
+        currentConversationId = await michelle.startConversation(michelleContext);
+      }
+
+      const response = await michelle.sendMessage(
+        currentConversationId,
         message.trim(),
-        userContext,
-        context
+        michelleContext,
+        req.ip,
+        req.get('User-Agent')
       );
 
       res.json(response);
@@ -3292,18 +3301,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/michelle/conversation/:conversationId", async (req, res) => {
     try {
       const { conversationId } = req.params;
-      clearConversation(conversationId);
-      res.json({ success: true, message: "Conversation cleared" });
+      await michelle.archiveConversation(conversationId);
+      res.json({ success: true, message: "Conversation archived" });
     } catch (error) {
-      console.error("Clear conversation error:", error);
-      res.status(500).json({ error: "Failed to clear conversation" });
+      console.error("Archive conversation error:", error);
+      res.status(500).json({ error: "Failed to archive conversation" });
     }
   });
 
   app.get("/api/michelle/conversation/:conversationId/history", requireAuth, async (req, res) => {
     try {
       const { conversationId } = req.params;
-      const history = getConversationHistory(conversationId);
+      const history = await michelle.getConversationHistory(conversationId);
       res.json({ history });
     } catch (error) {
       console.error("Get conversation history error:", error);
@@ -3314,18 +3323,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Michelle Data Context API - provides mode-specific data
   app.get("/api/michelle/context", requireAuth, async (req, res) => {
     try {
-      // Build user context from session with impersonation handling
       const isImpersonating = req.session.user!.isImpersonating || false;
-      const userContext: UserContext = {
+      const userRole = isImpersonating ? 'client_user' : req.session.user!.role;
+      const organizationId = isImpersonating ? req.session.user!.impersonationTarget : req.session.user!.organizationId;
+      const isSuperuser = !isImpersonating && req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('superuser') || false);
+      
+      const michelleContext = {
         userId: req.session.user!.id,
-        userType: isImpersonating ? 'client' : req.session.user!.role,
-        organizationId: isImpersonating ? req.session.user!.impersonationTarget : req.session.user!.organizationId,
-        permissions: isImpersonating ? [] : (req.session.user!.permissions || []),
-        phiAccess: isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('phi-access') || false)),
-        isSuperuser: isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('superuser') || false))
+        userRole,
+        organizationId,
+        isImpersonating,
+        isSuperuser,
+        mode: userRole === 'admin' && isSuperuser ? 'universal' : 'client-scoped',
+        capabilities: userRole === 'admin' && isSuperuser 
+          ? ['cross-tenant-analytics', 'phi-access', 'system-administration', 'platform-insights']
+          : ['organization-analytics', 'case-management', 'worker-tracking'],
+        availableConversationTypes: userRole === 'admin' && isSuperuser 
+          ? ['universal_admin', 'client_scoped', 'case_specific']
+          : ['client_scoped', 'case_specific']
       };
 
-      const michelleContext = await getMichelleDataContext(userContext, storage);
       res.json(michelleContext);
     } catch (error) {
       console.error("Michelle context error:", error);

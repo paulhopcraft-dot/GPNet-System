@@ -254,6 +254,61 @@ export const archiveIndex = pgTable("archive_index", {
   restoredBy: varchar("restored_by"),
 });
 
+// Michelle AI conversations table for tracking AI interactions
+export const conversations = pgTable("conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Conversation identification  
+  organizationId: varchar("organization_id").references(() => organizations.id), // Null for global/admin conversations
+  ticketId: varchar("ticket_id").references(() => tickets.id), // Case-specific conversations
+  workerId: varchar("worker_id").references(() => workers.id), // Worker conversations
+  
+  // Context and scoping
+  conversationType: text("conversation_type").notNull(), // "client_scoped", "universal_admin", "case_specific"
+  sessionId: varchar("session_id").notNull(), // Groups related messages in one conversation
+  
+  // Conversation metadata
+  title: text("title"), // Auto-generated conversation title
+  summary: text("summary"), // AI-generated conversation summary
+  status: text("status").default("active"), // "active", "archived", "escalated"
+  
+  // Privacy and access control
+  isPrivate: boolean("is_private").default(false), // For sensitive conversations
+  accessLevel: text("access_level").default("standard"), // "standard", "restricted", "confidential"
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Conversation messages table for individual AI messages
+export const conversationMessages = pgTable("conversation_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Message linking
+  conversationId: varchar("conversation_id").references(() => conversations.id).notNull(),
+  
+  // Message content
+  role: text("role").notNull(), // "user", "assistant", "system"
+  content: text("content").notNull(),
+  messageType: text("message_type").default("text"), // "text", "structured_response", "escalation"
+  
+  // AI context and processing
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  model: text("model").default("gpt-5"), // AI model used
+  confidence: integer("confidence"), // AI confidence score 0-100
+  
+  // Case context
+  caseContext: jsonb("case_context"), // Relevant case information at time of message
+  nextStepSuggestion: text("next_step_suggestion"), // Michelle's recommended next action
+  
+  // Metadata
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+});
+
 // Injuries table for injury-specific information
 export const injuries = pgTable("injuries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -349,6 +404,17 @@ export const insertRtwPlanSchema = createInsertSchema(rtwPlans).omit({
   updatedAt: true,
 });
 
+export const insertConversationSchema = createInsertSchema(conversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertConversationMessageSchema = createInsertSchema(conversationMessages).omit({
+  id: true,
+  timestamp: true,
+});
+
 // Type definitions
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
 export type Ticket = typeof tickets.$inferSelect;
@@ -374,6 +440,12 @@ export type Stakeholder = typeof stakeholders.$inferSelect;
 export type InsertRtwPlan = z.infer<typeof insertRtwPlanSchema>;
 export type RtwPlan = typeof rtwPlans.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
+
+export type InsertConversation = z.infer<typeof insertConversationSchema>;
+export type Conversation = typeof conversations.$inferSelect;
+
+export type InsertConversationMessage = z.infer<typeof insertConversationMessageSchema>;
+export type ConversationMessage = typeof conversationMessages.$inferSelect;
 
 // Form validation schema for Pre-Employment Check
 export const preEmploymentFormSchema = z.object({
