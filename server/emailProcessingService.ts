@@ -114,9 +114,15 @@ export class EmailProcessingService {
         );
       }
       
-      // Step 10: Update processing status to success
+      // Step 10: Update processing status based on matching result
       if (externalEmailId) {
-        await this.updateProcessingStatus(externalEmailId, 'processed', aiAnalysis);
+        const isMatched = !!matchResult?.bestMatch?.ticketId;
+        if (isMatched) {
+          await this.updateProcessingStatus(externalEmailId, 'processed', aiAnalysis);
+        } else {
+          // Email could not be matched to a case - flag for admin review
+          await this.updateProcessingStatus(externalEmailId, 'unmatched', aiAnalysis, undefined, true);
+        }
       }
       
       return {
@@ -525,7 +531,8 @@ export class EmailProcessingService {
     externalEmailId: string,
     status: string,
     aiAnalysis?: EmailAnalysisResult,
-    errorMessage?: string
+    errorMessage?: string,
+    needsAdminReview?: boolean
   ): Promise<void> {
     try {
       const updateData: any = {
@@ -546,6 +553,10 @@ export class EmailProcessingService {
       
       if (status === 'error' && errorMessage) {
         updateData.errorMessage = errorMessage;
+      }
+      
+      if (needsAdminReview !== undefined) {
+        updateData.needsAdminReview = needsAdminReview;
       }
       
       await db

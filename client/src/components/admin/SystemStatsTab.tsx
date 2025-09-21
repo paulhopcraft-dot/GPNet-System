@@ -37,6 +37,14 @@ interface SystemStats {
     amber: number;
     green: number;
   };
+  externalEmails: {
+    total: number;
+    processed: number;
+    unmatched: number;
+    needingReview: number;
+    pending: number;
+    errors: number;
+  };
   system: {
     auditEvents: number;
     uptime: string;
@@ -103,7 +111,7 @@ export default function SystemStatsTab() {
   return (
     <div className="space-y-6">
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Organizations</CardTitle>
@@ -173,6 +181,32 @@ export default function SystemStatsTab() {
             <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
               <Clock className="h-3 w-3" />
               <span>Uptime: {stats.system.uptime}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">External Emails</CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.externalEmails.total}</div>
+            <div className="flex flex-wrap gap-1 mt-2">
+              <Badge variant="default" className="text-xs">
+                {stats.externalEmails.processed} Processed
+              </Badge>
+              {stats.externalEmails.needingReview > 0 && (
+                <Badge variant="destructive" className="text-xs">
+                  <AlertTriangle className="h-3 w-3 mr-1" />
+                  {stats.externalEmails.needingReview} Need Review
+                </Badge>
+              )}
+              {stats.externalEmails.pending > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {stats.externalEmails.pending} Pending
+                </Badge>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import { authService } from './authService.js';
 import { storage } from './storage.js';
 import { z } from 'zod';
+import { db } from './db.js';
+import { externalEmails } from '@shared/schema';
+import { sql } from 'drizzle-orm';
 
 const router = Router();
 
@@ -321,6 +324,25 @@ router.get('/system-stats', requireAdmin, async (req: Request, res: Response) =>
     // Get total tickets across all organizations
     const allTickets = await storage.getAllTickets();
     
+    // Get external email statistics
+    const externalEmailStats = await db.select({
+      total: sql<number>`COUNT(*)::int`,
+      unmatched: sql<number>`COUNT(CASE WHEN processing_status = 'unmatched' THEN 1 END)::int`,
+      needingReview: sql<number>`COUNT(CASE WHEN needs_admin_review = true THEN 1 END)::int`,
+      processed: sql<number>`COUNT(CASE WHEN processing_status = 'processed' THEN 1 END)::int`,
+      pending: sql<number>`COUNT(CASE WHEN processing_status = 'pending' THEN 1 END)::int`,
+      errors: sql<number>`COUNT(CASE WHEN processing_status = 'error' THEN 1 END)::int`
+    }).from(externalEmails);
+    
+    const emailStats = externalEmailStats[0] || {
+      total: 0,
+      unmatched: 0,
+      needingReview: 0,
+      processed: 0,
+      pending: 0,
+      errors: 0
+    };
+    
     // Calculate recent activity (last 24 hours)
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -365,6 +387,14 @@ router.get('/system-stats', requireAdmin, async (req: Request, res: Response) =>
         uptime: process.uptime() > 3600 ? `${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m` : `${Math.floor(process.uptime() / 60)}m`,
         version: process.env.npm_package_version || '1.0.0'
       },
+      externalEmails: {
+        total: emailStats.total,
+        processed: emailStats.processed,
+        unmatched: emailStats.unmatched,
+        needingReview: emailStats.needingReview,
+        pending: emailStats.pending,
+        errors: emailStats.errors
+      },
       recentActivity: {
         logins: recentLogins,
         cases: recentCases,
@@ -375,6 +405,36 @@ router.get('/system-stats', requireAdmin, async (req: Request, res: Response) =>
     res.json(stats);
   } catch (error) {
     console.error('Get system stats error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get unmatched emails needing admin review
+router.get('/unmatched-emails', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const unmatchedEmails = await db.select({
+      id: externalEmails.id,
+      organizationId: externalEmails.organizationId,
+      originalSender: externalEmails.originalSender,
+      originalSenderName: externalEmails.originalSenderName,
+      originalSubject: externalEmails.originalSubject,
+      subject: externalEmails.subject,
+      forwardedBy: externalEmails.forwardedBy,
+      forwardedAt: externalEmails.forwardedAt,
+      processingStatus: externalEmails.processingStatus,
+      aiSummary: externalEmails.aiSummary,
+      urgencyLevel: externalEmails.urgencyLevel,
+      needsAdminReview: externalEmails.needsAdminReview,
+      createdAt: externalEmails.createdAt,
+    })
+    .from(externalEmails)
+    .where(sql`needs_admin_review = true OR processing_status = 'unmatched'`)
+    .orderBy(sql`created_at DESC`)
+    .limit(50); // Limit to 50 most recent
+    
+    res.json(unmatchedEmails);
+  } catch (error) {
+    console.error('Get unmatched emails error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

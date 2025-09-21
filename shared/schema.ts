@@ -293,6 +293,7 @@ export const externalEmails = pgTable("external_emails", {
   // Processing status
   processingStatus: text("processing_status").default("pending"), // "pending", "processing", "matched", "unmatched", "error"
   errorMessage: text("error_message"),
+  needsAdminReview: boolean("needs_admin_review").default(false), // Flag unmatched emails for admin attention
   
   // AI analysis
   aiSummary: text("ai_summary"), // Michelle's summary

@@ -14,7 +14,8 @@ import {
   Database,
   UserCheck,
   Archive,
-  Eye
+  Eye,
+  Mail
 } from "lucide-react";
 import OrganizationsTab from "@/components/admin/OrganizationsTab";
 import ClientUsersTab from "@/components/admin/ClientUsersTab";
@@ -22,6 +23,7 @@ import AdminUsersTab from "@/components/admin/AdminUsersTab";
 import AuditLogsTab from "@/components/admin/AuditLogsTab";
 import SystemStatsTab from "@/components/admin/SystemStatsTab";
 import CrossTenantAnalyticsTab from "@/components/admin/CrossTenantAnalyticsTab";
+import UnmatchedEmailsTab from "@/components/admin/UnmatchedEmailsTab";
 
 export default function AdminConsole() {
   const { user } = useUser();
@@ -74,7 +76,7 @@ export default function AdminConsole() {
 
       {/* Admin Console Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className={`grid w-full ${user.permissions?.includes('superuser') ? 'grid-cols-7' : 'grid-cols-6'}`}>
+        <TabsList className={`grid w-full ${user.permissions?.includes('superuser') ? 'grid-cols-8' : 'grid-cols-7'}`}>
           <TabsTrigger value="overview" className="flex items-center gap-2" data-testid="tab-overview">
             <BarChart3 className="h-4 w-4" />
             Overview
@@ -100,6 +102,10 @@ export default function AdminConsole() {
           <TabsTrigger value="audit-logs" className="flex items-center gap-2" data-testid="tab-audit-logs">
             <Activity className="h-4 w-4" />
             Audit Logs
+          </TabsTrigger>
+          <TabsTrigger value="unmatched-emails" className="flex items-center gap-2" data-testid="tab-unmatched-emails">
+            <Mail className="h-4 w-4" />
+            Unmatched Emails
           </TabsTrigger>
           <TabsTrigger value="system" className="flex items-center gap-2" data-testid="tab-system">
             <Settings className="h-4 w-4" />
@@ -131,6 +137,10 @@ export default function AdminConsole() {
 
         <TabsContent value="audit-logs" className="space-y-6">
           <AuditLogsTab />
+        </TabsContent>
+
+        <TabsContent value="unmatched-emails" className="space-y-6">
+          <UnmatchedEmailsTab />
         </TabsContent>
 
         <TabsContent value="system" className="space-y-6">
