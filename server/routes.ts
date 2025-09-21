@@ -3512,13 +3512,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // PDF Report Generation Endpoints
+  // PDF Report Generation Endpoints with Authorization
   app.get("/api/reports/:ticketId/types", requireAuth, async (req, res) => {
     try {
       const { ticketId } = req.params;
+      const user = req.session.user!;
+
+      // Verify user has access to this ticket
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check authorization - user must belong to the ticket's organization or be impersonating
+      const isImpersonating = user.isImpersonating || false;
+      const userOrgId = isImpersonating ? user.impersonationTarget : user.organizationId;
+      const isAdmin = user.role === 'admin' && !isImpersonating;
+      
+      if (!isAdmin && ticket.organizationId !== userOrgId) {
+        return res.status(403).json({ error: "Access denied - insufficient permissions" });
+      }
 
       // Get available report types for the ticket
-      const { reportDataService } = await import('./reportDataService.js');
+      const { reportDataService } = await import('./reportDataService');
       const reportTypes = await reportDataService.getAvailableReportTypes(ticketId);
 
       res.json({ reportTypes });
@@ -3530,16 +3546,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/reports/generate", requireAuth, async (req, res) => {
     try {
-      const { ticketId, reportType, options } = req.body;
+      // Validate request body
+      const ReportGenerateSchema = z.object({
+        ticketId: z.string().min(1, "Ticket ID is required"),
+        reportType: z.enum(["pre-employment", "case-summary", "injury-report", "compliance-audit"], {
+          errorMap: () => ({ message: "Invalid report type" })
+        }),
+        options: z.object({
+          includeConfidentialInfo: z.boolean().optional(),
+          customFooter: z.string().optional(),
+          letterhead: z.boolean().optional()
+        }).optional()
+      });
+
+      const validationResult = ReportGenerateSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request data", 
+          details: fromZodError(validationResult.error).toString() 
+        });
+      }
+
+      const { ticketId, reportType, options } = validationResult.data;
       const user = req.session.user!;
 
-      if (!ticketId || !reportType) {
-        return res.status(400).json({ error: "Ticket ID and report type are required" });
+      // Verify user has access to this ticket
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check authorization - user must belong to the ticket's organization or be impersonating
+      const isImpersonating = user.isImpersonating || false;
+      const userOrgId = isImpersonating ? user.impersonationTarget : user.organizationId;
+      const isAdmin = user.role === 'admin' && !isImpersonating;
+      
+      if (!isAdmin && ticket.organizationId !== userOrgId) {
+        return res.status(403).json({ error: "Access denied - insufficient permissions" });
       }
 
       // Import services dynamically to avoid circular dependencies
-      const { reportDataService } = await import('./reportDataService.js');
-      const { pdfService } = await import('./pdfService.js');
+      const { reportDataService } = await import('./reportDataService');
+      const { pdfService } = await import('./pdfService');
 
       let pdfBuffer: Buffer;
       const generatedBy = `${user.firstName} ${user.lastName} (${user.email})`;
@@ -3589,14 +3637,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/reports/preview", requireAuth, async (req, res) => {
     try {
-      const { ticketId, reportType } = req.body;
-      const user = req.session.user!;
+      // Validate request body
+      const ReportPreviewSchema = z.object({
+        ticketId: z.string().min(1, "Ticket ID is required"),
+        reportType: z.enum(["pre-employment", "case-summary", "injury-report", "compliance-audit"], {
+          errorMap: () => ({ message: "Invalid report type" })
+        })
+      });
 
-      if (!ticketId || !reportType) {
-        return res.status(400).json({ error: "Ticket ID and report type are required" });
+      const validationResult = ReportPreviewSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request data", 
+          details: fromZodError(validationResult.error).toString() 
+        });
       }
 
-      const { reportDataService } = await import('./reportDataService.js');
+      const { ticketId, reportType } = validationResult.data;
+      const user = req.session.user!;
+
+      // Verify user has access to this ticket
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check authorization - user must belong to the ticket's organization or be impersonating
+      const isImpersonating = user.isImpersonating || false;
+      const userOrgId = isImpersonating ? user.impersonationTarget : user.organizationId;
+      const isAdmin = user.role === 'admin' && !isImpersonating;
+      
+      if (!isAdmin && ticket.organizationId !== userOrgId) {
+        return res.status(403).json({ error: "Access denied - insufficient permissions" });
+      }
+
+      const { reportDataService } = await import('./reportDataService');
       const generatedBy = `${user.firstName} ${user.lastName} (${user.email})`;
 
       // Get report data for preview (without generating PDF)

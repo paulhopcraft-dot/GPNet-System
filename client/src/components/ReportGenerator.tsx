@@ -8,40 +8,67 @@ import { apiRequest } from "@/lib/queryClient";
 import { Download, FileText, Loader2, AlertCircle, CheckCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-interface ReportType {
-  type: string;
-  name: string;
-  description: string;
-  url: string;
-  available: boolean;
-}
-
-interface AvailableReportsResponse {
-  caseId: string;
-  caseType: string;
-  availableReports: ReportType[];
+interface ReportTypesResponse {
+  reportTypes: string[];
 }
 
 interface ReportGeneratorProps {
-  caseId: string;
+  ticketId: string;
   "data-testid"?: string;
 }
 
-export function ReportGenerator({ caseId, "data-testid": testId }: ReportGeneratorProps) {
+const REPORT_DEFINITIONS = {
+  "pre-employment": {
+    name: "Pre-Employment Assessment Report",
+    description: "Comprehensive health assessment for pre-employment screening",
+    icon: "green"
+  },
+  "case-summary": {
+    name: "Case Summary Report",
+    description: "Complete case overview with timeline and analysis",
+    icon: "blue"
+  },
+  "injury-report": {
+    name: "Injury Report",
+    description: "Detailed injury assessment and return-to-work planning",
+    icon: "red"
+  },
+  "compliance-audit": {
+    name: "Compliance Audit Report",
+    description: "Regulatory compliance documentation and audit trail",
+    icon: "purple"
+  }
+} as const;
+
+export function ReportGenerator({ ticketId, "data-testid": testId }: ReportGeneratorProps) {
   const [generatingReports, setGeneratingReports] = useState<Set<string>>(new Set());
   const { toast } = useToast();
 
-  // Fetch available reports for this case
-  const { data: reportsData, isLoading, error } = useQuery<AvailableReportsResponse>({
-    queryKey: [`/api/cases/${caseId}/reports`],
-    enabled: !!caseId
+  // Fetch available report types for this ticket
+  const { data: reportTypesData, isLoading, error } = useQuery<ReportTypesResponse>({
+    queryKey: [`/api/reports`, ticketId, 'types'],
+    enabled: !!ticketId
   });
 
-  const generateReport = async (reportType: string, reportUrl: string, reportName: string) => {
+  const generateReport = async (reportType: string, reportName: string) => {
     setGeneratingReports(prev => new Set(prev).add(reportType));
     
     try {
-      const response = await fetch(reportUrl);
+      const response = await fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          ticketId,
+          reportType,
+          options: {
+            includeConfidentialInfo: true,
+            letterhead: true
+          }
+        })
+      });
       
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -60,7 +87,7 @@ export function ReportGenerator({ caseId, "data-testid": testId }: ReportGenerat
       const contentDisposition = response.headers.get('Content-Disposition');
       const filename = contentDisposition 
         ? contentDisposition.split('filename=')[1]?.replace(/"/g, '') 
-        : `${reportType}-${caseId}.pdf`;
+        : `${reportType}-report-${ticketId}-${new Date().toISOString().split('T')[0]}.pdf`;
         
       link.download = filename;
       document.body.appendChild(link);
@@ -106,7 +133,7 @@ export function ReportGenerator({ caseId, "data-testid": testId }: ReportGenerat
     switch (reportType) {
       case "pre-employment":
         return "bg-green-100 text-green-800 hover:bg-green-200";
-      case "injury":
+      case "injury-report":
         return "bg-red-100 text-red-800 hover:bg-red-200";
       case "compliance-audit":
         return "bg-purple-100 text-purple-800 hover:bg-purple-200";
@@ -155,7 +182,7 @@ export function ReportGenerator({ caseId, "data-testid": testId }: ReportGenerat
     );
   }
 
-  if (!reportsData || reportsData.availableReports.length === 0) {
+  if (!reportTypesData || reportTypesData.reportTypes.length === 0) {
     return (
       <Card data-testid={testId}>
         <CardHeader>
@@ -182,74 +209,67 @@ export function ReportGenerator({ caseId, "data-testid": testId }: ReportGenerat
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-3">
-          {reportsData.availableReports.map((report) => (
-            <div 
-              key={report.type} 
-              className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover-elevate"
-              data-testid={`report-card-${report.type}`}
-            >
-              <div className="flex items-start gap-3 flex-1">
-                <div className="mt-1">
-                  {getReportIcon(report.type)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-medium text-gray-900" data-testid={`text-report-name-${report.type}`}>
-                      {report.name}
-                    </h4>
-                    <Badge 
-                      variant="secondary" 
-                      className={getReportBadgeColor(report.type)}
-                      data-testid={`badge-report-type-${report.type}`}
-                    >
-                      {report.type.replace('-', ' ')}
-                    </Badge>
-                    {report.available ? (
+          {reportTypesData.reportTypes.map((reportType) => {
+            const reportDef = REPORT_DEFINITIONS[reportType as keyof typeof REPORT_DEFINITIONS];
+            if (!reportDef) return null;
+            
+            return (
+              <div 
+                key={reportType} 
+                className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover-elevate"
+                data-testid={`report-card-${reportType}`}
+              >
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="mt-1">
+                    {getReportIcon(reportType)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-medium text-gray-900" data-testid={`text-report-name-${reportType}`}>
+                        {reportDef.name}
+                      </h4>
+                      <Badge 
+                        variant="secondary" 
+                        className={getReportBadgeColor(reportType)}
+                        data-testid={`badge-report-type-${reportType}`}
+                      >
+                        {reportType.replace('-', ' ')}
+                      </Badge>
                       <Badge variant="default" className="bg-green-100 text-green-800">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         Available
                       </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                        <AlertCircle className="h-3 w-3 mr-1" />
-                        Incomplete
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600" data-testid={`text-report-description-${report.type}`}>
-                    {report.description}
-                  </p>
-                  {!report.available && (
-                    <p className="text-xs text-yellow-600 mt-1">
-                      Complete the required assessments to generate this report
+                    </div>
+                    <p className="text-sm text-gray-600" data-testid={`text-report-description-${reportType}`}>
+                      {reportDef.description}
                     </p>
-                  )}
+                  </div>
+                </div>
+                <div className="ml-4">
+                  <Button
+                    onClick={() => generateReport(reportType, reportDef.name)}
+                    disabled={generatingReports.has(reportType)}
+                    variant="default"
+                    size="sm"
+                    className="min-w-[100px]"
+                    data-testid={`button-generate-${reportType}`}
+                  >
+                    {generatingReports.has(reportType) ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="h-4 w-4 mr-2" />
+                        Generate PDF
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
-              <div className="ml-4">
-                <Button
-                  onClick={() => generateReport(report.type, report.url, report.name)}
-                  disabled={!report.available || generatingReports.has(report.type)}
-                  variant={report.available ? "default" : "secondary"}
-                  size="sm"
-                  className="min-w-[100px]"
-                  data-testid={`button-generate-${report.type}`}
-                >
-                  {generatingReports.has(report.type) ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="h-4 w-4 mr-2" />
-                      Generate PDF
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">

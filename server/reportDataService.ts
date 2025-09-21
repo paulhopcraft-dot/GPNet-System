@@ -1,5 +1,5 @@
-import { storage } from './storage.js';
-import { PreEmploymentReportData, CaseSummaryReportData, InjuryReportData, ComplianceAuditReportData } from './pdfService.js';
+import { storage } from './storage';
+import { PreEmploymentReportData, CaseSummaryReportData, InjuryReportData, ComplianceAuditReportData } from './pdfService';
 
 export class ReportDataService {
   
