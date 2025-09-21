@@ -385,7 +385,7 @@ export class AuthService {
   }
 
   // Audit logging
-  private async logAuditEvent(event: Omit<InsertAuditEvent, 'id'>): Promise<void> {
+  async logAuditEvent(event: Omit<InsertAuditEvent, 'id'>): Promise<void> {
     try {
       await storage.createAuditEvent(event);
     } catch (error) {
