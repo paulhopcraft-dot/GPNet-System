@@ -14,7 +14,8 @@ import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { pdfService } from "./pdfService";
 import { riskAssessmentService, type RiskInput } from "./riskAssessmentService";
-import { chatWithMichelle, clearConversation, getConversationHistory } from "./michelleService";
+import { chatWithMichelle, clearConversation, getConversationHistory, getMichelleDataContext, UserContext } from "./michelleService";
+import { requireAuth } from "./authRoutes";
 
 // Analysis engine for RAG scoring and fit classification
 class AnalysisEngine {
@@ -3250,8 +3251,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Michelle AI Chat Endpoints
-  app.post("/api/michelle/chat", async (req, res) => {
+  // Michelle AI Chat Endpoints with dual mode support
+  app.post("/api/michelle/chat", requireAuth, async (req, res) => {
     try {
       const { conversationId, message, context } = req.body;
       
@@ -3259,9 +3260,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Message is required" });
       }
 
+      // Build user context from session with impersonation handling
+      const isImpersonating = req.session.user!.isImpersonating || false;
+      const userContext: UserContext = {
+        userId: req.session.user!.id,
+        userType: isImpersonating ? 'client' : req.session.user!.role,
+        organizationId: isImpersonating ? req.session.user!.impersonationTarget : req.session.user!.organizationId,
+        permissions: isImpersonating ? [] : (req.session.user!.permissions || []),
+        phiAccess: isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('phi-access') || false)),
+        isSuperuser: isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('superuser') || false))
+      };
+
       const response = await chatWithMichelle(
         conversationId || `conv_${Date.now()}`,
         message.trim(),
+        userContext,
         context
       );
 
@@ -3283,7 +3296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/michelle/conversation/:conversationId/history", async (req, res) => {
+  app.get("/api/michelle/conversation/:conversationId/history", requireAuth, async (req, res) => {
     try {
       const { conversationId } = req.params;
       const history = getConversationHistory(conversationId);
@@ -3291,6 +3304,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Get conversation history error:", error);
       res.status(500).json({ error: "Failed to get conversation history" });
+    }
+  });
+
+  // Michelle Data Context API - provides mode-specific data
+  app.get("/api/michelle/context", requireAuth, async (req, res) => {
+    try {
+      // Build user context from session with impersonation handling
+      const isImpersonating = req.session.user!.isImpersonating || false;
+      const userContext: UserContext = {
+        userId: req.session.user!.id,
+        userType: isImpersonating ? 'client' : req.session.user!.role,
+        organizationId: isImpersonating ? req.session.user!.impersonationTarget : req.session.user!.organizationId,
+        permissions: isImpersonating ? [] : (req.session.user!.permissions || []),
+        phiAccess: isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('phi-access') || false)),
+        isSuperuser: isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('superuser') || false))
+      };
+
+      const michelleContext = await getMichelleDataContext(userContext, storage);
+      res.json(michelleContext);
+    } catch (error) {
+      console.error("Michelle context error:", error);
+      res.status(500).json({ error: "Failed to get Michelle context" });
+    }
+  });
+
+  // Michelle Mode Status API - returns current user's Michelle mode
+  app.get("/api/michelle/mode", requireAuth, async (req, res) => {
+    try {
+      const isImpersonating = req.session.user!.isImpersonating || false;
+      const userType = isImpersonating ? 'client' : req.session.user!.role;
+      const organizationId = isImpersonating ? req.session.user!.impersonationTarget : req.session.user!.organizationId;
+      const isSuperuser = isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('superuser') || false));
+      const phiAccess = isImpersonating ? false : (req.session.user!.role === 'admin' && (req.session.user!.permissions?.includes('phi-access') || false));
+      
+      const mode = userType === 'admin' && isSuperuser ? 'universal' : 'client-scoped';
+      const capabilities = mode === 'universal' 
+        ? ['cross-tenant-analytics', 'phi-access', 'system-administration', 'platform-insights']
+        : ['organization-analytics', 'case-management', 'worker-tracking'];
+
+      res.json({
+        mode,
+        accessLevel: userType,
+        organizationId,
+        capabilities,
+        phiAccess
+      });
+    } catch (error) {
+      console.error("Michelle mode error:", error);
+      res.status(500).json({ error: "Failed to get Michelle mode" });
     }
   });
 
