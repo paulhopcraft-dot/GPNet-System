@@ -22,11 +22,15 @@ import {
   AlertTriangle,
   XCircle,
   Bot,
-  Shield
+  Shield,
+  Mail,
+  Clock,
+  ExternalLink
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { MichelleChat } from "./MichelleChat";
 import { ReportGenerator } from "./ReportGenerator";
+import ExternalEmailsSection from "./ExternalEmailsSection";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -157,9 +161,10 @@ export default function CaseDetailsModal({
         </DialogHeader>
 
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
             <TabsTrigger value="analysis" data-testid="tab-analysis">Analysis</TabsTrigger>
+            <TabsTrigger value="external-emails" data-testid="tab-external-emails">External Emails</TabsTrigger>
             <TabsTrigger value="reports" data-testid="tab-reports">Reports</TabsTrigger>
             <TabsTrigger value="michelle" data-testid="tab-michelle">Michelle AI</TabsTrigger>
             <TabsTrigger value="actions" data-testid="tab-actions">Actions</TabsTrigger>
@@ -323,6 +328,10 @@ export default function CaseDetailsModal({
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="external-emails" className="space-y-4">
+            <ExternalEmailsSection ticketId={caseDetails.ticketId} />
           </TabsContent>
 
           <TabsContent value="reports" className="space-y-4">

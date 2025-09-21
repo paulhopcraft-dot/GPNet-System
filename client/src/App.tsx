@@ -17,6 +17,7 @@ import Stakeholders from "@/pages/Stakeholders";
 import FitForWorkAssessment from "@/pages/FitForWorkAssessment";
 import RtwCompliance from "@/pages/RtwCompliance";
 import NatalieDashboard from "@/pages/natalie-dashboard";
+import ManagerDashboard from "@/pages/ManagerDashboard";
 import NotFound from "@/pages/not-found";
 import { MichelleWidget } from "@/components/MichelleWidget";
 
@@ -44,6 +45,16 @@ function Router() {
       <Route path="/natalie">
         <ProtectedRoute requireAdmin>
           <NatalieDashboard />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/manager">
+        <ProtectedRoute>
+          <ManagerDashboard 
+            organizationId="org_demo_001" 
+            managerEmail="manager@company.com" 
+            managerName="Demo Manager" 
+          />
         </ProtectedRoute>
       </Route>
       
