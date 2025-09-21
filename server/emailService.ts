@@ -242,7 +242,7 @@ If you have received this email in error, please delete it immediately and notif
       }
 
       // Get organization details
-      const organization = await storage.getOrganization(ticket.organizationId);
+      const organization = ticket.organizationId ? await storage.getOrganization(ticket.organizationId) : null;
       const companyName = organization?.name || 'Unknown Company';
 
       // Generate email content

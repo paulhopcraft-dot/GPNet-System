@@ -58,7 +58,8 @@ export function ReportGenerator({ ticketId, "data-testid": testId }: ReportGener
 
   // Fetch available report types for this ticket
   const { data: reportTypesData, isLoading, error } = useQuery<ReportTypesResponse>({
-    queryKey: [`/api/reports`, ticketId, 'types'],
+    queryKey: ['/api/reports', ticketId, 'types'],
+    queryFn: () => fetch(`/api/reports/${ticketId}/types`, { credentials: 'include' }).then(res => res.json()),
     enabled: !!ticketId
   });
 
@@ -128,11 +129,84 @@ export function ReportGenerator({ ticketId, "data-testid": testId }: ReportGener
     }
   };
 
+  const sendReportEmail = async (reportType: string, reportName: string) => {
+    setSendingEmails(prev => new Set(prev).add(reportType));
+    
+    try {
+      // Parse email recipients
+      const recipients = emailRecipients
+        .split(/[,;\n]/)
+        .map(email => email.trim())
+        .filter(email => email.length > 0)
+        .map(email => ({ email }));
+
+      if (recipients.length === 0) {
+        throw new Error("Please enter at least one email recipient");
+      }
+
+      const response = await fetch('/api/reports/email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          ticketId,
+          reportType,
+          recipients,
+          customMessage: customMessage.trim() || undefined,
+          includeComplianceNote,
+          options: {
+            includeConfidentialInfo: true,
+            letterhead: true
+          }
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to send ${reportName} via email`);
+      }
+
+      const result = await response.json();
+
+      toast({
+        title: "Report Sent Successfully",
+        description: `${reportName} has been sent to ${result.recipients} recipient(s).`,
+      });
+
+      // Reset form and close dialog
+      setEmailDialogOpen(false);
+      setEmailRecipients("");
+      setCustomMessage("");
+      setSelectedReportType("");
+      
+    } catch (error) {
+      console.error("Error sending report via email:", error);
+      toast({
+        title: "Email Sending Failed",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setSendingEmails(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(reportType);
+        return newSet;
+      });
+    }
+  };
+
+  const openEmailDialog = (reportType: string) => {
+    setSelectedReportType(reportType);
+    setEmailDialogOpen(true);
+  };
+
   const getReportIcon = (reportType: string) => {
     switch (reportType) {
       case "pre-employment":
         return <FileText className="h-5 w-5 text-green-600" />;
-      case "injury":
+      case "injury-report":
         return <FileText className="h-5 w-5 text-red-600" />;
       case "compliance-audit":
         return <FileText className="h-5 w-5 text-purple-600" />;
@@ -257,7 +331,7 @@ export function ReportGenerator({ ticketId, "data-testid": testId }: ReportGener
                     </p>
                   </div>
                 </div>
-                <div className="ml-4">
+                <div className="ml-4 flex gap-2">
                   <Button
                     onClick={() => generateReport(reportType, reportDef.name)}
                     disabled={generatingReports.has(reportType)}
@@ -274,15 +348,108 @@ export function ReportGenerator({ ticketId, "data-testid": testId }: ReportGener
                     ) : (
                       <>
                         <Download className="h-4 w-4 mr-2" />
-                        Generate PDF
+                        Download
                       </>
                     )}
+                  </Button>
+                  
+                  <Button
+                    onClick={() => openEmailDialog(reportType)}
+                    disabled={generatingReports.has(reportType) || sendingEmails.has(reportType)}
+                    variant="outline"
+                    size="sm"
+                    data-testid={`button-email-${reportType}`}
+                  >
+                    <Mail className="h-4 w-4 mr-2" />
+                    Email
                   </Button>
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* Email Dialog */}
+        <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Send Report via Email</DialogTitle>
+              <DialogDescription>
+                Send the {REPORT_DEFINITIONS[selectedReportType as keyof typeof REPORT_DEFINITIONS]?.name} directly to stakeholders
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="email-recipients">Email Recipients</Label>
+                <Textarea
+                  id="email-recipients"
+                  placeholder="Enter email addresses (one per line or comma-separated)&#10;example@company.com&#10;hr@company.com"
+                  value={emailRecipients}
+                  onChange={(e) => setEmailRecipients(e.target.value)}
+                  className="min-h-[80px]"
+                  data-testid="textarea-email-recipients"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Separate multiple emails with commas or line breaks
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="custom-message">Custom Message (Optional)</Label>
+                <Textarea
+                  id="custom-message"
+                  placeholder="Add a personal message to include with the report..."
+                  value={customMessage}
+                  onChange={(e) => setCustomMessage(e.target.value)}
+                  className="min-h-[60px]"
+                  data-testid="textarea-custom-message"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="compliance-note"
+                  checked={includeComplianceNote}
+                  onCheckedChange={setIncludeComplianceNote}
+                  data-testid="switch-compliance-note"
+                />
+                <Label htmlFor="compliance-note" className="text-sm">
+                  Include compliance and confidentiality notice
+                </Label>
+              </div>
+
+              <Separator />
+
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setEmailDialogOpen(false)}
+                  data-testid="button-cancel-email"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => sendReportEmail(selectedReportType, REPORT_DEFINITIONS[selectedReportType as keyof typeof REPORT_DEFINITIONS]?.name || "Report")}
+                  disabled={sendingEmails.has(selectedReportType) || !emailRecipients.trim()}
+                  data-testid="button-send-email"
+                >
+                  {sendingEmails.has(selectedReportType) ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4 mr-2" />
+                      Send Email
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex items-start gap-2">

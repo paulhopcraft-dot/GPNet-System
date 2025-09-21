@@ -1979,8 +1979,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Block legacy report endpoints to prevent type errors
+  app.use(/^\/api\/cases\/[^/]+\/reports(\/.*)?$/, (_req, res) => {
+    res.status(410).json({ error: "Legacy reports removed. Use /api/reports/* endpoints instead." });
+  });
+
   // ===============================================
-  // PDF REPORT GENERATION API
+  // PDF REPORT GENERATION API - LEGACY (TO BE REMOVED)
   // ===============================================
   
   // Generate case summary report

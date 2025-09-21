@@ -64,6 +64,10 @@ export interface PDFGenerationOptions {
   displayHeaderFooter?: boolean;
   headerTemplate?: string;
   footerTemplate?: string;
+  // Business logic options
+  includeConfidentialInfo?: boolean;
+  customFooter?: string;
+  letterhead?: boolean;
 }
 
 // Report data interfaces
