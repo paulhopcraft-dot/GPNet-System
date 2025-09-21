@@ -4,17 +4,20 @@ import {
   legislationDocuments, rtwWorkflowSteps, complianceAudit, workerParticipationEvents,
   letterTemplates, generatedLetters, freshdeskTickets, freshdeskSyncLogs,
   organizations, clientUsers, adminUsers, auditEvents, archiveIndex,
+  specialists, escalations, specialistAssignments,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
   type Injury, type Stakeholder, type RtwPlan, type RiskHistory,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
   type LetterTemplate, type GeneratedLetter, type FreshdeskTicket, type FreshdeskSyncLog,
   type Organization, type ClientUser, type AdminUser, type AuditEvent, type ArchiveIndex,
+  type Specialist, type Escalation, type SpecialistAssignment,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
   type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
   type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter,
   type InsertFreshdeskTicket, type InsertFreshdeskSyncLog,
-  type InsertOrganization, type InsertClientUser, type InsertAdminUser, type InsertAuditEvent, type InsertArchiveIndex
+  type InsertOrganization, type InsertClientUser, type InsertAdminUser, type InsertAuditEvent, type InsertArchiveIndex,
+  type InsertSpecialist, type InsertEscalation, type InsertSpecialistAssignment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -251,6 +254,28 @@ export interface IStorage {
     complete: number;
     flagged: number;
   }>;
+
+  // Specialists
+  getAllSpecialists(): Promise<Specialist[]>;
+  getSpecialist(id: string): Promise<Specialist | undefined>;
+  createSpecialist(specialist: InsertSpecialist): Promise<Specialist>;
+  updateSpecialist(id: string, updates: Partial<InsertSpecialist>): Promise<Specialist>;
+
+  // Escalations
+  getEscalations(filters?: {
+    status?: string;
+    priority?: string;
+    specialistId?: string;
+  }): Promise<Escalation[]>;
+  getEscalationWithContext(escalationId: string): Promise<any>;
+  updateEscalationStatus(escalationId: string, status: string, resolutionNotes?: string): Promise<Escalation>;
+  assignEscalationToSpecialist(params: {
+    escalationId: string;
+    specialistId: string;
+    assignmentReason: string;
+    assignmentType: string;
+  }): Promise<SpecialistAssignment>;
+  getEscalationDashboardData(): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1644,6 +1669,247 @@ export class DatabaseStorage implements IStorage {
       avg_response_time,
       participation_rate,
       risk_cases_resolved
+    };
+  }
+
+  // ===============================================
+  // SPECIALIST MANAGEMENT
+  // ===============================================
+
+  async getAllSpecialists(): Promise<Specialist[]> {
+    return db.select().from(specialists).orderBy(specialists.name);
+  }
+
+  async getSpecialist(id: string): Promise<Specialist | undefined> {
+    const result = await db
+      .select()
+      .from(specialists)
+      .where(eq(specialists.id, id))
+      .limit(1);
+    
+    return result[0];
+  }
+
+  async createSpecialist(insertSpecialist: InsertSpecialist): Promise<Specialist> {
+    const [specialist] = await db
+      .insert(specialists)
+      .values(insertSpecialist)
+      .returning();
+    
+    return specialist;
+  }
+
+  async updateSpecialist(id: string, updates: Partial<InsertSpecialist>): Promise<Specialist> {
+    const [specialist] = await db
+      .update(specialists)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(specialists.id, id))
+      .returning();
+    
+    return specialist;
+  }
+
+  // ===============================================
+  // ESCALATION MANAGEMENT
+  // ===============================================
+
+  async getEscalations(filters?: {
+    status?: string;
+    priority?: string;
+    specialistId?: string;
+  }): Promise<Escalation[]> {
+    let query = db.select().from(escalations);
+
+    if (filters?.status) {
+      query = query.where(eq(escalations.status, filters.status));
+    }
+    if (filters?.priority) {
+      query = query.where(eq(escalations.priority, filters.priority));
+    }
+    if (filters?.specialistId) {
+      query = query.where(eq(escalations.assignedSpecialistId, filters.specialistId));
+    }
+
+    return query.orderBy(desc(escalations.createdAt));
+  }
+
+  async getEscalationWithContext(escalationId: string): Promise<any> {
+    const escalation = await db
+      .select()
+      .from(escalations)
+      .where(eq(escalations.id, escalationId))
+      .limit(1);
+
+    if (!escalation[0]) return null;
+
+    // Get assigned specialist
+    const assignedSpecialist = escalation[0].assignedSpecialistId
+      ? await this.getSpecialist(escalation[0].assignedSpecialistId)
+      : null;
+
+    // Get specialist assignments
+    const assignments = await db
+      .select()
+      .from(specialistAssignments)
+      .leftJoin(specialists, eq(specialistAssignments.specialistId, specialists.id))
+      .where(eq(specialistAssignments.escalationId, escalationId));
+
+    // Get conversation context
+    const conversation = escalation[0].conversationId
+      ? await db
+          .select()
+          .from(conversations)
+          .where(eq(conversations.id, escalation[0].conversationId))
+          .limit(1)
+      : null;
+
+    // Get ticket context if available
+    const ticket = escalation[0].ticketId
+      ? await this.getTicket(escalation[0].ticketId)
+      : null;
+
+    return {
+      escalation: escalation[0],
+      assignedSpecialist,
+      assignments,
+      conversation: conversation?.[0],
+      ticket
+    };
+  }
+
+  async updateEscalationStatus(escalationId: string, status: string, resolutionNotes?: string): Promise<Escalation> {
+    const updateData: any = {
+      status,
+      updatedAt: new Date()
+    };
+
+    if (status === "resolved") {
+      updateData.resolvedAt = new Date();
+      if (resolutionNotes) {
+        updateData.resolutionNotes = resolutionNotes;
+      }
+    }
+
+    if (status === "in_progress") {
+      updateData.firstResponseAt = new Date();
+    }
+
+    const [escalation] = await db
+      .update(escalations)
+      .set(updateData)
+      .where(eq(escalations.id, escalationId))
+      .returning();
+
+    return escalation;
+  }
+
+  async assignEscalationToSpecialist(params: {
+    escalationId: string;
+    specialistId: string;
+    assignmentReason: string;
+    assignmentType: string;
+  }): Promise<SpecialistAssignment> {
+    const { escalationId, specialistId, assignmentReason, assignmentType } = params;
+
+    // Get escalation to get conversation ID
+    const escalation = await db
+      .select()
+      .from(escalations)
+      .where(eq(escalations.id, escalationId))
+      .limit(1);
+
+    if (!escalation[0]) {
+      throw new Error("Escalation not found");
+    }
+
+    // Create assignment
+    const [assignment] = await db
+      .insert(specialistAssignments)
+      .values({
+        escalationId,
+        specialistId,
+        conversationId: escalation[0].conversationId,
+        assignmentType,
+        assignmentReason,
+        routingScore: 90 // Manual assignment gets high score
+      })
+      .returning();
+
+    // Update escalation with assigned specialist
+    await db
+      .update(escalations)
+      .set({
+        assignedSpecialistId: specialistId,
+        status: "assigned",
+        assignedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(escalations.id, escalationId));
+
+    // Update specialist caseload
+    await db
+      .update(specialists)
+      .set({
+        currentCaseload: sql`${specialists.currentCaseload} + 1`,
+        lastSeenAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(specialists.id, specialistId));
+
+    return assignment;
+  }
+
+  async getEscalationDashboardData(): Promise<any> {
+    // Get escalation counts by status
+    const statusCounts = await db
+      .select({
+        status: escalations.status,
+        count: sql<number>`count(*)`
+      })
+      .from(escalations)
+      .groupBy(escalations.status);
+
+    // Get escalation counts by priority
+    const priorityCounts = await db
+      .select({
+        priority: escalations.priority,
+        count: sql<number>`count(*)`
+      })
+      .from(escalations)
+      .groupBy(escalations.priority);
+
+    // Get recent escalations
+    const recentEscalations = await db
+      .select()
+      .from(escalations)
+      .leftJoin(specialists, eq(escalations.assignedSpecialistId, specialists.id))
+      .orderBy(desc(escalations.createdAt))
+      .limit(10);
+
+    // Get specialist workload
+    const specialistWorkload = await db
+      .select({
+        specialist: specialists,
+        activeEscalations: sql<number>`count(${escalations.id})`
+      })
+      .from(specialists)
+      .leftJoin(escalations, and(
+        eq(specialists.id, escalations.assignedSpecialistId),
+        sql`${escalations.status} IN ('pending', 'assigned', 'in_progress')`
+      ))
+      .groupBy(specialists.id);
+
+    return {
+      statusCounts: statusCounts.reduce((acc, item) => {
+        acc[item.status] = item.count;
+        return acc;
+      }, {} as Record<string, number>),
+      priorityCounts: priorityCounts.reduce((acc, item) => {
+        acc[item.priority] = item.count;
+        return acc;
+      }, {} as Record<string, number>),
+      recentEscalations,
+      specialistWorkload
     };
   }
 }

@@ -3,6 +3,8 @@ import { db } from "./db";
 import { conversations, conversationMessages, tickets, workers, organizations } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
+import { escalationService } from "./escalationService";
+import type { EscalationContext } from "./escalationService";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -123,10 +125,57 @@ export class MichelleAI {
       })
       .where(eq(conversations.id, conversationId));
 
+    // Check for escalation triggers
+    const escalationContext: EscalationContext = {
+      conversationId,
+      ticketId: conversation.ticketId || undefined,
+      userMessage,
+      aiResponse: aiResponse.response || "",
+      confidence: aiResponse.confidence || 85,
+      flags: aiResponse.flags || { risk: [], compliance: [], escalation: [] },
+      caseContext,
+      michelleContext: context
+    };
+
+    const escalationAnalysis = await escalationService.analyzeForEscalation(escalationContext);
+
+    let finalResponse = aiResponse.response;
+    let finalNextStep = aiResponse.nextStep;
+
+    // Handle escalation if needed
+    if (escalationAnalysis.shouldEscalate) {
+      console.log(`Escalation triggered for conversation ${conversationId}:`, escalationAnalysis.triggers.map(t => t.type));
+      
+      const escalationId = await escalationService.createEscalation(
+        escalationContext,
+        escalationAnalysis.triggers,
+        escalationAnalysis.recommendedPriority,
+        escalationAnalysis.estimatedComplexity
+      );
+
+      // Modify response to inform user about escalation
+      finalResponse = this.generateEscalationResponse(escalationAnalysis, escalationId);
+      finalNextStep = "Waiting for specialist review - you will be contacted shortly";
+
+      // Store escalation message
+      await db.insert(conversationMessages).values({
+        conversationId,
+        role: "assistant",
+        content: finalResponse,
+        messageType: "escalation",
+        model: "gpt-5",
+        confidence: 100,
+        caseContext: { ...caseContext, escalationId, escalationType: escalationAnalysis.triggers[0]?.type },
+        nextStepSuggestion: finalNextStep,
+        ipAddress,
+        userAgent
+      });
+    }
+
     return {
       conversationId,
-      response: aiResponse.response,
-      nextStepSuggestion: aiResponse.nextStep,
+      response: finalResponse,
+      nextStepSuggestion: finalNextStep,
       confidence: aiResponse.confidence || 85,
       tokenUsage: {
         promptTokens: response.usage?.prompt_tokens || 0,
@@ -292,6 +341,35 @@ Always propose relevant next steps to keep cases progressing efficiently.`;
     }
   }
 
+  private generateEscalationResponse(escalationAnalysis: any, escalationId: string): string {
+    const triggerTypes = escalationAnalysis.triggers.map((t: any) => t.type).join(", ");
+    const priority = escalationAnalysis.recommendedPriority;
+    
+    let escalationMessage = "";
+    
+    // Customize message based on escalation type and priority
+    if (escalationAnalysis.triggers.some((t: any) => t.type === "safety_concern")) {
+      escalationMessage = `I understand you have a safety concern that requires immediate specialist attention. I'm connecting you with one of our occupational health specialists who will review your case and contact you shortly.`;
+    } else if (escalationAnalysis.triggers.some((t: any) => t.type === "medical_review")) {
+      escalationMessage = `Your case requires specialized medical review that goes beyond my expertise. I'm forwarding this to one of our medical specialists who will provide you with the appropriate guidance.`;
+    } else if (escalationAnalysis.triggers.some((t: any) => t.type === "legal_issue")) {
+      escalationMessage = `I've identified that your situation may have legal compliance aspects that require specialist review. I'm escalating this to our legal compliance team to ensure you receive accurate guidance.`;
+    } else if (escalationAnalysis.triggers.some((t: any) => t.type === "complex_case")) {
+      escalationMessage = `Your case appears to be quite complex and would benefit from human specialist review. I'm transferring you to one of our experienced case coordinators who can provide more detailed assistance.`;
+    } else {
+      escalationMessage = `I'm connecting you with one of our human specialists who can provide more comprehensive assistance with your situation.`;
+    }
+
+    const priorityNote = priority === "urgent" 
+      ? " This has been marked as urgent priority."
+      : priority === "high" 
+      ? " This has been marked as high priority." 
+      : "";
+
+    const handoffMessage = `\n\nYour conversation reference is: ${escalationId.substring(0, 8)}. A specialist will review your case and contact you within the appropriate timeframe.${priorityNote}`;
+
+    return escalationMessage + handoffMessage;
+  }
 
   async archiveConversation(conversationId: string) {
     await db

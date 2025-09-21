@@ -309,6 +309,111 @@ export const conversationMessages = pgTable("conversation_messages", {
   timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
+// ===============================================
+// MICHELLE AI ESCALATION SYSTEM
+// ===============================================
+
+// Specialists table for managing human experts who handle escalated cases
+export const specialists = pgTable("specialists", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Specialist identification
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  role: text("role").notNull(), // "coordinator", "medical_reviewer", "legal_advisor", "senior_analyst"
+  specialization: text("specialization"), // "occupational_health", "workers_compensation", "complex_claims", "legal_compliance"
+  
+  // Availability and routing
+  isAvailable: boolean("is_available").default(true),
+  currentCaseload: integer("current_caseload").default(0),
+  maxCaseload: integer("max_caseload").default(10),
+  
+  // Contact and preferences
+  phone: text("phone"),
+  preferredContactMethod: text("preferred_contact_method").default("email"), // "email", "phone", "teams", "slack"
+  workingHours: jsonb("working_hours"), // Schedule preferences
+  timezone: text("timezone").default("Australia/Melbourne"),
+  
+  // Performance metrics
+  averageResponseTime: integer("average_response_time"), // Minutes
+  caseResolutionRate: integer("case_resolution_rate"), // Percentage
+  expertiseRating: integer("expertise_rating").default(5), // 1-10 scale
+  
+  // Status and metadata
+  status: text("status").default("active"), // "active", "busy", "unavailable", "offline"
+  lastSeenAt: timestamp("last_seen_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Escalations table for tracking when cases are escalated from Michelle to specialists
+export const escalations = pgTable("escalations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Escalation linking
+  conversationId: varchar("conversation_id").references(() => conversations.id).notNull(),
+  ticketId: varchar("ticket_id").references(() => tickets.id), // Optional case context
+  assignedSpecialistId: varchar("assigned_specialist_id").references(() => specialists.id),
+  
+  // Escalation details
+  escalationType: text("escalation_type").notNull(), // "safety_concern", "complex_case", "legal_issue", "medical_review", "compliance_risk"
+  priority: text("priority").default("medium"), // "low", "medium", "high", "urgent"
+  triggerReason: text("trigger_reason").notNull(), // What caused Michelle to escalate
+  triggerFlags: jsonb("trigger_flags"), // Specific flags that triggered escalation
+  
+  // Context and handoff
+  michelleContext: jsonb("michelle_context"), // AI context at time of escalation
+  userContext: jsonb("user_context"), // User information and conversation history
+  caseComplexity: integer("case_complexity").default(5), // 1-10 scale
+  estimatedResolutionTime: integer("estimated_resolution_time"), // Minutes
+  
+  // Status and progress
+  status: text("status").default("pending"), // "pending", "assigned", "in_progress", "resolved", "escalated_further"
+  resolutionSummary: text("resolution_summary"), // Final outcome summary
+  handoffNotes: text("handoff_notes"), // Notes from Michelle to specialist
+  resolutionNotes: text("resolution_notes"), // Notes from specialist
+  
+  // Timing and metrics
+  escalatedAt: timestamp("escalated_at").defaultNow(),
+  assignedAt: timestamp("assigned_at"),
+  firstResponseAt: timestamp("first_response_at"),
+  resolvedAt: timestamp("resolved_at"),
+  responseTimeMinutes: integer("response_time_minutes"),
+  resolutionTimeMinutes: integer("resolution_time_minutes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Specialist assignments table for tracking current workload and routing decisions
+export const specialistAssignments = pgTable("specialist_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Assignment linking
+  specialistId: varchar("specialist_id").references(() => specialists.id).notNull(),
+  escalationId: varchar("escalation_id").references(() => escalations.id).notNull(),
+  conversationId: varchar("conversation_id").references(() => conversations.id).notNull(),
+  
+  // Assignment details
+  assignmentType: text("assignment_type").notNull(), // "primary", "secondary", "consultant", "reviewer"
+  assignmentReason: text("assignment_reason"), // Why this specialist was chosen
+  routingScore: integer("routing_score"), // Algorithm confidence in this assignment (1-100)
+  
+  // Status and progress
+  status: text("status").default("assigned"), // "assigned", "accepted", "declined", "completed", "transferred"
+  acceptedAt: timestamp("accepted_at"),
+  declinedAt: timestamp("declined_at"),
+  declineReason: text("decline_reason"),
+  completedAt: timestamp("completed_at"),
+  
+  // Workload tracking
+  estimatedTimeRequired: integer("estimated_time_required"), // Minutes
+  actualTimeSpent: integer("actual_time_spent"), // Minutes
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Injuries table for injury-specific information
 export const injuries = pgTable("injuries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -789,6 +894,26 @@ export const insertArchiveIndexSchema = createInsertSchema(archiveIndex).omit({
   archivedAt: true,
 });
 
+// Schema definitions for escalation system tables
+export const insertSpecialistSchema = createInsertSchema(specialists).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEscalationSchema = createInsertSchema(escalations).omit({
+  id: true,
+  escalatedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSpecialistAssignmentSchema = createInsertSchema(specialistAssignments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Type definitions for new tables
 export type InsertLegislationDocument = z.infer<typeof insertLegislationDocumentSchema>;
 export type LegislationDocument = typeof legislationDocuments.$inferSelect;
@@ -832,6 +957,16 @@ export type AuditEvent = typeof auditEvents.$inferSelect;
 
 export type InsertArchiveIndex = z.infer<typeof insertArchiveIndexSchema>;
 export type ArchiveIndex = typeof archiveIndex.$inferSelect;
+
+// Type definitions for escalation system tables
+export type InsertSpecialist = z.infer<typeof insertSpecialistSchema>;
+export type Specialist = typeof specialists.$inferSelect;
+
+export type InsertEscalation = z.infer<typeof insertEscalationSchema>;
+export type Escalation = typeof escalations.$inferSelect;
+
+export type InsertSpecialistAssignment = z.infer<typeof insertSpecialistAssignmentSchema>;
+export type SpecialistAssignment = typeof specialistAssignments.$inferSelect;
 
 // Authentication and session types
 export const loginSchema = z.object({
