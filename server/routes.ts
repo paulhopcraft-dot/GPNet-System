@@ -17,6 +17,10 @@ import { riskAssessmentService, type RiskInput } from "./riskAssessmentService";
 import { michelle, type MichelleContext, type ConversationResponse } from "./michelle";
 import { requireAuth } from "./authRoutes";
 import { requireAdmin } from "./adminRoutes";
+import { emailProcessingService, type RawEmailData } from "./emailProcessingService";
+import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
+import { eq, and, desc } from "drizzle-orm";
+import { db } from "./db";
 
 // Analysis engine for RAG scoring and fit classification
 class AnalysisEngine {
@@ -407,6 +411,271 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Mount authentication routes
   app.use('/api/auth', authRoutes);
+  
+  // ===========================================
+  // EXTERNAL EMAIL PROCESSING ENDPOINTS
+  // ===========================================
+  
+  // Process external email forwarded by manager
+  app.post("/api/external-emails/process", async (req, res) => {
+    try {
+      console.log("Processing external email from manager");
+      
+      // Validate required fields
+      const { email, organizationId, forwardedBy } = req.body;
+      
+      if (!email || !organizationId || !forwardedBy) {
+        return res.status(400).json({ 
+          error: "Missing required fields", 
+          required: ["email", "organizationId", "forwardedBy"] 
+        });
+      }
+      
+      // Validate email structure
+      const emailSchema = z.object({
+        messageId: z.string().min(1, "Message ID is required"),
+        subject: z.string().min(1, "Subject is required"),
+        body: z.string().min(1, "Body is required"),
+        originalSender: z.string().email("Valid sender email required"),
+        originalSenderName: z.string().optional(),
+        forwardedAt: z.string().optional(),
+        attachments: z.array(z.object({
+          filename: z.string(),
+          contentType: z.string(),
+          size: z.number(),
+          content: z.string() // base64 encoded
+        })).optional().default([])
+      });
+      
+      const validationResult = emailSchema.safeParse(email);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid email data", details: errorMessage });
+      }
+      
+      const emailData: RawEmailData = {
+        ...validationResult.data,
+        receivedAt: new Date().toISOString(),
+        attachments: validationResult.data.attachments || []
+      };
+      
+      // Process the email through the workflow
+      const result = await emailProcessingService.processIncomingEmail(
+        emailData,
+        organizationId,
+        forwardedBy
+      );
+      
+      if (result.success) {
+        res.json({
+          success: true,
+          externalEmailId: result.externalEmailId,
+          ticketId: result.ticketId,
+          isDuplicate: result.isDuplicate,
+          processingTime: result.processingTime,
+          matchResult: result.matchResult ? {
+            matched: !!result.matchResult.bestMatch,
+            confidenceScore: result.matchResult.bestMatch?.confidenceScore,
+            matchType: result.matchResult.bestMatch?.matchType
+          } : null,
+          aiAnalysis: result.aiAnalysis ? {
+            summary: result.aiAnalysis.summary,
+            urgencyLevel: result.aiAnalysis.urgencyLevel,
+            extractedActions: result.aiAnalysis.extractedActions,
+            sentiment: result.aiAnalysis.sentiment
+          } : null,
+          recommendationCount: result.aiRecommendations?.recommendations.length || 0
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: result.error,
+          processingTime: result.processingTime
+        });
+      }
+      
+    } catch (error) {
+      console.error("External email processing failed:", error);
+      res.status(500).json({ 
+        error: "Failed to process external email", 
+        details: error instanceof Error ? error.message : 'Unknown error' 
+      });
+    }
+  });
+  
+  // Get external email processing status
+  app.get("/api/external-emails/:emailId/status", async (req, res) => {
+    try {
+      const { emailId } = req.params;
+      
+      const [emailRecord] = await db
+        .select()
+        .from(externalEmails)
+        .where(eq(externalEmails.id, emailId))
+        .limit(1);
+      
+      if (!emailRecord) {
+        return res.status(404).json({ error: "External email not found" });
+      }
+      
+      res.json({
+        id: emailRecord.id,
+        processingStatus: emailRecord.processingStatus,
+        ticketId: emailRecord.ticketId,
+        urgencyLevel: emailRecord.urgencyLevel,
+        aiSummary: emailRecord.aiSummary,
+        confidenceScore: emailRecord.confidenceScore,
+        matchType: emailRecord.matchType,
+        matchReasoning: emailRecord.matchReasoning,
+        errorMessage: emailRecord.errorMessage,
+        createdAt: emailRecord.createdAt,
+        updatedAt: emailRecord.updatedAt
+      });
+      
+    } catch (error) {
+      console.error("Failed to get email status:", error);
+      res.status(500).json({ error: "Failed to retrieve email status" });
+    }
+  });
+  
+  // Get AI recommendations for an external email
+  app.get("/api/external-emails/:emailId/recommendations", async (req, res) => {
+    try {
+      const { emailId } = req.params;
+      
+      const recommendations = await db
+        .select()
+        .from(aiRecommendations)
+        .where(eq(aiRecommendations.externalEmailId, emailId))
+        .orderBy(desc(aiRecommendations.createdAt));
+      
+      res.json({
+        recommendations: recommendations.map(rec => ({
+          id: rec.id,
+          type: rec.recommendationType,
+          title: rec.title,
+          description: rec.description,
+          priority: rec.priority,
+          suggestedAction: rec.suggestedAction,
+          actionDetails: rec.actionDetails,
+          estimatedTimeframe: rec.estimatedTimeframe,
+          confidence: rec.confidenceScore,
+          reasoning: rec.reasoning,
+          status: rec.status,
+          createdAt: rec.createdAt
+        }))
+      });
+      
+    } catch (error) {
+      console.error("Failed to get email recommendations:", error);
+      res.status(500).json({ error: "Failed to retrieve recommendations" });
+    }
+  });
+  
+  // Get external emails for a specific case/ticket
+  app.get("/api/tickets/:ticketId/external-emails", async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      const emails = await db
+        .select()
+        .from(externalEmails)
+        .where(eq(externalEmails.ticketId, ticketId))
+        .orderBy(desc(externalEmails.createdAt));
+      
+      res.json({
+        emails: emails.map(email => ({
+          id: email.id,
+          subject: email.subject,
+          originalSender: email.originalSender,
+          originalSenderName: email.originalSenderName,
+          forwardedBy: email.forwardedBy,
+          forwardedAt: email.forwardedAt,
+          processingStatus: email.processingStatus,
+          urgencyLevel: email.urgencyLevel,
+          aiSummary: email.aiSummary,
+          confidenceScore: email.confidenceScore,
+          matchType: email.matchType,
+          createdAt: email.createdAt
+        }))
+      });
+      
+    } catch (error) {
+      console.error("Failed to get case external emails:", error);
+      res.status(500).json({ error: "Failed to retrieve case emails" });
+    }
+  });
+  
+  // Get email attachments
+  app.get("/api/external-emails/:emailId/attachments", async (req, res) => {
+    try {
+      const { emailId } = req.params;
+      
+      const attachments = await db
+        .select()
+        .from(emailAttachments)
+        .where(eq(emailAttachments.externalEmailId, emailId))
+        .orderBy(desc(emailAttachments.uploadedAt));
+      
+      res.json({
+        attachments: attachments.map(att => ({
+          id: att.id,
+          filename: att.filename,
+          contentType: att.contentType,
+          fileSize: att.fileSize,
+          uploadedAt: att.uploadedAt
+        }))
+      });
+      
+    } catch (error) {
+      console.error("Failed to get email attachments:", error);
+      res.status(500).json({ error: "Failed to retrieve attachments" });
+    }
+  });
+  
+  // Manager dashboard - Get processing statistics
+  app.get("/api/external-emails/stats", async (req, res) => {
+    try {
+      const { organizationId } = req.query;
+      
+      let query = db.select().from(externalEmails);
+      if (organizationId) {
+        query = query.where(eq(externalEmails.organizationId, organizationId as string));
+      }
+      
+      const emails = await query;
+      
+      const stats = {
+        total: emails.length,
+        processed: emails.filter(e => e.processingStatus === 'processed').length,
+        pending: emails.filter(e => e.processingStatus === 'pending').length,
+        processing: emails.filter(e => e.processingStatus === 'processing').length,
+        errors: emails.filter(e => e.processingStatus === 'error').length,
+        matched: emails.filter(e => e.ticketId).length,
+        unmatched: emails.filter(e => !e.ticketId).length,
+        urgencyDistribution: {
+          low: emails.filter(e => e.urgencyLevel === 'low').length,
+          medium: emails.filter(e => e.urgencyLevel === 'medium').length,
+          high: emails.filter(e => e.urgencyLevel === 'high').length,
+          critical: emails.filter(e => e.urgencyLevel === 'critical').length
+        },
+        averageConfidenceScore: emails
+          .filter(e => e.confidenceScore)
+          .reduce((sum, e) => sum + (e.confidenceScore || 0), 0) / 
+          emails.filter(e => e.confidenceScore).length || 0
+      };
+      
+      res.json(stats);
+      
+    } catch (error) {
+      console.error("Failed to get email processing stats:", error);
+      res.status(500).json({ error: "Failed to retrieve statistics" });
+    }
+  });
+  
+  // ===========================================
+  // END EXTERNAL EMAIL PROCESSING ENDPOINTS
+  // ===========================================
   
   // Admin routes
   const adminRoutes = (await import('./adminRoutes.js')).default;
