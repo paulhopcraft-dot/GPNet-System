@@ -5,7 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Download, FileText, Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import { Download, FileText, Loader2, AlertCircle, CheckCircle, Mail, Send } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ReportTypesResponse {
@@ -42,6 +48,12 @@ const REPORT_DEFINITIONS = {
 
 export function ReportGenerator({ ticketId, "data-testid": testId }: ReportGeneratorProps) {
   const [generatingReports, setGeneratingReports] = useState<Set<string>>(new Set());
+  const [sendingEmails, setSendingEmails] = useState<Set<string>>(new Set());
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [selectedReportType, setSelectedReportType] = useState<string>("");
+  const [emailRecipients, setEmailRecipients] = useState<string>("");
+  const [customMessage, setCustomMessage] = useState<string>("");
+  const [includeComplianceNote, setIncludeComplianceNote] = useState<boolean>(true);
   const { toast } = useToast();
 
   // Fetch available report types for this ticket

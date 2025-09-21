@@ -347,7 +347,7 @@ export default function CaseDetailsModal({
                 </p>
                 <MichelleChat 
                   ticketId={caseDetails.ticketId}
-                  conversationId={`case-${caseDetails.ticketId}`}
+                  mode="case-specific"
                 />
               </CardContent>
             </Card>
