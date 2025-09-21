@@ -157,12 +157,12 @@ router.post('/client-users/:id/suspend', requireAdmin, async (req: Request, res:
       organizationId: user.organizationId,
       targetType: 'user',
       targetId: id,
-      action: `Admin ${newStatus ? 'activated' : 'suspended'} user: ${user.email}`,
+      action: `Admin ${newStatus === 'active' ? 'activated' : 'suspended'} user: ${user.email}`,
       result: 'success',
       details: { 
         userEmail: user.email,
-        previousStatus: user.isActive ? 'active' : 'suspended',
-        newStatus: newStatus ? 'active' : 'suspended'
+        previousStatus: user.status,
+        newStatus: newStatus
       }
     });
     
@@ -198,24 +198,24 @@ router.post('/admin-users/:id/suspend', requireSuperuser, async (req: Request, r
       return res.status(404).json({ error: 'Admin user not found' });
     }
     
-    const newStatus = !user.isActive;
-    const updatedUser = await storage.updateAdminUser(id, { isActive: newStatus });
+    const newStatus = user.status !== 'active' ? 'active' : 'suspended';
+    const updatedUser = await storage.updateAdminUser(id, { status: newStatus });
     
     // Log audit event
     await authService.logAuditEvent({
-      eventType: newStatus ? 'ADMIN_USER_ACTIVATED' : 'ADMIN_USER_SUSPENDED',
+      eventType: newStatus === 'active' ? 'ADMIN_USER_ACTIVATED' : 'ADMIN_USER_SUSPENDED',
       eventCategory: 'admin',
       actorId: req.session.user!.id,
       actorType: 'admin',
       actorEmail: req.session.user!.email,
       targetType: 'admin_user',
       targetId: id,
-      action: `Superuser ${newStatus ? 'activated' : 'suspended'} admin user: ${user.email}`,
+      action: `Superuser ${newStatus === 'active' ? 'activated' : 'suspended'} admin user: ${user.email}`,
       result: 'success',
       details: { 
         adminEmail: user.email,
-        previousStatus: user.isActive ? 'active' : 'suspended',
-        newStatus: newStatus ? 'active' : 'suspended'
+        previousStatus: user.status,
+        newStatus: newStatus
       }
     });
     
@@ -263,13 +263,29 @@ router.post('/admin-users/:id/permissions', requireSuperuser, async (req: Reques
   }
 });
 
-// Admin audit logs
+// Admin audit logs with tenant scoping
 router.get('/audit-logs', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { organizationId, eventType, startDate, endDate } = req.query;
+    const isAdmin = req.session.user!;
+    const isSuperuser = isAdmin.permissions?.includes('superuser');
     
     const filters: any = {};
-    if (organizationId) filters.organizationId = organizationId as string;
+    
+    // Enforce tenant scoping for non-superusers
+    if (!isSuperuser) {
+      // Non-superusers can only see audit logs for their impersonation target
+      if (!isAdmin.impersonationTarget) {
+        return res.status(403).json({ error: 'Must be impersonating an organization to view audit logs' });
+      }
+      
+      // Force organizationId to match impersonation target, ignore client request
+      filters.organizationId = isAdmin.impersonationTarget;
+    } else {
+      // Superusers can filter by any organization or see all
+      if (organizationId) filters.organizationId = organizationId as string;
+    }
+    
     if (eventType) filters.eventType = eventType as string;
     if (startDate) filters.startDate = new Date(startDate as string);
     if (endDate) filters.endDate = new Date(endDate as string);
@@ -310,28 +326,28 @@ router.get('/system-stats', requireAdmin, async (req: Request, res: Response) =>
     yesterday.setDate(yesterday.getDate() - 1);
     
     const recentLogins = auditEvents.filter(
-      event => event.eventType === 'USER_LOGIN' && new Date(event.timestamp) > yesterday
+      event => (event.eventType === 'CLIENT_LOGIN_SUCCESS' || event.eventType === 'ADMIN_LOGIN_SUCCESS') && new Date(event.timestamp) > yesterday
     ).length;
     
     const recentCases = allTickets.filter(
-      ticket => new Date(ticket.createdAt) > yesterday
+      ticket => ticket.createdAt && new Date(ticket.createdAt) > yesterday
     ).length;
     
     const recentRegistrations = auditEvents.filter(
-      event => event.eventType === 'USER_CREATED' && new Date(event.timestamp) > yesterday
+      event => (event.eventType === 'CLIENT_USER_CREATED' || event.eventType === 'ADMIN_USER_CREATED') && new Date(event.timestamp) > yesterday
     ).length;
     
     const stats = {
       organizations: {
         total: organizations.length,
-        active: organizations.filter(org => org.isActive && !org.isArchived).length,
-        inactive: organizations.filter(org => !org.isActive && !org.isArchived).length,
+        active: organizations.filter(org => org.status === 'active' && !org.isArchived).length,
+        inactive: organizations.filter(org => org.status === 'suspended' && !org.isArchived).length,
         archived: organizations.filter(org => org.isArchived).length
       },
       users: {
         clientUsers: clientUsers.length,
         adminUsers: adminUsers.length,
-        activeUsers: clientUsers.filter(user => user.isActive).length + adminUsers.filter(user => user.isActive).length,
+        activeUsers: clientUsers.filter(user => user.status === 'active').length + adminUsers.filter(user => user.status === 'active').length,
         totalLogins: clientUsers.reduce((sum, user) => sum + (user.loginCount || 0), 0) + 
                     adminUsers.reduce((sum, user) => sum + (user.loginCount || 0), 0)
       },
