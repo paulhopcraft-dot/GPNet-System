@@ -695,6 +695,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const adminRoutes = (await import('./adminRoutes.js')).default;
   app.use('/api/admin', adminRoutes);
   
+  // Freshdesk integration routes
+  const { freshdeskRoutes } = await import('./freshdeskRoutes.js');
+  app.use('/api/freshdesk', freshdeskRoutes);
+  
   // Create email processing service instance
   const emailProcessingService = createEmailProcessingService(storage);
   

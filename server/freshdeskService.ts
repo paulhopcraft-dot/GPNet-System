@@ -363,6 +363,193 @@ export class FreshdeskService {
   }
 
   /**
+   * Fetch all tickets from Freshdesk with pagination and rate limiting
+   */
+  async fetchAllTickets(updatedSince?: string): Promise<FreshdeskTicketResponse[]> {
+    if (!this.isAvailable()) {
+      throw new Error('Freshdesk integration not available. Please configure FRESHDESK_API_KEY and FRESHDESK_DOMAIN.');
+    }
+
+    const tickets: FreshdeskTicketResponse[] = [];
+    let page = 1;
+    const perPage = 100; // Maximum allowed by Freshdesk API
+    
+    console.log('Starting to fetch all tickets from Freshdesk...');
+    
+    while (true) {
+      console.log(`Fetching tickets page ${page}...`);
+      
+      try {
+        let endpoint = `/tickets?page=${page}&per_page=${perPage}&include=stats`;
+        if (updatedSince) {
+          endpoint += `&updated_since=${encodeURIComponent(updatedSince)}`;
+        }
+        
+        const pageTickets = await this.makeRequest<FreshdeskTicketResponse[]>(endpoint);
+        
+        if (pageTickets.length === 0) {
+          console.log(`No more tickets found on page ${page}`);
+          break; // No more tickets
+        }
+        
+        tickets.push(...pageTickets);
+        console.log(`Fetched ${pageTickets.length} tickets from page ${page}. Total so far: ${tickets.length}`);
+        
+        if (pageTickets.length < perPage) {
+          console.log('Last page reached (fewer tickets than per_page limit)');
+          break; // Last page
+        }
+        
+        page++;
+        
+        // Rate limiting: small delay between requests to respect API limits
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+      } catch (error) {
+        console.error(`Error fetching page ${page}:`, error);
+        
+        // If we hit rate limits, wait longer and retry
+        if (error instanceof Error && error.message.includes('429')) {
+          console.log('Rate limit hit, waiting 60 seconds before retry...');
+          await new Promise(resolve => setTimeout(resolve, 60000));
+          continue; // Retry the same page
+        }
+        
+        throw error; // Re-throw other errors
+      }
+    }
+    
+    console.log(`Successfully fetched ${tickets.length} total tickets from Freshdesk`);
+    return tickets;
+  }
+
+  /**
+   * Fetch all companies from Freshdesk
+   */
+  async fetchAllCompanies(): Promise<{ id: number; name: string; domains?: string[] }[]> {
+    if (!this.isAvailable()) {
+      throw new Error('Freshdesk integration not available');
+    }
+
+    const companies: any[] = [];
+    let page = 1;
+    const perPage = 100;
+    
+    console.log('Starting to fetch all companies from Freshdesk...');
+    
+    while (true) {
+      console.log(`Fetching companies page ${page}...`);
+      
+      try {
+        const pageCompanies = await this.makeRequest<any[]>(`/companies?page=${page}&per_page=${perPage}`);
+        
+        if (pageCompanies.length === 0) {
+          break;
+        }
+        
+        companies.push(...pageCompanies);
+        console.log(`Fetched ${pageCompanies.length} companies from page ${page}. Total: ${companies.length}`);
+        
+        if (pageCompanies.length < perPage) {
+          break;
+        }
+        
+        page++;
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+      } catch (error) {
+        console.error(`Error fetching companies page ${page}:`, error);
+        throw error;
+      }
+    }
+    
+    console.log(`Successfully fetched ${companies.length} total companies from Freshdesk`);
+    return companies;
+  }
+
+  /**
+   * Fetch all contacts from Freshdesk  
+   */
+  async fetchAllContacts(): Promise<{ id: number; name: string; email: string; company_id?: number }[]> {
+    if (!this.isAvailable()) {
+      throw new Error('Freshdesk integration not available');
+    }
+
+    const contacts: any[] = [];
+    let page = 1;
+    const perPage = 100;
+    
+    console.log('Starting to fetch all contacts from Freshdesk...');
+    
+    while (true) {
+      console.log(`Fetching contacts page ${page}...`);
+      
+      try {
+        const pageContacts = await this.makeRequest<any[]>(`/contacts?page=${page}&per_page=${perPage}`);
+        
+        if (pageContacts.length === 0) {
+          break;
+        }
+        
+        contacts.push(...pageContacts);
+        console.log(`Fetched ${pageContacts.length} contacts from page ${page}. Total: ${contacts.length}`);
+        
+        if (pageContacts.length < perPage) {
+          break;
+        }
+        
+        page++;
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+      } catch (error) {
+        console.error(`Error fetching contacts page ${page}:`, error);
+        throw error;
+      }
+    }
+    
+    console.log(`Successfully fetched ${contacts.length} total contacts from Freshdesk`);
+    return contacts;
+  }
+
+  /**
+   * Map Freshdesk status number to readable string
+   */
+  static mapStatusToString(statusNumber: number): string {
+    const statusMap: Record<number, string> = {
+      2: 'Open',
+      3: 'Pending', 
+      4: 'Resolved',
+      5: 'Closed',
+      6: 'Waiting on Customer',
+      7: 'Waiting on Third Party'
+    };
+    return statusMap[statusNumber] || 'Unknown';
+  }
+
+  /**
+   * Map Freshdesk priority number to readable string
+   */
+  static mapPriorityToString(priorityNumber: number): string {
+    const priorityMap: Record<number, string> = {
+      1: 'Low',
+      2: 'Medium',
+      3: 'High', 
+      4: 'Urgent'
+    };
+    return priorityMap[priorityNumber] || 'Medium';
+  }
+
+  /**
+   * Calculate ticket age in days
+   */
+  static calculateTicketAge(createdAt: string): number {
+    const created = new Date(createdAt);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - created.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+
+  /**
    * Create sync log entry
    */
   createSyncLog(
