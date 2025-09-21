@@ -16,6 +16,7 @@ import RtwPlans from "@/pages/RtwPlans";
 import Stakeholders from "@/pages/Stakeholders";
 import FitForWorkAssessment from "@/pages/FitForWorkAssessment";
 import RtwCompliance from "@/pages/RtwCompliance";
+import NatalieDashboard from "@/pages/natalie-dashboard";
 import NotFound from "@/pages/not-found";
 import { MichelleWidget } from "@/components/MichelleWidget";
 
@@ -37,6 +38,12 @@ function Router() {
       <Route path="/admin">
         <ProtectedRoute requireAdmin>
           <AdminConsole />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/natalie">
+        <ProtectedRoute requireAdmin>
+          <NatalieDashboard />
         </ProtectedRoute>
       </Route>
       

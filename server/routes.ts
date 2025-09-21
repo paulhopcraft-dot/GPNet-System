@@ -16,6 +16,7 @@ import { pdfService } from "./pdfService";
 import { riskAssessmentService, type RiskInput } from "./riskAssessmentService";
 import { michelle, type MichelleContext, type ConversationResponse } from "./michelle";
 import { requireAuth } from "./authRoutes";
+import { requireAdmin } from "./adminRoutes";
 
 // Analysis engine for RAG scoring and fit classification
 class AnalysisEngine {
@@ -3859,6 +3860,261 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error checking email status:", error);
       res.status(500).json({ error: "Failed to check email status" });
+    }
+  });
+
+  // ===============================================
+  // MICHELLE AI ESCALATION & SPECIALIST MANAGEMENT
+  // ===============================================
+
+  // Get all specialists
+  app.get("/api/specialists", requireAdmin, async (req, res) => {
+    try {
+      const allSpecialists = await storage.getAllSpecialists();
+      res.json(allSpecialists);
+    } catch (error) {
+      console.error("Error fetching specialists:", error);
+      res.status(500).json({ error: "Failed to fetch specialists" });
+    }
+  });
+
+  // Get specialist by ID
+  app.get("/api/specialists/:specialistId", requireAdmin, async (req, res) => {
+    try {
+      const { specialistId } = req.params;
+      const specialist = await storage.getSpecialist(specialistId);
+      
+      if (!specialist) {
+        return res.status(404).json({ error: "Specialist not found" });
+      }
+      
+      res.json(specialist);
+    } catch (error) {
+      console.error("Error fetching specialist:", error);
+      res.status(500).json({ error: "Failed to fetch specialist" });
+    }
+  });
+
+  // Get all escalations
+  app.get("/api/escalations", requireAdmin, async (req, res) => {
+    try {
+      const { status, priority, specialistId } = req.query;
+      
+      const escalations = await storage.getEscalations({
+        status: status as string,
+        priority: priority as string,
+        specialistId: specialistId as string
+      });
+      
+      res.json(escalations);
+    } catch (error) {
+      console.error("Error fetching escalations:", error);
+      res.status(500).json({ error: "Failed to fetch escalations" });
+    }
+  });
+
+  // Get escalation by ID with full context
+  app.get("/api/escalations/:escalationId", requireAdmin, async (req, res) => {
+    try {
+      const { escalationId } = req.params;
+      const escalation = await storage.getEscalationWithContext(escalationId);
+      
+      if (!escalation) {
+        return res.status(404).json({ error: "Escalation not found" });
+      }
+      
+      res.json(escalation);
+    } catch (error) {
+      console.error("Error fetching escalation:", error);
+      res.status(500).json({ error: "Failed to fetch escalation" });
+    }
+  });
+
+  // Update escalation status
+  app.patch("/api/escalations/:escalationId/status", requireAdmin, async (req, res) => {
+    try {
+      const { escalationId } = req.params;
+      // Validate request body
+      const statusUpdateSchema = z.object({
+        status: z.enum(["pending", "assigned", "in_progress", "resolved", "cancelled"]),
+        resolutionNotes: z.string().optional()
+      });
+      
+      const validatedData = statusUpdateSchema.parse(req.body);
+      const { status, resolutionNotes } = validatedData;
+
+      const updatedEscalation = await storage.updateEscalationStatus(escalationId, status, resolutionNotes);
+      
+      if (!updatedEscalation) {
+        return res.status(404).json({ error: "Escalation not found" });
+      }
+
+      console.log(`Updated escalation ${escalationId} status to ${status}`);
+      res.json(updatedEscalation);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromZodError(error).toString() });
+      }
+      console.error("Error updating escalation status:", error);
+      res.status(500).json({ error: "Failed to update escalation status" });
+    }
+  });
+
+  // Assign escalation to specialist
+  app.post("/api/escalations/:escalationId/assign", requireAdmin, async (req, res) => {
+    try {
+      const { escalationId } = req.params;
+      // Validate request body
+      const assignmentSchema = z.object({
+        specialistId: z.string().min(1, "Specialist ID is required"),
+        assignmentReason: z.string().optional(),
+        assignmentType: z.string().optional().default("primary")
+      });
+      
+      const validatedData = assignmentSchema.parse(req.body);
+      const { specialistId, assignmentReason, assignmentType } = validatedData;
+
+      const assignment = await storage.assignEscalationToSpecialist({
+        escalationId,
+        specialistId,
+        assignmentReason: assignmentReason || "Manual assignment",
+        assignmentType
+      });
+
+      console.log(`Assigned escalation ${escalationId} to specialist ${specialistId}`);
+      res.json(assignment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: fromZodError(error).toString() });
+      }
+      console.error("Error assigning escalation:", error);
+      res.status(500).json({ error: "Failed to assign escalation" });
+    }
+  });
+
+  // Get escalations dashboard data
+  app.get("/api/escalations/dashboard", requireAdmin, async (req, res) => {
+    try {
+      const dashboardData = await storage.getEscalationDashboardData();
+      res.json(dashboardData);
+    } catch (error) {
+      console.error("Error fetching escalation dashboard data:", error);
+      res.status(500).json({ error: "Failed to fetch dashboard data" });
+    }
+  });
+
+  // Seed default specialists (development only)
+  app.post("/api/specialists/seed", requireAdmin, async (req, res) => {
+    try {
+      // Check if specialists already exist
+      const existingSpecialists = await storage.getAllSpecialists();
+      if (existingSpecialists.length > 0) {
+        return res.json({ message: "Specialists already exist", count: existingSpecialists.length });
+      }
+
+      // Create default specialists
+      const defaultSpecialists = [
+        {
+          name: "Natalie Chen",
+          email: "natalie.chen@gpnet.com.au",
+          role: "coordinator",
+          specialization: "complex_claims",
+          phone: "+61 3 9999 1234",
+          preferredContactMethod: "email",
+          workingHours: {
+            monday: { start: "09:00", end: "17:00" },
+            tuesday: { start: "09:00", end: "17:00" },
+            wednesday: { start: "09:00", end: "17:00" },
+            thursday: { start: "09:00", end: "17:00" },
+            friday: { start: "09:00", end: "16:00" },
+            timezone: "Australia/Melbourne"
+          },
+          timezone: "Australia/Melbourne",
+          maxCaseload: 15,
+          expertiseRating: 9,
+          averageResponseTime: 25,
+          caseResolutionRate: 94
+        },
+        {
+          name: "Dr. Sarah Mitchell",
+          email: "s.mitchell@gpnet.com.au",
+          role: "medical_reviewer",
+          specialization: "occupational_health",
+          phone: "+61 3 9999 2345",
+          preferredContactMethod: "email",
+          workingHours: {
+            monday: { start: "08:00", end: "16:00" },
+            tuesday: { start: "08:00", end: "16:00" },
+            wednesday: { start: "08:00", end: "16:00" },
+            thursday: { start: "08:00", end: "16:00" },
+            friday: { start: "08:00", end: "15:00" },
+            timezone: "Australia/Melbourne"
+          },
+          timezone: "Australia/Melbourne",
+          maxCaseload: 8,
+          expertiseRating: 10,
+          averageResponseTime: 45,
+          caseResolutionRate: 98
+        },
+        {
+          name: "Michael Torres",
+          email: "m.torres@gpnet.com.au", 
+          role: "legal_advisor",
+          specialization: "legal_compliance",
+          phone: "+61 3 9999 3456",
+          preferredContactMethod: "phone",
+          workingHours: {
+            monday: { start: "09:00", end: "18:00" },
+            tuesday: { start: "09:00", end: "18:00" },
+            wednesday: { start: "09:00", end: "18:00" },
+            thursday: { start: "09:00", end: "18:00" },
+            friday: { start: "09:00", end: "17:00" },
+            timezone: "Australia/Melbourne"
+          },
+          timezone: "Australia/Melbourne",
+          maxCaseload: 12,
+          expertiseRating: 8,
+          averageResponseTime: 60,
+          caseResolutionRate: 92
+        },
+        {
+          name: "Emma Davis",
+          email: "e.davis@gpnet.com.au",
+          role: "senior_analyst",
+          specialization: "workers_compensation",
+          phone: "+61 3 9999 4567",
+          preferredContactMethod: "email",
+          workingHours: {
+            monday: { start: "08:30", end: "17:30" },
+            tuesday: { start: "08:30", end: "17:30" },
+            wednesday: { start: "08:30", end: "17:30" },
+            thursday: { start: "08:30", end: "17:30" },
+            friday: { start: "08:30", end: "16:30" },
+            timezone: "Australia/Melbourne"
+          },
+          timezone: "Australia/Melbourne",
+          maxCaseload: 20,
+          expertiseRating: 7,
+          averageResponseTime: 35,
+          caseResolutionRate: 89
+        }
+      ];
+
+      const createdSpecialists = [];
+      for (const specialistData of defaultSpecialists) {
+        const specialist = await storage.createSpecialist(specialistData);
+        createdSpecialists.push(specialist);
+      }
+
+      console.log(`Created ${createdSpecialists.length} default specialists`);
+      res.json({ 
+        message: "Default specialists created successfully", 
+        specialists: createdSpecialists 
+      });
+
+    } catch (error) {
+      console.error("Error seeding specialists:", error);
+      res.status(500).json({ error: "Failed to seed specialists" });
     }
   });
 
