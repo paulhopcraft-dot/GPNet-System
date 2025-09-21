@@ -327,7 +327,7 @@ export default function CaseDetailsModal({
 
           <TabsContent value="reports" className="space-y-4">
             <ReportGenerator 
-              caseId={caseDetails.ticketId} 
+              ticketId={caseDetails.ticketId} 
               data-testid="report-generator-modal" 
             />
           </TabsContent>
