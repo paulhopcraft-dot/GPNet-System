@@ -13,13 +13,15 @@ import {
   BarChart3,
   Database,
   UserCheck,
-  Archive
+  Archive,
+  Eye
 } from "lucide-react";
 import OrganizationsTab from "@/components/admin/OrganizationsTab";
 import ClientUsersTab from "@/components/admin/ClientUsersTab";
 import AdminUsersTab from "@/components/admin/AdminUsersTab";
 import AuditLogsTab from "@/components/admin/AuditLogsTab";
 import SystemStatsTab from "@/components/admin/SystemStatsTab";
+import CrossTenantAnalyticsTab from "@/components/admin/CrossTenantAnalyticsTab";
 
 export default function AdminConsole() {
   const { user } = useUser();
@@ -72,11 +74,17 @@ export default function AdminConsole() {
 
       {/* Admin Console Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className={`grid w-full ${user.permissions?.includes('superuser') ? 'grid-cols-7' : 'grid-cols-6'}`}>
           <TabsTrigger value="overview" className="flex items-center gap-2" data-testid="tab-overview">
             <BarChart3 className="h-4 w-4" />
             Overview
           </TabsTrigger>
+          {user.permissions?.includes('superuser') && (
+            <TabsTrigger value="cross-tenant" className="flex items-center gap-2" data-testid="tab-cross-tenant">
+              <Eye className="h-4 w-4" />
+              Cross-Tenant
+            </TabsTrigger>
+          )}
           <TabsTrigger value="organizations" className="flex items-center gap-2" data-testid="tab-organizations">
             <Building className="h-4 w-4" />
             Organizations
@@ -102,6 +110,12 @@ export default function AdminConsole() {
         <TabsContent value="overview" className="space-y-6">
           <SystemStatsTab />
         </TabsContent>
+
+        {user.permissions?.includes('superuser') && (
+          <TabsContent value="cross-tenant" className="space-y-6">
+            <CrossTenantAnalyticsTab />
+          </TabsContent>
+        )}
 
         <TabsContent value="organizations" className="space-y-6">
           <OrganizationsTab />
