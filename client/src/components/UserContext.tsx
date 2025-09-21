@@ -5,6 +5,11 @@ interface User {
   name: string;
   email: string;
   role: string;
+  userType: 'admin' | 'client';
+  organizationId?: string;
+  permissions?: string[];
+  isImpersonating?: boolean;
+  impersonationTarget?: string;
 }
 
 interface UserContextType {
@@ -32,17 +37,26 @@ export function UserProvider({ children }: UserProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // For now, simulate a logged-in user since auth isn't fully implemented
-    // In a real app, this would fetch from an API or session
-    const mockUser: User = {
-      id: "1",
-      name: "Dr. Sarah Johnson",
-      email: "sarah.johnson@gpnet.com",
-      role: "Health Assessment Coordinator"
+    // Fetch user from authentication API
+    const fetchUser = async () => {
+      try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        } else {
+          // User not authenticated, set to null
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user:', error);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
     };
-    
-    setUser(mockUser);
-    setIsLoading(false);
+
+    fetchUser();
   }, []);
 
   return (

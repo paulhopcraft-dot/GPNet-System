@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authService, AuthenticatedUser } from './authService.js';
 import { storage } from './storage.js';
+import { requireAdmin, requireSuperuser } from './adminRoutes.js';
 
 const router = Router();
 
@@ -60,21 +61,6 @@ export const requireAuth = (req: Request, res: Response, next: any) => {
   next();
 };
 
-// Middleware for admin authentication
-const requireAdmin = (req: Request, res: Response, next: any) => {
-  if (!req.session.user || req.session.user.role !== 'admin') {
-    return res.status(401).json({ error: 'Admin access required' });
-  }
-  next();
-};
-
-// Middleware for superuser authentication
-const requireSuperuser = (req: Request, res: Response, next: any) => {
-  if (!req.session.user || req.session.user.role !== 'admin' || !req.session.user.permissions?.includes('superuser')) {
-    return res.status(403).json({ error: 'Superuser access required' });
-  }
-  next();
-};
 
 // Client authentication routes
 router.post('/login/client', async (req: Request, res: Response) => {
@@ -381,5 +367,28 @@ router.get('/audit', requireAdmin, async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// Get current user endpoint
+router.get('/me', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const sessionUser = req.session.user!;
+    
+    res.json({
+      id: sessionUser.id,
+      name: sessionUser.firstName + ' ' + sessionUser.lastName,
+      email: sessionUser.email,
+      role: sessionUser.role,
+      userType: sessionUser.role, // 'admin' or 'client'
+      organizationId: sessionUser.organizationId,
+      permissions: sessionUser.permissions || [],
+      isImpersonating: sessionUser.isImpersonating || false,
+      impersonationTarget: sessionUser.impersonationTarget
+    });
+  } catch (error) {
+    console.error('Get current user error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 export default router;

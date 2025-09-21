@@ -194,6 +194,7 @@ export interface IStorage {
   getClientUser(id: string): Promise<ClientUser | undefined>;
   getClientUserByEmail(email: string, organizationId?: string): Promise<ClientUser | undefined>;
   getClientUsersByOrganization(organizationId: string): Promise<ClientUser[]>;
+  getAllClientUsers(): Promise<ClientUser[]>;
   updateClientUser(id: string, updates: Partial<InsertClientUser>): Promise<ClientUser>;
   updateClientUserLastLogin(id: string): Promise<ClientUser>;
 
@@ -201,6 +202,7 @@ export interface IStorage {
   createAdminUser(user: InsertAdminUser): Promise<AdminUser>;
   getAdminUser(id: string): Promise<AdminUser | undefined>;
   getAdminUserByEmail(email: string): Promise<AdminUser | undefined>;
+  getAllAdminUsers(): Promise<AdminUser[]>;
   updateAdminUser(id: string, updates: Partial<InsertAdminUser>): Promise<AdminUser>;
   updateAdminUserLastLogin(id: string): Promise<AdminUser>;
   setAdminImpersonation(id: string, targetOrgId: string | null): Promise<AdminUser>;
@@ -1235,6 +1237,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(clientUsers.createdAt));
   }
 
+  async getAllClientUsers(): Promise<ClientUser[]> {
+    return await db
+      .select()
+      .from(clientUsers)
+      .where(eq(clientUsers.isArchived, false))
+      .orderBy(desc(clientUsers.createdAt));
+  }
+
   async updateClientUser(id: string, updates: Partial<InsertClientUser>): Promise<ClientUser> {
     const [user] = await db
       .update(clientUsers)
@@ -1284,6 +1294,13 @@ export class DatabaseStorage implements IStorage {
       .from(adminUsers)
       .where(eq(adminUsers.email, email));
     return user || undefined;
+  }
+
+  async getAllAdminUsers(): Promise<AdminUser[]> {
+    return await db
+      .select()
+      .from(adminUsers)
+      .orderBy(desc(adminUsers.createdAt));
   }
 
   async updateAdminUser(id: string, updates: Partial<InsertAdminUser>): Promise<AdminUser> {
