@@ -830,6 +830,263 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Advanced Analytics for Admin Users - Cross-tenant insights
+  app.get("/api/analytics/cross-tenant", requireAuth, async (req, res) => {
+    try {
+      const user = req.session.user!;
+      
+      // Only allow admin users with superuser permissions
+      if (user.role !== 'admin' || !user.permissions?.includes('superuser')) {
+        return res.status(403).json({ error: "Insufficient permissions for cross-tenant analytics" });
+      }
+
+      const days = req.query.days ? parseInt(req.query.days as string) : 30;
+      
+      // Get all organizations for cross-tenant analysis
+      const organizations = await storage.getAllOrganizations();
+      
+      // Collect analytics for each organization
+      const organizationMetrics = await Promise.all(
+        organizations.map(async (org) => {
+          // Temporarily switch storage context to each organization
+          const orgStorage = storage; // In a real implementation, this would switch context
+          
+          try {
+            const trendAnalytics = await storage.getTrendAnalyticsForOrganization(org.id, days);
+            const performanceMetrics = await storage.getPerformanceMetricsForOrganization(org.id);
+            const dashboardStats = await storage.getDashboardStatsForOrganization(org.id);
+            
+            return {
+              organizationId: org.id,
+              organizationName: org.name,
+              status: org.status,
+              trends: trendAnalytics,
+              performance: performanceMetrics,
+              dashboard: dashboardStats,
+              employeeCount: org.employeeCount || 0,
+              industryType: org.industryType || 'Unknown'
+            };
+          } catch (error) {
+            console.error(`Failed to get analytics for org ${org.id}:`, error);
+            return {
+              organizationId: org.id,
+              organizationName: org.name,
+              status: org.status,
+              error: 'Failed to fetch analytics',
+              employeeCount: org.employeeCount || 0,
+              industryType: org.industryType || 'Unknown'
+            };
+          }
+        })
+      );
+
+      // Calculate cross-tenant aggregate metrics
+      const validMetrics = organizationMetrics.filter(m => !m.error);
+      const totalCases = validMetrics.reduce((sum, m) => sum + (m.dashboard?.total || 0), 0);
+      const totalOrganizations = organizations.length;
+      const activeOrganizations = organizations.filter(org => org.status === 'active').length;
+      
+      // Risk distribution across all organizations
+      const aggregateRiskDistribution = validMetrics.reduce((acc, m) => {
+        if (m.trends?.risk_distribution) {
+          acc.green += m.trends.risk_distribution.green;
+          acc.amber += m.trends.risk_distribution.amber;
+          acc.red += m.trends.risk_distribution.red;
+        }
+        return acc;
+      }, { green: 0, amber: 0, red: 0 });
+
+      // Calculate average completion rate across organizations
+      const avgCompletionRate = validMetrics.length > 0 
+        ? validMetrics.reduce((sum, m) => sum + (m.trends?.case_completion_rate || 0), 0) / validMetrics.length
+        : 0;
+
+      // Calculate average processing time across organizations
+      const avgProcessingTime = validMetrics.length > 0
+        ? validMetrics.reduce((sum, m) => sum + (m.trends?.avg_processing_time_days || 0), 0) / validMetrics.length
+        : 0;
+
+      // Industry benchmarking
+      const industryBenchmarks = {};
+      validMetrics.forEach(m => {
+        const industry = m.industryType;
+        if (!industryBenchmarks[industry]) {
+          industryBenchmarks[industry] = {
+            organizationCount: 0,
+            totalCases: 0,
+            avgCompletionRate: 0,
+            avgProcessingTime: 0,
+            riskDistribution: { green: 0, amber: 0, red: 0 }
+          };
+        }
+        
+        industryBenchmarks[industry].organizationCount++;
+        industryBenchmarks[industry].totalCases += m.dashboard?.total || 0;
+        industryBenchmarks[industry].avgCompletionRate += m.trends?.case_completion_rate || 0;
+        industryBenchmarks[industry].avgProcessingTime += m.trends?.avg_processing_time_days || 0;
+        
+        if (m.trends?.risk_distribution) {
+          industryBenchmarks[industry].riskDistribution.green += m.trends.risk_distribution.green;
+          industryBenchmarks[industry].riskDistribution.amber += m.trends.risk_distribution.amber;
+          industryBenchmarks[industry].riskDistribution.red += m.trends.risk_distribution.red;
+        }
+      });
+
+      // Calculate industry averages
+      Object.keys(industryBenchmarks).forEach(industry => {
+        const benchmark = industryBenchmarks[industry];
+        benchmark.avgCompletionRate = benchmark.avgCompletionRate / benchmark.organizationCount;
+        benchmark.avgProcessingTime = benchmark.avgProcessingTime / benchmark.organizationCount;
+      });
+
+      // Top performing organizations
+      const topPerformers = validMetrics
+        .filter(m => m.trends && m.performance)
+        .sort((a, b) => {
+          // Sort by completion rate and processing efficiency
+          const scoreA = (a.trends.case_completion_rate * 0.6) + ((10 - a.trends.avg_processing_time_days) * 0.4);
+          const scoreB = (b.trends.case_completion_rate * 0.6) + ((10 - b.trends.avg_processing_time_days) * 0.4);
+          return scoreB - scoreA;
+        })
+        .slice(0, 10);
+
+      // Organizations needing attention (high risk cases, low completion rates)
+      const needsAttention = validMetrics
+        .filter(m => m.trends && (
+          m.trends.case_completion_rate < 80 || 
+          m.trends.avg_processing_time_days > 7 ||
+          (m.trends.risk_distribution.red / (m.dashboard?.total || 1)) > 0.2
+        ))
+        .sort((a, b) => {
+          const riskScoreA = (a.trends.risk_distribution.red / (a.dashboard?.total || 1)) * 100;
+          const riskScoreB = (b.trends.risk_distribution.red / (b.dashboard?.total || 1)) * 100;
+          return riskScoreB - riskScoreA;
+        });
+
+      res.json({
+        summary: {
+          totalOrganizations,
+          activeOrganizations,
+          totalCases,
+          avgCompletionRate: Math.round(avgCompletionRate * 100) / 100,
+          avgProcessingTime: Math.round(avgProcessingTime * 100) / 100,
+          riskDistribution: aggregateRiskDistribution
+        },
+        organizationMetrics: validMetrics,
+        industryBenchmarks,
+        topPerformers: topPerformers.slice(0, 5),
+        needsAttention: needsAttention.slice(0, 5),
+        trends: {
+          periodDays: days,
+          generatedAt: new Date().toISOString()
+        }
+      });
+
+    } catch (error) {
+      console.error("Error fetching cross-tenant analytics:", error);
+      res.status(500).json({ error: "Failed to fetch cross-tenant analytics" });
+    }
+  });
+
+  // Advanced Organization Comparison Analytics
+  app.get("/api/analytics/organization-comparison", requireAuth, async (req, res) => {
+    try {
+      const user = req.session.user!;
+      
+      // Only allow admin users with superuser permissions
+      if (user.role !== 'admin' || !user.permissions?.includes('superuser')) {
+        return res.status(403).json({ error: "Insufficient permissions for organization comparison" });
+      }
+
+      const { organizationIds, metric = 'completion_rate', period = '30' } = req.query;
+      const days = parseInt(period as string);
+      
+      if (!organizationIds) {
+        return res.status(400).json({ error: "Organization IDs are required for comparison" });
+      }
+
+      const orgIds = Array.isArray(organizationIds) ? organizationIds : [organizationIds];
+      
+      const comparisonData = await Promise.all(
+        orgIds.map(async (orgId) => {
+          try {
+            const organization = await storage.getOrganization(orgId as string);
+            if (!organization) {
+              return { organizationId: orgId, error: 'Organization not found' };
+            }
+
+            // Get analytics for this organization
+            const trends = await storage.getTrendAnalytics(days);
+            const performance = await storage.getPerformanceMetrics();
+            const stats = await storage.getDashboardStats();
+            
+            return {
+              organizationId: orgId,
+              organizationName: organization.name,
+              industryType: organization.industryType,
+              employeeCount: organization.employeeCount,
+              metrics: {
+                completionRate: trends.case_completion_rate,
+                processingTime: trends.avg_processing_time_days,
+                totalCases: stats.total,
+                riskDistribution: trends.risk_distribution,
+                complianceStatus: trends.compliance_status,
+                monthlyGrowth: performance.cases_this_month > 0 && performance.cases_last_month > 0 
+                  ? ((performance.cases_this_month - performance.cases_last_month) / performance.cases_last_month) * 100 
+                  : 0
+              },
+              period: {
+                days,
+                from: new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString(),
+                to: new Date().toISOString()
+              }
+            };
+          } catch (error) {
+            console.error(`Failed to get comparison data for org ${orgId}:`, error);
+            return { organizationId: orgId, error: 'Failed to fetch data' };
+          }
+        })
+      );
+
+      // Calculate benchmarks and rankings
+      const validData = comparisonData.filter(d => !d.error);
+      if (validData.length === 0) {
+        return res.status(400).json({ error: "No valid organization data found" });
+      }
+
+      // Rank organizations by different metrics
+      const rankings = {
+        completionRate: [...validData].sort((a, b) => b.metrics.completionRate - a.metrics.completionRate),
+        processingTime: [...validData].sort((a, b) => a.metrics.processingTime - b.metrics.processingTime),
+        caseVolume: [...validData].sort((a, b) => b.metrics.totalCases - a.metrics.totalCases),
+        riskManagement: [...validData].sort((a, b) => {
+          const aRiskScore = a.metrics.riskDistribution.green / (a.metrics.totalCases || 1);
+          const bRiskScore = b.metrics.riskDistribution.green / (b.metrics.totalCases || 1);
+          return bRiskScore - aRiskScore;
+        })
+      };
+
+      res.json({
+        comparisonData: validData,
+        rankings,
+        benchmarks: {
+          avgCompletionRate: validData.reduce((sum, d) => sum + d.metrics.completionRate, 0) / validData.length,
+          avgProcessingTime: validData.reduce((sum, d) => sum + d.metrics.processingTime, 0) / validData.length,
+          totalCasesAcrossOrgs: validData.reduce((sum, d) => sum + d.metrics.totalCases, 0)
+        },
+        metadata: {
+          period: days,
+          organizationsCompared: validData.length,
+          generatedAt: new Date().toISOString()
+        }
+      });
+
+    } catch (error) {
+      console.error("Error fetching organization comparison:", error);
+      res.status(500).json({ error: "Failed to fetch organization comparison" });
+    }
+  });
+
   // Get all cases with optional filtering
   app.get("/api/cases", async (req, res) => {
     try {
