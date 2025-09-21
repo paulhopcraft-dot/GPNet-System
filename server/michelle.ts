@@ -1,10 +1,12 @@
 import OpenAI from "openai";
 import { db } from "./db";
-import { conversations, conversationMessages, tickets, workers, organizations } from "@shared/schema";
+import { conversations, conversationMessages, tickets, workers, organizations, externalEmails, aiRecommendations } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { escalationService } from "./escalationService";
 import type { EscalationContext } from "./escalationService";
+import type { ParsedEmail } from "./emailParsingService";
+import type { MatchResult } from "./caseMatchingService";
 
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -23,6 +25,44 @@ export interface ConversationResponse {
   response: string;
   nextStepSuggestion?: string;
   confidence: number;
+  tokenUsage: {
+    promptTokens: number;
+    completionTokens: number;
+  };
+}
+
+export interface EmailAnalysisResult {
+  summary: string;
+  urgencyLevel: 'low' | 'medium' | 'high' | 'critical';
+  extractedActions: string[];
+  keyEntities: {
+    people: string[];
+    dates: string[];
+    medicalTerms: string[];
+    locations: string[];
+  };
+  sentiment: 'positive' | 'neutral' | 'negative' | 'urgent';
+  confidence: number;
+  tokenUsage: {
+    promptTokens: number;
+    completionTokens: number;
+  };
+}
+
+export interface AiRecommendationResult {
+  recommendations: Array<{
+    type: string;
+    title: string;
+    description: string;
+    priority: 'low' | 'medium' | 'high' | 'urgent';
+    suggestedAction: string;
+    actionDetails: any;
+    estimatedTimeframe: string;
+    reasoning: string;
+    confidence: number;
+  }>;
+  overallAssessment: string;
+  nextSteps: string[];
   tokenUsage: {
     promptTokens: number;
     completionTokens: number;
@@ -369,6 +409,287 @@ Always propose relevant next steps to keep cases progressing efficiently.`;
     const handoffMessage = `\n\nYour conversation reference is: ${escalationId.substring(0, 8)}. A specialist will review your case and contact you within the appropriate timeframe.${priorityNote}`;
 
     return escalationMessage + handoffMessage;
+  }
+
+  /**
+   * Analyze an email using AI to extract key information and insights
+   */
+  async analyzeEmail(
+    parsedEmail: ParsedEmail,
+    matchResult?: MatchResult,
+    context?: { organizationId: string; ticketId?: string }
+  ): Promise<EmailAnalysisResult> {
+    try {
+      const systemPrompt = `You are Michelle, an AI assistant specializing in workers' compensation and RTW (Return to Work) case management.
+      
+Your task is to analyze incoming emails and provide structured insights to help case managers understand the content and decide on appropriate actions.
+
+ANALYSIS REQUIREMENTS:
+1. Summarize the email content concisely (2-3 sentences)
+2. Determine urgency level based on content and context
+3. Extract specific actionable items mentioned in the email
+4. Identify key entities (people, dates, medical terms, locations)
+5. Assess the sentiment/tone of the email
+6. Provide confidence score for your analysis
+
+URGENCY LEVELS:
+- CRITICAL: Safety concerns, emergency medical situations, legal deadlines
+- HIGH: Medical appointments, time-sensitive documents, escalating issues
+- MEDIUM: Regular updates, routine requests, scheduling matters
+- LOW: General inquiries, administrative updates, non-urgent communications
+
+RESPONSE FORMAT: Respond with valid JSON only:
+{
+  "summary": "Brief 2-3 sentence summary",
+  "urgencyLevel": "low|medium|high|critical",
+  "extractedActions": ["action1", "action2"],
+  "keyEntities": {
+    "people": ["names mentioned"],
+    "dates": ["dates found"],
+    "medicalTerms": ["medical conditions, treatments"],
+    "locations": ["clinics, workplaces"]
+  },
+  "sentiment": "positive|neutral|negative|urgent",
+  "confidence": 85
+}`;
+
+      const emailContent = `
+EMAIL ANALYSIS REQUEST:
+
+From: ${parsedEmail.originalSender} ${parsedEmail.originalSenderName ? `(${parsedEmail.originalSenderName})` : ''}
+Subject: ${parsedEmail.subject}
+Original Subject: ${parsedEmail.originalSubject || 'N/A'}
+Forwarded by: ${parsedEmail.forwardedBy}
+
+EMAIL BODY:
+${parsedEmail.body}
+
+EXTRACTED ENTITIES:
+${JSON.stringify(parsedEmail.extractedEntities, null, 2)}
+
+CASE MATCHING CONTEXT:
+${matchResult ? `
+Best Match: ${matchResult.bestMatch ? `${matchResult.bestMatch.workerName} (Confidence: ${matchResult.bestMatch.confidenceScore}%)` : 'No match found'}
+Match Type: ${matchResult.bestMatch?.matchType || 'N/A'}
+Alternative Matches: ${matchResult.alternativeMatches.length}
+` : 'No case matching performed'}
+
+Please analyze this email and provide structured insights.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: emailContent }
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const analysis = JSON.parse(response.choices[0].message.content || "{}");
+
+      return {
+        summary: analysis.summary || "Unable to generate summary",
+        urgencyLevel: analysis.urgencyLevel || "medium",
+        extractedActions: analysis.extractedActions || [],
+        keyEntities: analysis.keyEntities || { people: [], dates: [], medicalTerms: [], locations: [] },
+        sentiment: analysis.sentiment || "neutral",
+        confidence: analysis.confidence || 75,
+        tokenUsage: {
+          promptTokens: response.usage?.prompt_tokens || 0,
+          completionTokens: response.usage?.completion_tokens || 0
+        }
+      };
+    } catch (error) {
+      console.error("Email analysis failed:", error);
+      throw new Error(`Failed to analyze email: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Generate AI recommendations based on email analysis and case context
+   */
+  async generateRecommendations(
+    emailAnalysis: EmailAnalysisResult,
+    parsedEmail: ParsedEmail,
+    matchResult?: MatchResult,
+    caseContext?: any
+  ): Promise<AiRecommendationResult> {
+    try {
+      const systemPrompt = `You are Michelle, an AI assistant specializing in workers' compensation and RTW case management.
+
+Your task is to generate actionable recommendations based on email analysis and case context to help managers decide on appropriate next steps.
+
+RECOMMENDATION TYPES:
+- next_step: Immediate actions to progress the case
+- follow_up: Schedule follow-up communications
+- escalation: Escalate to specialists or management
+- document_request: Request additional documentation
+- medical_review: Require medical assessment
+- rtw_planning: Return to work planning activities
+- compliance_check: Ensure regulatory compliance
+
+PRIORITY LEVELS:
+- URGENT: Immediate action required (within hours)
+- HIGH: Action needed within 24-48 hours
+- MEDIUM: Action needed within a week
+- LOW: Non-urgent, can be addressed in regular workflow
+
+RESPONSE FORMAT: Respond with valid JSON only:
+{
+  "recommendations": [
+    {
+      "type": "recommendation_type",
+      "title": "Brief title",
+      "description": "Detailed description of what should be done",
+      "priority": "low|medium|high|urgent",
+      "suggestedAction": "specific_action_type",
+      "actionDetails": {"key": "value"},
+      "estimatedTimeframe": "immediate|within_24h|within_week",
+      "reasoning": "Why this recommendation is made",
+      "confidence": 85
+    }
+  ],
+  "overallAssessment": "Overall assessment of the situation",
+  "nextSteps": ["immediate next step 1", "immediate next step 2"]
+}`;
+
+      const requestContent = `
+RECOMMENDATION REQUEST:
+
+EMAIL ANALYSIS:
+Summary: ${emailAnalysis.summary}
+Urgency: ${emailAnalysis.urgencyLevel}
+Actions: ${emailAnalysis.extractedActions.join(', ')}
+Sentiment: ${emailAnalysis.sentiment}
+
+EMAIL DETAILS:
+From: ${parsedEmail.originalSender}
+Subject: ${parsedEmail.subject}
+Body Preview: ${parsedEmail.body.substring(0, 500)}${parsedEmail.body.length > 500 ? '...' : ''}
+
+CASE MATCHING:
+${matchResult?.bestMatch ? `
+Matched Case: ${matchResult.bestMatch.workerName}
+Match Confidence: ${matchResult.bestMatch.confidenceScore}%
+Match Type: ${matchResult.bestMatch.matchType}
+Reasoning: ${matchResult.bestMatch.matchReasoning}
+` : 'No case match found - may require manual case creation or linking'}
+
+CASE CONTEXT:
+${caseContext ? JSON.stringify(caseContext, null, 2) : 'No existing case context available'}
+
+Based on this information, generate specific actionable recommendations for the case manager.`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: requestContent }
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const recommendations = JSON.parse(response.choices[0].message.content || "{}");
+
+      return {
+        recommendations: recommendations.recommendations || [],
+        overallAssessment: recommendations.overallAssessment || "Unable to generate assessment",
+        nextSteps: recommendations.nextSteps || [],
+        tokenUsage: {
+          promptTokens: response.usage?.prompt_tokens || 0,
+          completionTokens: response.usage?.completion_tokens || 0
+        }
+      };
+    } catch (error) {
+      console.error("Recommendation generation failed:", error);
+      throw new Error(`Failed to generate recommendations: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Store AI recommendations in the database
+   */
+  async storeRecommendations(
+    recommendations: AiRecommendationResult,
+    ticketId: string,
+    externalEmailId?: string,
+    conversationId?: string
+  ): Promise<string[]> {
+    try {
+      const storedRecommendations = [];
+
+      for (const rec of recommendations.recommendations) {
+        const [stored] = await db.insert(aiRecommendations).values({
+          ticketId,
+          externalEmailId,
+          conversationId,
+          recommendationType: rec.type,
+          title: rec.title,
+          description: rec.description,
+          priority: rec.priority,
+          suggestedAction: rec.suggestedAction,
+          actionDetails: rec.actionDetails,
+          estimatedTimeframe: rec.estimatedTimeframe,
+          confidenceScore: rec.confidence,
+          model: "gpt-5",
+          reasoning: rec.reasoning,
+          status: "pending"
+        }).returning();
+
+        storedRecommendations.push(stored.id);
+      }
+
+      return storedRecommendations;
+    } catch (error) {
+      console.error("Failed to store recommendations:", error);
+      throw new Error(`Failed to store recommendations: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Process email with full AI analysis workflow
+   */
+  async processEmailWithAI(
+    parsedEmail: ParsedEmail,
+    matchResult?: MatchResult,
+    context?: { organizationId: string; ticketId?: string }
+  ): Promise<{
+    analysis: EmailAnalysisResult;
+    recommendations: AiRecommendationResult;
+    storedRecommendationIds?: string[];
+  }> {
+    try {
+      // Analyze the email
+      const analysis = await this.analyzeEmail(parsedEmail, matchResult, context);
+
+      // Generate recommendations
+      const recommendations = await this.generateRecommendations(
+        analysis, 
+        parsedEmail, 
+        matchResult,
+        context
+      );
+
+      // Store recommendations if we have a ticket ID
+      let storedRecommendationIds: string[] | undefined;
+      if (context?.ticketId) {
+        storedRecommendationIds = await this.storeRecommendations(
+          recommendations,
+          context.ticketId,
+          undefined, // externalEmailId will be set when email is stored
+          undefined  // conversationId not applicable here
+        );
+      }
+
+      return {
+        analysis,
+        recommendations,
+        storedRecommendationIds
+      };
+    } catch (error) {
+      console.error("Email processing with AI failed:", error);
+      throw error;
+    }
   }
 
   async archiveConversation(conversationId: string) {
