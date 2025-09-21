@@ -3718,6 +3718,193 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Email Report Delivery Endpoints
+  app.post("/api/reports/email", requireAuth, async (req, res) => {
+    try {
+      // Validate request body
+      const EmailReportSchema = z.object({
+        ticketId: z.string().min(1, "Ticket ID is required"),
+        reportType: z.enum(["pre-employment", "case-summary", "injury-report", "compliance-audit"], {
+          errorMap: () => ({ message: "Invalid report type" })
+        }),
+        recipients: z.array(z.object({
+          email: z.string().email("Invalid email address"),
+          name: z.string().optional(),
+          role: z.string().optional()
+        })).min(1, "At least one recipient is required"),
+        customMessage: z.string().optional(),
+        includeComplianceNote: z.boolean().optional().default(true),
+        options: z.object({
+          includeConfidentialInfo: z.boolean().optional(),
+          customFooter: z.string().optional(),
+          letterhead: z.boolean().optional()
+        }).optional()
+      });
+
+      const validationResult = EmailReportSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid request data", 
+          details: fromZodError(validationResult.error).toString() 
+        });
+      }
+
+      const { ticketId, reportType, recipients, customMessage, includeComplianceNote, options } = validationResult.data;
+      const user = req.session.user!;
+
+      // Verify user has access to this ticket
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Check authorization
+      const isImpersonating = user.isImpersonating || false;
+      const userOrgId = isImpersonating ? user.impersonationTarget : user.organizationId;
+      const isAdmin = user.role === 'admin' && !isImpersonating;
+      
+      if (!isAdmin && ticket.organizationId !== userOrgId) {
+        return res.status(403).json({ error: "Access denied - insufficient permissions" });
+      }
+
+      // Import services dynamically
+      const { reportDataService } = await import('./reportDataService');
+      const { pdfService } = await import('./pdfService');
+      const { emailService } = await import('./emailService');
+
+      // Check if email service is available
+      if (!emailService.isAvailable()) {
+        return res.status(503).json({ 
+          error: "Email service not configured", 
+          details: "Please configure SMTP settings to enable email delivery"
+        });
+      }
+
+      const generatedBy = `${user.firstName} ${user.lastName} (${user.email})`;
+
+      // Generate PDF report
+      let pdfBuffer: Buffer;
+      switch (reportType) {
+        case 'pre-employment':
+          const preEmploymentData = await reportDataService.getPreEmploymentReportData(ticketId, generatedBy);
+          pdfBuffer = await pdfService.generatePreEmploymentReport(preEmploymentData, options);
+          break;
+        case 'case-summary':
+          const caseSummaryData = await reportDataService.getCaseSummaryReportData(ticketId, generatedBy);
+          pdfBuffer = await pdfService.generateCaseSummaryReport(caseSummaryData, options);
+          break;
+        case 'injury-report':
+          const injuryData = await reportDataService.getInjuryReportData(ticketId, generatedBy);
+          pdfBuffer = await pdfService.generateInjuryReport(injuryData, options);
+          break;
+        case 'compliance-audit':
+          const auditData = await reportDataService.getComplianceAuditReportData(ticketId, generatedBy);
+          pdfBuffer = await pdfService.generateComplianceAuditReport(auditData, options);
+          break;
+        default:
+          return res.status(400).json({ error: `Unsupported report type: ${reportType}` });
+      }
+
+      // Send email with PDF attachment
+      const emailResult = await emailService.sendReportEmail({
+        ticketId,
+        reportType,
+        recipients,
+        pdfBuffer,
+        customMessage,
+        includeComplianceNote
+      }, storage);
+
+      if (emailResult.success) {
+        res.json({ 
+          success: true, 
+          message: "Report sent successfully via email",
+          messageId: emailResult.messageId,
+          recipients: recipients.length
+        });
+      } else {
+        res.status(500).json({ 
+          error: "Failed to send report via email", 
+          details: emailResult.error 
+        });
+      }
+
+    } catch (error) {
+      console.error("Error sending report via email:", error);
+      res.status(500).json({ 
+        error: "Failed to send report via email", 
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Check email service status
+  app.get("/api/email/status", requireAuth, async (req, res) => {
+    try {
+      const { emailService } = await import('./emailService');
+      
+      res.json({
+        isAvailable: emailService.isAvailable(),
+        configured: {
+          host: !!process.env.EMAIL_HOST || !!process.env.SMTP_HOST,
+          user: !!process.env.EMAIL_USER || !!process.env.SMTP_USER,
+          fromAddress: process.env.EMAIL_FROM_ADDRESS || 'reports@gpnet.com.au'
+        }
+      });
+    } catch (error) {
+      console.error("Error checking email status:", error);
+      res.status(500).json({ error: "Failed to check email status" });
+    }
+  });
+
+  // Send test email
+  app.post("/api/email/test", requireAuth, async (req, res) => {
+    try {
+      const TestEmailSchema = z.object({
+        email: z.string().email("Invalid email address")
+      });
+
+      const validationResult = TestEmailSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid email address", 
+          details: fromZodError(validationResult.error).toString() 
+        });
+      }
+
+      const { email } = validationResult.data;
+      const { emailService } = await import('./emailService');
+
+      if (!emailService.isAvailable()) {
+        return res.status(503).json({ 
+          error: "Email service not configured"
+        });
+      }
+
+      const result = await emailService.sendTestEmail(email);
+
+      if (result.success) {
+        res.json({ 
+          success: true, 
+          message: "Test email sent successfully",
+          messageId: result.messageId
+        });
+      } else {
+        res.status(500).json({ 
+          error: "Failed to send test email", 
+          details: result.error 
+        });
+      }
+
+    } catch (error) {
+      console.error("Error sending test email:", error);
+      res.status(500).json({ 
+        error: "Failed to send test email", 
+        details: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   // Michelle AI Chat Endpoints with dual mode support
   app.post("/api/michelle/chat", requireAuth, async (req, res) => {
     try {

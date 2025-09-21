@@ -1,0 +1,67 @@
+Got it. Here’s a Replit-ready plain English spec you can paste straight into your build pack. It describes exactly how Michelle’s escalation + Natalie’s fallback should work, step-by-step, so the dev agent can turn it into code.
+
+⸻
+
+Spec: Michelle Widget — Escalation & Natalie Handoff
+
+Overview
+
+Michelle is the AI widget agent. She answers manager queries. If Michelle cannot resolve a query with high confidence, she escalates. Escalation is always routed through Natalie, who then connects the right specialist (Doctor, Physiotherapist, Psychologist, Case Manager, or Industrial Relations Specialist).
+
+If a specialist is not immediately available, Michelle must reassure the manager, hold the query, and promise a follow-up.
+
+⸻
+
+Trigger Rules for Escalation
+
+Michelle creates an escalation when any of these conditions occur:
+	1.	Low Confidence: intent confidence < 0.65 or answerability score < 0.6.
+	2.	Risk Keywords: suicidal, bullying, harassment, unsafe, violent, chest pain, numbness, loss of function, WorkCover dispute, etc.
+	3.	Out-of-Scope: legal advice, diagnosis, certificate alteration, privacy breach.
+	4.	Conversation Pattern: 2+ unresolved follow-ups or visible frustration.
+	5.	SLA Timeout: >90 seconds without an actionable step.
+	6.	Direct User Request: “Can I speak to a doctor/physio/psych/IR/case manager?”
+
+⸻
+
+Escalation Process
+	1.	Michelle Detects Trigger
+Michelle immediately tells the manager:
+“This looks a bit complex. I’ll bring in the right person to help.”
+	2.	Escalation Ticket to Natalie
+Michelle generates a structured payload for Natalie:
+	•	Transcript (last 20 turns).
+	•	Auto-summary (issue, worker role, risk factors).
+	•	Recommended specialist type.
+	•	Time of request.
+	3.	Natalie Reviews
+	•	Confirms routing choice.
+	•	Contacts the right specialist or schedules follow-up.
+	•	Updates ticket status.
+
+⸻
+
+Manager Outcomes
+	•	If Specialist Is Available Quickly
+Michelle updates manager:
+“I’ve arranged for {specialist} to assist. You’ll hear from them shortly.”
+	•	If Specialist Is Not Immediately Available
+Michelle updates manager with fallback:
+“I can’t get to the right person at the moment, but don’t worry — I’ve got your query at hand. I’ll make contact and we’ll get an answer back to you as soon as possible.”
+
+	•	Ticket status = In Progress.
+	•	Natalie resolves later and pushes update through Michelle:
+“Thanks for waiting. Here’s the update from {specialist}: …”
+
+⸻
+
+Routing Matrix
+	•	Doctor → acute symptoms, certificates, comorbidities.
+	•	Physiotherapist → musculoskeletal, ergonomics, graded duties.
+	•	Psychologist → stress, burnout, psychosocial hazards.
+	•	Case Manager → process, insurer, documents, scheduling.
+	•	Industrial Relations Specialist → lawful direction, disputes, award/EA context.
+
+⸻
+
+Do you want me to also write the exact JSON-style “ticket payload schema” (fields, example values, statuses) so Natalie’s side can plug into it right away?
