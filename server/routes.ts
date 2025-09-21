@@ -407,6 +407,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mount authentication routes
   app.use('/api/auth', authRoutes);
   
+  // Admin routes
+  const adminRoutes = (await import('./adminRoutes.js')).default;
+  app.use('/api/admin', adminRoutes);
+  
   // Jotform webhook endpoint for receiving form submissions
   app.post("/api/webhook/jotform", async (req, res) => {
     try {

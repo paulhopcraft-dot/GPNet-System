@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { UserProvider } from "@/components/UserContext";
 import Dashboard from "@/pages/Dashboard";
+import AdminConsole from "@/pages/AdminConsole";
 import WorkerForm from "@/pages/WorkerForm";
 import InjuryFormPage from "@/pages/InjuryForm";
 import RtwPlans from "@/pages/RtwPlans";
@@ -19,6 +20,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/admin" component={AdminConsole} />
       <Route path="/form" component={WorkerForm} />
       <Route path="/injury" component={InjuryFormPage} />
       <Route path="/rtw-compliance" component={RtwCompliance} />

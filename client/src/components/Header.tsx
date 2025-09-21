@@ -1,4 +1,4 @@
-import { Bell, Search, Settings, User } from "lucide-react";
+import { Bell, Search, Settings, User, Shield, UserCheck, LogOut, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -6,24 +6,71 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useUser } from "@/components/UserContext";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Link } from "wouter";
 
 export default function Header() {
+  const { user, setUser } = useUser();
+
+  // Stop impersonation mutation
+  const stopImpersonationMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/auth/impersonate/stop");
+    },
+    onSuccess: () => {
+      // Refresh user context and reload page
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      window.location.reload();
+    },
+  });
+
+  const handleStopImpersonation = () => {
+    if (confirm("Are you sure you want to stop impersonating? This will return you to your admin account.")) {
+      stopImpersonationMutation.mutate();
+    }
+  };
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background">
       <div className="flex h-16 items-center justify-between px-6">
         {/* Logo and Brand */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">GP</span>
+          <Link href="/">
+            <div className="flex items-center gap-2 cursor-pointer">
+              <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-bold text-sm">GP</span>
+              </div>
+              <span className="text-xl font-semibold">GPNet</span>
             </div>
-            <span className="text-xl font-semibold">GPNet</span>
-          </div>
+          </Link>
           <Badge variant="secondary" className="text-xs">
             Pre-Employment v1.1
           </Badge>
+          
+          {/* Impersonation Indicator */}
+          {user?.isImpersonating && (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs bg-orange-100 text-orange-800 border-orange-300">
+                <UserCheck className="h-3 w-3 mr-1" />
+                Impersonating
+              </Badge>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={handleStopImpersonation}
+                disabled={stopImpersonationMutation.isPending}
+                data-testid="button-stop-impersonation"
+              >
+                <LogOut className="h-3 w-3 mr-1" />
+                {stopImpersonationMutation.isPending ? "Stopping..." : "Stop"}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Search Bar */}
@@ -51,6 +98,15 @@ export default function Header() {
             <Settings className="h-4 w-4" />
           </Button>
 
+          {/* Admin Console Access */}
+          {user?.userType === 'admin' && (
+            <Link href="/admin">
+              <Button size="icon" variant="ghost" data-testid="button-admin-console">
+                <Shield className="h-4 w-4" />
+              </Button>
+            </Link>
+          )}
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon" variant="ghost" data-testid="button-user-menu">
@@ -58,9 +114,48 @@ export default function Header() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem data-testid="menu-profile">Profile</DropdownMenuItem>
-              <DropdownMenuItem data-testid="menu-settings">Settings</DropdownMenuItem>
-              <DropdownMenuItem data-testid="menu-logout">Logout</DropdownMenuItem>
+              <div className="px-2 py-1.5 text-sm">
+                <div className="font-medium">{user?.name || "Unknown User"}</div>
+                <div className="text-xs text-muted-foreground">{user?.email}</div>
+                <div className="flex items-center gap-1 mt-1">
+                  {user?.userType === 'admin' && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Shield className="h-3 w-3 mr-1" />
+                      Admin
+                    </Badge>
+                  )}
+                  {user?.permissions?.includes('superuser') && (
+                    <Badge variant="default" className="text-xs">
+                      Superuser
+                    </Badge>
+                  )}
+                </div>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem data-testid="menu-profile">
+                <User className="h-4 w-4 mr-2" />
+                Profile
+              </DropdownMenuItem>
+              <DropdownMenuItem data-testid="menu-settings">
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </DropdownMenuItem>
+              {user?.userType === 'admin' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin" className="w-full">
+                      <Shield className="h-4 w-4 mr-2" />
+                      Admin Console
+                    </Link>
+                  </DropdownMenuItem>
+                </>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem data-testid="menu-logout">
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
