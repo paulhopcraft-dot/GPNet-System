@@ -1,0 +1,157 @@
+Here’s a clean, paste-ready build spec for Roylett.
+
+⸻
+
+Email Attachments → Structured Medical Data → GPNet Reports (Spec)
+
+Goal
+
+When an email arrives in Freshdesk with an attachment (medical certificate or diagnosis/report), automatically:
+	1.	fetch the attachment, 2) extract key medical data, 3) normalize + validate, 4) store it against the case, and 5) inject it into GPNet reports (Injury Check / Prevention Check / New Starter Check), updating case status and next steps.
+
+⸻
+
+1) Ingestion (Freshdesk)
+	•	Trigger: Freshdesk webhook on new ticket and new reply with attachments.
+	•	Action: For each attachment with type in {pdf,jpg,jpeg,png} → enqueue doc_processing_job{ticket_id, attachment_url, company_id, requester_email}.
+
+⸻
+
+2) Download & Pre-Process
+	•	Download to temp storage; virus scan; detect orientation; auto-rotate/deskew; convert to 300 DPI image (for OCR); remove background noise; binarize; split multi-page PDFs.
+	•	Classify document type (medical_certificate, diagnosis_report, fit_note, specialist_letter, radiology_report, other) via simple heuristic + model (title terms, common headers, table shapes).
+
+⸻
+
+3) OCR & Field Extraction
+	•	OCR engine: OpenAI Vision (or Tesseract fallback).
+	•	Extract with layout-aware prompts + regex normalization.
+
+Core Fields (all docs)
+	•	patient_name
+	•	worker_id (resolve via case mapping or email/domain hint)
+	•	company_id
+	•	doctor_name, provider_no (if present), clinic_name, clinic_phone
+	•	issue_date
+	•	diagnosis (free text)
+	•	restrictions (free text)
+	•	fit_status enum: {fit_unrestricted, fit_with_restrictions, unfit}
+	•	valid_from, valid_to (or review_on)
+	•	capacity_notes (duties limits: hours, lifting, posture)
+	•	signatory (name/role), signature_present bool
+
+Additional (diagnosis/specialist reports)
+	•	icd_codes (array, optional)
+	•	investigations (imaging/tests)
+	•	treatment_plan
+	•	follow_up_interval
+	•	red_flags (e.g., “neurological deficit”, “return to ED if…”)
+
+Confidence & provenance
+	•	Per-field confidence 0–1
+	•	source_file_id, page_no, bbox (optional for audit)
+
+⸻
+
+4) Normalization & Validation
+	•	Names: title-case; strip trailing credentials.
+	•	Dates: ISO 8601; if only “1 week from issue”, compute valid_to.
+	•	Fit status mapping:
+	•	text contains {unfit, not fit} → unfit
+	•	text contains {fit for light/modified} → fit_with_restrictions
+	•	otherwise if “fit for normal duties” → fit_unrestricted
+	•	Sanity checks:
+	•	valid_to >= valid_from
+	•	issue_date <= today
+	•	If fit_status = unfit and valid_to missing → set review_on = issue_date + 7d
+	•	Set is_current_certificate = true if today ∈ [valid_from, valid_to]
+
+⸻
+
+5) Storage & Linking
+	•	Save original file to secure object storage (presigned URLs).
+	•	Upsert documents:
+	•	kind ∈ {medical_certificate, diagnosis_report, fit_note, specialist_letter, radiology_report, other}
+	•	expires_at = valid_to (if available)
+	•	is_current_bool computed
+	•	Link to case_id via (company_id, worker_id) mapping or ticket_id → case_id join.
+	•	Log events: medical_document_ingested, medical_document_parsed.
+
+⸻
+
+6) Case Updates (Business Logic)
+	•	Update cases.current_capacity & cases.next_step_text:
+	•	If fit_status = unfit → next step “Confirm duties & review on {valid_to or review_on}”.
+	•	If fit_with_restrictions → parse restrictions into structured restrictions (hours/lifting/posture) and set next step “Implement modified duties (see restrictions)”.
+	•	If fit_unrestricted → mark “Return to full duties” unless conflicting open flags.
+	•	Recompute Requires Action:
+	•	Missing/expired current certificate
+	•	New certificate changes fit status
+	•	Follow-up due within 72h
+	•	Push update to Michelle widget context (badge + case snapshot refresh).
+
+⸻
+
+7) Report Injection (Templates)
+
+When a report is generated/updated, auto-fill from latest parsed data:
+
+Shared fields (all report types)
+	•	Summary block:
+	•	“Certificate dated {issue_date} indicates {fit_status_readable}.”
+	•	Mention restrictions or “no restrictions”.
+	•	Validity window {valid_from} → {valid_to} or review date.
+	•	Recommendations:
+	•	If restrictions → list as bullet points for duties adjustments.
+	•	If unfit → follow-up schedule and escalation criteria.
+
+Injury Check Report (per locked template)
+	•	Summary of Findings: include diagnosis + certificate status.
+	•	Fit Classification: tick correct option.
+	•	Recommendations: populate duty modifications + review date.
+	•	Sections (7 standard sections): pre-fill “Physical Health in Context of Role” with parsed capacity/restrictions; “Support Provided” with “Certificate received {issue_date}”.
+
+Prevention Check Report
+	•	Use fit status and restrictions to pre-populate preventive adjustments and cadence for follow-up.
+
+New Starter Check Report
+	•	Include monitor only, no restrictions when certificate/notes indicate minor issues; record dates for any capacity checks.
+
+(Use the standard disclaimer block after report header.)
+
+⸻
+
+8) Human-in-the-Loop Review
+	•	If any confidence < 0.7 or validation fails → flag requires_review = true.
+	•	UI: side-by-side Document Preview and Parsed Fields with quick edit; saving re-writes normalized fields and re-runs the case update.
+
+⸻
+
+9) Notifications
+	•	Add Freshdesk private note: “Medical certificate processed — status: {fit_status}, valid to {valid_to}.”
+	•	Optional email to manager: concise summary + link to case.
+
+⸻
+
+10) Security & Compliance
+	•	PHI handling: encrypted at rest; presigned downloads; access scoped by company_id + role.
+	•	Full audit trail: who viewed/edited fields; timestamp; old→new.
+	•	Auto-delete temp OCR files post-processing.
+
+⸻
+
+11) Operational Considerations
+	•	Retry policy: exponential backoff on OCR/API; DLQ for persistent failures.
+	•	Idempotency: key on {ticket_id, attachment_checksum} to avoid duplicates.
+	•	Metrics: count processed docs, avg OCR latency, % low-confidence, % requiring review.
+
+⸻
+
+12) Acceptance Criteria
+	•	Attachment with a valid certificate produces a documents row with parsed fields and marks is_current_bool correctly.
+	•	Case view updates snapshot and Requires Action according to fit status/expiry.
+	•	A generated Injury/Prevention/New Starter report auto-fills certificate data in the correct sections and recommendations.
+	•	Low-confidence parses surface a manual review screen; saving fixes propagate to case + report.
+	•	Freshdesk ticket shows a private note summarizing the extraction.
+
+⸻

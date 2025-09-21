@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { FreshdeskImportService } from './freshdeskImportService.js';
 import { storage } from './storage.js';
+import { requireAdmin } from './adminRoutes.js';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ const freshdeskImportService = new FreshdeskImportService(storage);
 /**
  * GET /api/freshdesk/status - Check Freshdesk connection status
  */
-router.get('/status', async (req, res) => {
+router.get('/status', requireAdmin, async (req, res) => {
   try {
     const status = FreshdeskImportService.getConnectionStatus();
     res.json(status);
@@ -26,7 +27,7 @@ router.get('/status', async (req, res) => {
 /**
  * POST /api/freshdesk/import - Import and categorize all tickets from Freshdesk
  */
-router.post('/import', async (req, res) => {
+router.post('/import', requireAdmin, async (req, res) => {
   try {
     console.log('Starting Freshdesk ticket import request...');
     
@@ -52,7 +53,7 @@ router.post('/import', async (req, res) => {
 /**
  * GET /api/freshdesk/preview - Preview what would be imported (first 10 tickets)
  */
-router.get('/preview', async (req, res) => {
+router.get('/preview', requireAdmin, async (req, res) => {
   try {
     console.log('Fetching Freshdesk preview...');
     
