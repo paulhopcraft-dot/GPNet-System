@@ -5,8 +5,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { UserProvider } from "@/components/UserContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import Dashboard from "@/pages/Dashboard";
 import AdminConsole from "@/pages/AdminConsole";
+import ClientLogin from "@/pages/ClientLogin";
+import AdminLogin from "@/pages/AdminLogin";
 import WorkerForm from "@/pages/WorkerForm";
 import InjuryFormPage from "@/pages/InjuryForm";
 import RtwPlans from "@/pages/RtwPlans";
@@ -19,14 +22,54 @@ import { MichelleWidget } from "@/components/MichelleWidget";
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/admin" component={AdminConsole} />
+      {/* Public Routes */}
+      <Route path="/login/client" component={ClientLogin} />
+      <Route path="/login/admin" component={AdminLogin} />
       <Route path="/form" component={WorkerForm} />
-      <Route path="/injury" component={InjuryFormPage} />
-      <Route path="/rtw-compliance" component={RtwCompliance} />
-      <Route path="/cases/:ticketId/rtw-plans" component={RtwPlans} />
-      <Route path="/cases/:ticketId/stakeholders" component={Stakeholders} />
-      <Route path="/cases/:ticketId/assessment" component={FitForWorkAssessment} />
+      
+      {/* Protected Routes */}
+      <Route path="/">
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/admin">
+        <ProtectedRoute requireAdmin>
+          <AdminConsole />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/injury">
+        <ProtectedRoute>
+          <InjuryFormPage />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/rtw-compliance">
+        <ProtectedRoute>
+          <RtwCompliance />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/cases/:ticketId/rtw-plans">
+        <ProtectedRoute>
+          <RtwPlans />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/cases/:ticketId/stakeholders">
+        <ProtectedRoute>
+          <Stakeholders />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/cases/:ticketId/assessment">
+        <ProtectedRoute>
+          <FitForWorkAssessment />
+        </ProtectedRoute>
+      </Route>
+      
       <Route component={NotFound} />
     </Switch>
   );
