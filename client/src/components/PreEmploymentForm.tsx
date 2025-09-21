@@ -82,7 +82,29 @@ export default function PreEmploymentForm({
     onSubmit?.(data);
   };
 
-  const nextSection = () => {
+  const nextSection = async () => {
+    // Define field groups for each section
+    const sectionFields = {
+      0: ['firstName', 'lastName', 'dateOfBirth', 'phone', 'email', 'roleApplied'], // Personal Details
+      1: [], // Medical History (simplified, no validation needed)
+      2: [], // Musculoskeletal (simplified, no validation needed)
+      3: [], // Functional Capacity (simplified, no validation needed)
+      4: ['sleepRating', 'stressRating', 'supportRating'], // Psychosocial Screening
+      5: ['consentToShare', 'signature', 'signatureDate'], // Consent Section
+    };
+
+    const fieldsToValidate = sectionFields[currentSection as keyof typeof sectionFields] || [];
+    
+    // Trigger validation for current section fields
+    if (fieldsToValidate.length > 0) {
+      const isValid = await form.trigger(fieldsToValidate as any[]);
+      if (!isValid) {
+        console.log("Validation failed for section", currentSection);
+        return; // Don't proceed if validation fails
+      }
+    }
+    
+    // Only advance if validation passes
     setCurrentSection(Math.min(currentSection + 1, formSections.length - 1));
   };
 

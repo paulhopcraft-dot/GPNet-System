@@ -1,0 +1,148 @@
+Test Pack — Read Me First
+
+Instructions for the tester:
+Here’s a list of tests. I need you to test all of these and make sure they’re all working and give me a report. For each item:
+	1.	perform the steps implied, 2) mark Pass / Fail, 3) attach evidence (screenshot/URL/log ID), 4) note defects with clear repro steps. Use the “Report Template” at the end.
+
+⸻
+
+Acceptance Test Checklist (GPNet / StaySure + Michelle)
+
+Platform-wide
+	•	ENV setup (Dev/Stage/Prod isolation; configs swap without code edits).
+	•	User roles (Admin, Client Owner, Consultant, Manager, Recruiter, Worker, Read-only) — least-privilege enforced.
+	•	Auth (email+password, SSO optional, token refresh, forced logout).
+
+Admin (multi-tenant)
+	•	Create tenant (branding, defaults; unique slug visible).
+	•	Impersonation (banner + full audit trail).
+	•	Archive / Unarchive (nothing deleted; full restore works).
+	•	Global Michelle (cross-tenant, redacts client PHI appropriately).
+
+Data model & governance
+	•	Case schema (Pre-Employment, Injury, Prevention, New Starter, Exit, Mental Health) — CRUD + history.
+	•	Attachments (virus scan, preview, searchable metadata).
+	•	Audit trail (who/what/when/before→after; exportable CSV).
+
+Client onboarding
+	•	Org profile (sites, managers, roles, WorkCover fields).
+	•	Branding (logo/colors/sender reflected in emails/WhatsApp).
+
+Permissions & privacy
+	•	Scope enforcement (tenant and site scoping; cross-tenant calls rejected with 403).
+	•	PHI masking (only permitted roles see sensitive fields; notifications redact).
+
+Michelle (conversation engine)
+	•	Always proposes next step (0 dead-end turns across varied cases).
+	•	Case-aware tone/flow; uses “reported/perceived” language.
+	•	Channel delivery (WhatsApp primary, SMS, Email) — delivery + reply ingestion.
+	•	Email link check-in (signed, single-use token).
+
+Check types (flows & logic)
+	•	Pre-Employment (≤10 min median, ≥95% completion).
+	•	Injury Check (incident → symptoms → management → status → risks; Fit Classification set).
+	•	Prevention Check (risks/ergonomics; default Fit = “Fit without restriction”).
+	•	New Starter (early risk signals; “monitor only” tagging for minor notes).
+	•	Exit Check (simple flow; feedback feeds ROI dashboard).
+	•	Mental Health (psychosocial screen; crisis phrases trigger human handover).
+
+Fit Classification & templates
+	•	Single-selection ticks: Fit w/out restriction / with restrictions / Not fit.
+	•	Standard disclaimer present verbatim in all reports.
+	•	Seven fixed sections after Recommendations (for Injury/Prevention/New Starter); template lint passes.
+
+Escalation & stakeholders
+	•	Manager workflow (correct site-mapped manager; replies ingested).
+	•	Doctor loop (request clinical note; triage call scheduled; summary logged).
+	•	Insurer/WorkCover fields required only when WorkCover flag set.
+
+Cadence & scheduling
+	•	Severity-based cadence (High q2w, Moderate monthly, Low every 2 months) auto-schedules and updates on severity change.
+	•	Missed check-ins → two reminders → escalate to manager with timestamps.
+
+Integrations
+	•	Freshdesk sync (case↔ticket, comments/attachments two-way in <60s).
+	•	Airtable/DB (workers, sites, cadence, scores; referential integrity).
+	•	JobAdder (stub) 50→10 shortlist dry-run with sandbox data.
+	•	Stripe billing ($29/mo; grace window; lock when unpaid).
+
+Notifications & deliverability
+	•	Email DKIM/SPF/DMARC pass; no spoof warnings in Gmail/Outlook.
+	•	WhatsApp/SMS opt-in captured; fallback to email on failure; delivery receipts stored.
+
+Analytics & ROI (SureGrand)
+	•	Attrition baseline vs managed (per recruiter, host, portfolio) — reconciles with raw events.
+	•	“Off-track only” alerts (low alert fatigue).
+	•	Staysure Insights exit-reason trendlines visible.
+
+Ratings & matching
+	•	Candidate 1–5 star rating (host + recruiter; weighted).
+	•	“Available soon” high-rating notifications trigger correctly.
+	•	Confidential host score visible only to recruitment company roles.
+
+Reporting & exports
+	•	PDF reports (branded, paginated, accessible; checksum/versioning).
+	•	Tenant data export (CSV/JSON) respects role scope; PHI redaction where required.
+
+Security & compliance
+	•	Secrets in vault (e.g., Freshdesk API Key) — rotate without downtime.
+	•	Access logs (geo/IP/device, impersonation, exports) searchable.
+	•	Privacy/consent captured; regional storage options; DSR workflow within SLA.
+
+Reliability & fail-safes
+	•	Retries/backoff + idempotency for webhooks/email/SMS/WA; chaos test shows no dupes.
+	•	Human handover available; playbooks used; median handover <5 min in support hours.
+	•	Backups/DR: RPO ≤15 min, RTO ≤1 hr; quarterly fire-drill restore validated.
+
+Performance & UX
+	•	P95 TTI <3s desktop, <4s mobile; RUM + synthetic pass.
+	•	Mobile-first responsive flows (iOS/Android smoke tests).
+	•	Accessibility WCAG 2.1 AA (axe ≥95).
+
+Observability
+	•	Logs/metrics/traces correlated by case; one-minute clickthrough from case → events.
+	•	Error budgets & burn alerts; 30-day SLO compliance visible.
+
+ML governance (if enabled)
+	•	XGBoost + feature store versioned; instant rollback/A-B toggle.
+	•	SHAP explanations load <1s P80; top drivers shown.
+	•	Drift/bias monitors with thresholds and alerts.
+
+Content & wording guarantees
+	•	Liability language check (auto-lint for “reported/perceived”).
+	•	Disclaimer string match test across all report types.
+
+Timezone & locality
+	•	TZ handling: Asia/Manila user vs AU clients; UI shows local time, storage in UTC; calendar invites correct.
+
+Testing & simulation
+	•	Seed scenarios: long absence; modified duties; online medical certificate; workplace accident; WorkCover vs non-WorkCover; non-participation → terminal outcomes (full duties / modified duties / exit).
+	•	2,000-run harness with ≥90% branch coverage across flows.
+
+Documentation & help
+	•	Runbooks cover top incidents with step-by-step fixes.
+	•	In-app contextual help (<2 clicks to relevant article).
+
+⸻
+
+Report Template (copy-paste)
+
+Tester: 
+Env: Dev / Stage / Prod
+Date: 
+
+Area	Test	Steps (summary)	Result (Pass/Fail)	Evidence (URL/Screenshot ID/Log Ref)	Defects (ID + repro)	Notes
+Platform	ENV isolation	Switch Dev→Stage, verify keys/URLs change				
+Admin	Impersonation	Admin impersonates Client Owner; banner + audit				
+Cases	Injury Check flow	Create→Complete; verify Fit + sections				
+…	…	…	…	…	…	…
+
+Summary:
+	•	Critical: <x/x pass>
+	•	High: <x/x pass>
+	•	Nice-to-have: <x/x pass>
+Go/No-Go Recommendation: <choose one + rationale>
+
+⸻
+
+If you want this as a spreadsheet or Airtable import (columns already set), say so and I’ll output a ready-to-use CSV.
