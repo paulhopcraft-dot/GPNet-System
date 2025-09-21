@@ -14,7 +14,7 @@ export const requireAdmin = async (req: Request, res: Response, next: any) => {
   // Check if admin is still active (not suspended)
   try {
     const adminUser = await storage.getAdminUser(req.session.user.id);
-    if (!adminUser || !adminUser.isActive) {
+    if (!adminUser || adminUser.status !== 'active') {
       // Clear session for suspended admin
       req.session.destroy(() => {});
       return res.status(403).json({ error: 'Account suspended' });
@@ -36,7 +36,7 @@ export const requireSuperuser = async (req: Request, res: Response, next: any) =
   // Check if superuser is still active (not suspended)
   try {
     const adminUser = await storage.getAdminUser(req.session.user.id);
-    if (!adminUser || !adminUser.isActive) {
+    if (!adminUser || adminUser.status !== 'active') {
       // Clear session for suspended superuser
       req.session.destroy(() => {});
       return res.status(403).json({ error: 'Account suspended' });
@@ -144,12 +144,12 @@ router.post('/client-users/:id/suspend', requireAdmin, async (req: Request, res:
       return res.status(404).json({ error: 'User not found' });
     }
     
-    const newStatus = !user.isActive;
-    const updatedUser = await storage.updateClientUser(id, { isActive: newStatus });
+    const newStatus = user.status !== 'active' ? 'active' : 'suspended';
+    const updatedUser = await storage.updateClientUser(id, { status: newStatus });
     
     // Log audit event
     await authService.logAuditEvent({
-      eventType: newStatus ? 'USER_ACTIVATED' : 'USER_SUSPENDED',
+      eventType: newStatus === 'active' ? 'USER_ACTIVATED' : 'USER_SUSPENDED',
       eventCategory: 'admin',
       actorId: req.session.user!.id,
       actorType: 'admin',
