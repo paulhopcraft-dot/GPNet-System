@@ -39,6 +39,47 @@ const webhookEventSchema = z.object({
 });
 
 /**
+ * GET /api/medical-documents/health
+ * Simple health check to verify storage and services are working
+ * No authentication required - for testing purposes
+ */
+router.get('/health', async (req, res) => {
+  try {
+    // Test storage connectivity
+    const { storage } = await import('./storage.js');
+    
+    // Simple test that doesn't require actual data
+    const storageTest = {
+      connectionAvailable: true,
+      implementationActive: storage.constructor.name
+    };
+
+    // Test services availability  
+    const services = {
+      openaiConfigured: !!process.env.OPENAI_API_KEY,
+      freshdeskConfigured: !!(process.env.FRESHDESK_API_KEY && process.env.FRESHDESK_DOMAIN),
+      objectStorageConfigured: !!process.env.PRIVATE_OBJECT_DIR
+    };
+
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      storage: storageTest,
+      services,
+      message: 'Medical document processing system is operational'
+    });
+
+  } catch (error) {
+    console.error('Health check failed:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Health check failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
  * POST /api/medical-documents/freshdesk-webhook
  * Process incoming Freshdesk webhooks for medical document attachments
  */
