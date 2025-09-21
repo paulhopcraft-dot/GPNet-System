@@ -52,6 +52,14 @@ const passwordChangeSchema = z.object({
   newPassword: z.string().min(8)
 });
 
+// Middleware for general authentication (any user)
+export const requireAuth = (req: Request, res: Response, next: any) => {
+  if (!req.session.user || !req.session.isAuthenticated) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+  next();
+};
+
 // Middleware for admin authentication
 const requireAdmin = (req: Request, res: Response, next: any) => {
   if (!req.session.user || req.session.user.role !== 'admin') {

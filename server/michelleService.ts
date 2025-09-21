@@ -7,6 +7,8 @@ export interface MichelleResponse {
   reply: string;
   nextQuestions: string[];
   conversationId: string;
+  mode: 'client-scoped' | 'universal';
+  accessLevel: 'client' | 'admin';
 }
 
 export interface ChatMessage {
@@ -15,12 +17,22 @@ export interface ChatMessage {
   timestamp: Date;
 }
 
+export interface UserContext {
+  userId: string;
+  userType: 'client' | 'admin';
+  organizationId?: string;
+  permissions?: string[];
+  phiAccess?: boolean;
+  isSuperuser?: boolean;
+}
+
 // Simple in-memory conversation storage for demo
 const conversations: Map<string, ChatMessage[]> = new Map();
 
 export async function chatWithMichelle(
   conversationId: string,
   message: string,
+  userContext: UserContext,
   context?: {
     currentPage?: string;
     caseId?: string;
@@ -46,6 +58,11 @@ export async function chatWithMichelle(
                          !process.env.OPENAI_API_KEY.includes('youtube') &&
                          !process.env.OPENAI_API_KEY.includes('http');
 
+    // Determine Michelle's mode based on user context
+    const mode = userContext.userType === 'admin' && userContext.isSuperuser 
+      ? 'universal' : 'client-scoped';
+    const accessLevel = userContext.userType;
+    
     if (!isValidApiKey) {
       console.log('Running in demo mode - using simulated responses');
       
@@ -53,6 +70,13 @@ export async function chatWithMichelle(
       let nextQuestions: string[] = [];
       
       const lowerMessage = message.toLowerCase();
+      
+      // Add mode-specific context to demo responses
+      if (mode === 'universal') {
+        reply = "[Universal Mode] " + reply + "I have access to platform-wide data and can assist with multi-tenant insights. ";
+      } else {
+        reply = "[Client-Scoped Mode] " + reply + "I'm focusing on your organization's data and cases. ";
+      }
       
       if (lowerMessage.includes('health') || lowerMessage.includes('concern') || lowerMessage.includes('pain')) {
         reply += "I understand you have health concerns. As your occupational health assistant, I can help you understand workplace health requirements and guide you through the assessment process.";
@@ -97,12 +121,21 @@ export async function chatWithMichelle(
       return {
         reply,
         nextQuestions,
-        conversationId
+        conversationId,
+        mode,
+        accessLevel
       };
     }
 
-    // Build context-aware system prompt for real OpenAI API
+    // Build context-aware system prompt for real OpenAI API with mode-specific capabilities
     let systemPrompt = `You are Michelle, a helpful AI assistant specializing in occupational health and workplace safety. You work within the GPNet pre-employment health check system.
+
+Current Mode: ${mode}
+Access Level: ${accessLevel}
+
+${mode === 'universal' 
+  ? 'UNIVERSAL MODE: You have access to platform-wide data across all clients and can provide insights about system-wide trends, comparative analytics, and multi-tenant patterns. You can access PHI (Protected Health Information) when appropriate for analysis. Focus on administrative oversight and system optimization.'
+  : `CLIENT-SCOPED MODE: You are limited to data from ${userContext.organizationId ? 'this specific organization' : 'the current client context'} only. Focus on their specific cases, workers, and organizational needs. You cannot access or reference data from other organizations.`}
 
 Key guidelines:
 - Be supportive and professional
@@ -110,7 +143,13 @@ Key guidelines:
 - Extract relevant health information from conversations
 - Flag any serious health concerns
 - Keep responses concise and helpful
-- Always suggest 1-3 follow-up questions`;
+- Always suggest 1-3 follow-up questions
+- Respect data privacy boundaries based on your current mode`;
+
+    // Add organization context for client-scoped mode
+    if (mode === 'client-scoped' && userContext.organizationId) {
+      systemPrompt += `\n\nOrganization Context: Working with organization ID ${userContext.organizationId}`;
+    }
 
     if (context?.currentPage) {
       systemPrompt += `\n\nCurrent context: User is viewing ${context.currentPage}`;
@@ -165,7 +204,9 @@ Key guidelines:
         'What type of work are you applying for?',
         'Do you have any previous workplace injuries?'
       ],
-      conversationId
+      conversationId,
+      mode,
+      accessLevel
     };
 
   } catch (error) {
@@ -203,7 +244,9 @@ Key guidelines:
         'What can I help you with today?',
         'Do you have workplace injury questions?'
       ],
-      conversationId
+      conversationId,
+      mode: userContext.userType === 'admin' && userContext.isSuperuser ? 'universal' : 'client-scoped',
+      accessLevel: userContext.userType
     };
   }
 }
@@ -214,4 +257,79 @@ export function clearConversation(conversationId: string): void {
 
 export function getConversationHistory(conversationId: string): ChatMessage[] {
   return conversations.get(conversationId) || [];
+}
+
+// Data access service based on user context and mode
+export async function getMichelleDataContext(userContext: UserContext, storage: any) {
+  const mode = userContext.userType === 'admin' && userContext.isSuperuser 
+    ? 'universal' : 'client-scoped';
+
+  if (mode === 'universal') {
+    // Universal mode: Admin access to platform-wide data
+    const allTickets = await storage.getAllTickets();
+    const allOrganizations = await storage.getAllOrganizations();
+    
+    return {
+      mode,
+      accessLevel: userContext.userType,
+      data: {
+        totalTickets: allTickets.length,
+        totalOrganizations: allOrganizations.length,
+        recentActivity: allTickets.slice(0, 10), // Recent across all tenants
+        systemWideStats: {
+          red: allTickets.filter((t: any) => t.ragScore === 'red').length,
+          amber: allTickets.filter((t: any) => t.ragScore === 'amber').length,
+          green: allTickets.filter((t: any) => t.ragScore === 'green').length,
+        },
+        organizationBreakdown: allOrganizations.map((org: any) => ({
+          id: org.id,
+          name: org.name,
+          ticketCount: allTickets.filter((t: any) => t.organizationId === org.id).length
+        }))
+      },
+      capabilities: [
+        'cross-tenant-analytics',
+        'phi-access',
+        'system-administration',
+        'platform-insights'
+      ]
+    };
+  } else {
+    // Client-scoped mode: Limited to organization data
+    const orgId = userContext.organizationId;
+    if (!orgId) {
+      throw new Error('Client users must have an organization context');
+    }
+
+    const orgTickets = await storage.getTicketsByOrganization(orgId);
+    const orgWorkers = await storage.getWorkersByOrganization(orgId);
+    
+    return {
+      mode,
+      accessLevel: userContext.userType,
+      organizationId: orgId,
+      data: {
+        tickets: orgTickets,
+        workers: orgWorkers,
+        stats: {
+          total: orgTickets.length,
+          new: orgTickets.filter((t: any) => t.status === 'NEW').length,
+          inProgress: orgTickets.filter((t: any) => t.status === 'ANALYSING').length,
+          awaiting: orgTickets.filter((t: any) => t.status === 'AWAITING_REVIEW').length,
+          complete: orgTickets.filter((t: any) => t.status === 'COMPLETE').length,
+          flagged: orgTickets.filter((t: any) => t.ragScore === 'red').length,
+        },
+        riskBreakdown: {
+          red: orgTickets.filter((t: any) => t.ragScore === 'red').length,
+          amber: orgTickets.filter((t: any) => t.ragScore === 'amber').length,
+          green: orgTickets.filter((t: any) => t.ragScore === 'green').length,
+        }
+      },
+      capabilities: [
+        'organization-analytics',
+        'case-management',
+        'worker-tracking'
+      ]
+    };
+  }
 }

@@ -3,7 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MessageCircle, AlertTriangle, Clock, CheckCircle, TrendingUp, Users, FileText } from "lucide-react";
+import { MessageCircle, AlertTriangle, Clock, CheckCircle, TrendingUp, Users, FileText, Shield, Building } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 interface DashboardStats {
   total: number;
@@ -38,56 +39,102 @@ interface MichelleSuggestion {
   count?: number;
 }
 
+interface MichelleMode {
+  mode: 'client-scoped' | 'universal';
+  accessLevel: 'client' | 'admin';
+  organizationId?: string;
+  capabilities: string[];
+  phiAccess: boolean;
+}
+
+interface MichelleDataContext {
+  mode: 'client-scoped' | 'universal';
+  accessLevel: 'client' | 'admin';
+  organizationId?: string;
+  data: {
+    totalTickets?: number;
+    totalOrganizations?: number;
+    stats?: DashboardStats;
+    systemWideStats?: {
+      red: number;
+      amber: number;
+      green: number;
+    };
+    organizationBreakdown?: Array<{
+      id: string;
+      name: string;
+      ticketCount: number;
+    }>;
+  };
+  capabilities: string[];
+}
+
 export default function MichelleDashboardPanel({ 
   stats, 
   recentCases = [],
   userName = "there" // Default greeting when no user name available
 }: MichelleDashboardPanelProps) {
   const [suggestions, setSuggestions] = useState<MichelleSuggestion[]>([]);
+  
+  // Fetch Michelle's mode and capabilities
+  const { data: michelleMode } = useQuery<MichelleMode>({
+    queryKey: ['/api/michelle/mode'],
+    staleTime: 5 * 60 * 1000 // 5 minutes
+  });
+  
+  // Fetch Michelle's data context
+  const { data: michelleContext } = useQuery<MichelleDataContext>({
+    queryKey: ['/api/michelle/context'],
+    staleTime: 2 * 60 * 1000 // 2 minutes
+  });
 
-  // Generate activity-based suggestions
+  // Generate activity-based suggestions based on mode and context
   useEffect(() => {
     const newSuggestions: MichelleSuggestion[] = [];
+    
+    // Use Michelle's context data if available, otherwise fall back to props
+    const currentStats = michelleContext?.data.stats || stats;
+    const isUniversalMode = michelleMode?.mode === 'universal';
 
-    if (stats) {
+    if (currentStats) {
       // High priority: Awaiting review cases
-      if (stats.awaiting > 0) {
+      if (currentStats.awaiting > 0) {
         newSuggestions.push({
           id: "review-cases",
-          text: `${stats.awaiting} cases need your review`,
+          text: `${currentStats.awaiting} cases need your review`,
           action: "review_cases",
           icon: Clock,
           priority: "high",
-          count: stats.awaiting
+          count: currentStats.awaiting
         });
       }
 
       // High priority: High-risk flagged cases
-      if (stats.flagged > 0) {
+      if (currentStats.flagged > 0) {
         newSuggestions.push({
           id: "high-risk",
-          text: `${stats.flagged} high-risk cases require attention`,
+          text: `${currentStats.flagged} high-risk cases require attention`,
           action: "view_flagged",
           icon: AlertTriangle,
           priority: "high",
-          count: stats.flagged
+          count: currentStats.flagged
         });
       }
 
       // Medium priority: New submissions
-      if (stats.new > 0) {
+      if (currentStats.new > 0) {
         newSuggestions.push({
           id: "new-submissions",
-          text: `${stats.new} new submissions to process`,
+          text: `${currentStats.new} new submissions to process`,
           action: "view_new",
           icon: FileText,
           priority: "medium",
-          count: stats.new
+          count: currentStats.new
         });
       }
 
       // Low priority: Check analytics if many cases completed
-      if (stats.complete > 10) {
+      if (currentStats.complete > 10) {
         newSuggestions.push({
           id: "view-analytics",
           text: "Review performance analytics and trends",
@@ -95,6 +142,27 @@ export default function MichelleDashboardPanel({
           icon: TrendingUp,
           priority: "low"
         });
+      }
+      
+      // Universal mode specific suggestions
+      if (isUniversalMode && michelleContext?.data.systemWideStats) {
+        newSuggestions.push({
+          id: "platform-insights",
+          text: "Review platform-wide insights and trends",
+          action: "view_platform_analytics",
+          icon: Shield,
+          priority: "medium"
+        });
+        
+        if (michelleContext.data.totalOrganizations && michelleContext.data.totalOrganizations > 1) {
+          newSuggestions.push({
+            id: "tenant-comparison",
+            text: "Compare organization performance metrics",
+            action: "view_tenant_comparison",
+            icon: Building,
+            priority: "low"
+          });
+        }
       }
     }
 
@@ -127,7 +195,7 @@ export default function MichelleDashboardPanel({
       .slice(0, 3);
 
     setSuggestions(sortedSuggestions);
-  }, [stats]);
+  }, [stats, michelleContext, michelleMode]);
 
   const handleSuggestionClick = (action: string) => {
     // Handle different actions
@@ -191,13 +259,39 @@ export default function MichelleDashboardPanel({
             </AvatarFallback>
           </Avatar>
           <div className="flex-1">
-            <CardTitle className="text-xl font-semibold text-blue-900 dark:text-blue-100">
-              <MessageCircle className="inline-block w-5 h-5 mr-2" />
-              {getGreeting()}, {userName}!
-            </CardTitle>
+            <div className="flex items-center gap-2 mb-1">
+              <CardTitle className="text-xl font-semibold text-blue-900 dark:text-blue-100">
+                <MessageCircle className="inline-block w-5 h-5 mr-2" />
+                {getGreeting()}, {userName}!
+              </CardTitle>
+              {michelleMode && (
+                <Badge 
+                  variant={michelleMode.mode === 'universal' ? 'default' : 'secondary'}
+                  className={`text-xs ${
+                    michelleMode.mode === 'universal' 
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' 
+                      : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                  }`}
+                  data-testid={`badge-michelle-mode-${michelleMode.mode}`}
+                >
+                  {michelleMode.mode === 'universal' ? (
+                    <><Shield className="w-3 h-3 mr-1" />Universal</>
+                  ) : (
+                    <><Building className="w-3 h-3 mr-1" />Client-Scoped</>
+                  )}
+                </Badge>
+              )}
+            </div>
             <p className="text-blue-700 dark:text-blue-200 mt-1">
-              I'm Michelle, your AI assistant. Here's what needs your attention today:
+              I'm Michelle, your AI assistant. {michelleMode?.mode === 'universal' 
+                ? "I have access to platform-wide data and insights." 
+                : "I'm focused on your organization's data and cases."}
             </p>
+            {michelleMode?.mode === 'universal' && michelleContext?.data.totalOrganizations && (
+              <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                Monitoring {michelleContext.data.totalOrganizations} organizations with {michelleContext.data.totalTickets} total cases
+              </p>
+            )}
           </div>
         </div>
       </CardHeader>
