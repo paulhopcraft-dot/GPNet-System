@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -264,8 +264,8 @@ export const externalEmails = pgTable("external_emails", {
   
   // Email identification
   ticketId: varchar("ticket_id").references(() => tickets.id), // Linked case (null if unmatched)
-  organizationId: varchar("organization_id").references(() => organizations.id),
-  messageId: text("message_id"), // Original email message ID for deduplication
+  organizationId: varchar("organization_id").references(() => organizations.id).notNull(),
+  messageId: text("message_id").notNull(), // Original email message ID for deduplication
   
   // Forwarding context
   forwardedBy: varchar("forwarded_by").notNull(), // Manager who forwarded the email
@@ -301,7 +301,10 @@ export const externalEmails = pgTable("external_emails", {
   
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Unique constraint for idempotency - prevents duplicate processing
+  uniqueOrgMessage: unique().on(table.organizationId, table.messageId),
+}));
 
 // Email attachments table for external email attachments
 export const emailAttachments = pgTable("email_attachments", {
