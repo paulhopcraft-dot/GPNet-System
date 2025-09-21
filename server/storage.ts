@@ -17,7 +17,7 @@ import {
   type InsertOrganization, type InsertClientUser, type InsertAdminUser, type InsertAuditEvent, type InsertArchiveIndex
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 
 // Storage interface for GPNet operations
 export interface IStorage {
@@ -96,6 +96,25 @@ export interface IStorage {
   }>;
 
   getPerformanceMetrics(): Promise<{
+    cases_this_month: number;
+    cases_last_month: number;
+    completion_rate: number;
+    avg_response_time: number;
+    participation_rate: number;
+    risk_cases_resolved: number;
+  }>;
+
+  // Organization-scoped Analytics for Cross-tenant Insights
+  getTrendAnalyticsForOrganization(organizationId: string, days?: number): Promise<{
+    daily_cases: { date: string; count: number; }[];
+    case_completion_rate: number;
+    avg_processing_time_days: number;
+    risk_distribution: { green: number; amber: number; red: number; };
+    injury_types: { type: string; count: number; }[];
+    compliance_status: { compliant: number; at_risk: number; non_compliant: number; };
+  }>;
+
+  getPerformanceMetricsForOrganization(organizationId: string): Promise<{
     cases_this_month: number;
     cases_last_month: number;
     completion_rate: number;
@@ -1452,6 +1471,180 @@ export class DatabaseStorage implements IStorage {
     stats.flagged = flaggedTickets.length;
     
     return stats;
+  }
+
+  // Organization-scoped analytics for cross-tenant insights
+  async getTrendAnalyticsForOrganization(organizationId: string, days: number = 30) {
+    const allTickets = await this.getAllTicketsForOrganization(organizationId);
+    
+    // Get analyses and injuries for this organization only
+    const allAnalyses = await db
+      .select()
+      .from(analyses)
+      .innerJoin(tickets, eq(analyses.ticketId, tickets.id))
+      .where(eq(tickets.organizationId, organizationId));
+      
+    const allInjuries = await db
+      .select()
+      .from(injuries)
+      .innerJoin(tickets, eq(injuries.ticketId, tickets.id))
+      .where(eq(tickets.organizationId, organizationId));
+    
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - days);
+    
+    // Daily case creation trend
+    const daily_cases = [];
+    for (let i = 0; i < days; i++) {
+      const date = new Date(startDate);
+      date.setDate(startDate.getDate() + i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const count = allTickets.filter(ticket => {
+        if (!ticket.createdAt) return false;
+        const ticketDate = new Date(ticket.createdAt).toISOString().split('T')[0];
+        return ticketDate === dateStr;
+      }).length;
+      
+      daily_cases.push({ date: dateStr, count });
+    }
+
+    // Case completion rate
+    const completedCases = allTickets.filter(t => t.status === 'COMPLETE').length;
+    const case_completion_rate = allTickets.length > 0 ? (completedCases / allTickets.length) * 100 : 0;
+
+    // Average processing time
+    const completedTicketsWithDates = allTickets.filter(t => 
+      t.status === 'COMPLETE' && t.createdAt && t.updatedAt
+    );
+    
+    let avg_processing_time_days = 0;
+    if (completedTicketsWithDates.length > 0) {
+      const totalDays = completedTicketsWithDates.reduce((sum, ticket) => {
+        const created = new Date(ticket.createdAt!);
+        const updated = new Date(ticket.updatedAt!);
+        const diffDays = (updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24);
+        return sum + diffDays;
+      }, 0);
+      avg_processing_time_days = totalDays / completedTicketsWithDates.length;
+    }
+
+    // Risk distribution from analyses
+    const ragCounts = { green: 0, amber: 0, red: 0 };
+    allAnalyses.forEach(analysis => {
+      if (analysis.analyses.ragScore === 'green') ragCounts.green++;
+      else if (analysis.analyses.ragScore === 'amber') ragCounts.amber++;
+      else if (analysis.analyses.ragScore === 'red') ragCounts.red++;
+    });
+
+    // Injury types
+    const injuryTypeCounts: Record<string, number> = {};
+    allInjuries.forEach(injury => {
+      const injuryType = injury.injuries.injuryType || 'Other';
+      injuryTypeCounts[injuryType] = (injuryTypeCounts[injuryType] || 0) + 1;
+    });
+    
+    const injury_types = Object.entries(injuryTypeCounts)
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    // Compliance status
+    const complianceStatusCounts = { compliant: 0, at_risk: 0, non_compliant: 0 };
+    allTickets.forEach(ticket => {
+      if (ticket.complianceStatus === 'compliant') complianceStatusCounts.compliant++;
+      else if (ticket.complianceStatus === 'at_risk') complianceStatusCounts.at_risk++;
+      else if (ticket.complianceStatus === 'non_compliant') complianceStatusCounts.non_compliant++;
+    });
+    
+    return {
+      daily_cases,
+      case_completion_rate,
+      avg_processing_time_days,
+      risk_distribution: ragCounts,
+      injury_types,
+      compliance_status: complianceStatusCounts,
+    };
+  }
+
+  async getPerformanceMetricsForOrganization(organizationId: string) {
+    const allTickets = await this.getAllTicketsForOrganization(organizationId);
+    
+    // Get participation events for this organization only
+    const allParticipationEvents = await db
+      .select()
+      .from(workerParticipationEvents)
+      .innerJoin(tickets, eq(workerParticipationEvents.ticketId, tickets.id))
+      .where(eq(tickets.organizationId, organizationId));
+    
+    // Current month calculation
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    // Cases this month vs last month
+    const cases_this_month = allTickets.filter(t => 
+      t.createdAt && new Date(t.createdAt) >= currentMonthStart
+    ).length;
+    
+    const cases_last_month = allTickets.filter(t => 
+      t.createdAt && 
+      new Date(t.createdAt) >= lastMonthStart && 
+      new Date(t.createdAt) <= lastMonthEnd
+    ).length;
+
+    // Completion rate
+    const completedCases = allTickets.filter(t => t.status === 'COMPLETE').length;
+    const completion_rate = allTickets.length > 0 ? (completedCases / allTickets.length) * 100 : 0;
+
+    // Average response time (in hours)
+    const completedTicketsWithDates = allTickets.filter(t => 
+      t.status === 'COMPLETE' && t.createdAt && t.updatedAt
+    );
+    
+    let avg_response_time = 0;
+    if (completedTicketsWithDates.length > 0) {
+      const totalHours = completedTicketsWithDates.reduce((sum, ticket) => {
+        const created = new Date(ticket.createdAt!);
+        const updated = new Date(ticket.updatedAt!);
+        const diffHours = (updated.getTime() - created.getTime()) / (1000 * 60 * 60);
+        return sum + diffHours;
+      }, 0);
+      avg_response_time = totalHours / completedTicketsWithDates.length;
+    }
+
+    // Participation rate
+    const attendedEvents = allParticipationEvents.filter(e => 
+      e.worker_participation_events.participationStatus === 'attended'
+    ).length;
+    const participation_rate = allParticipationEvents.length > 0 
+      ? (attendedEvents / allParticipationEvents.length) * 100 
+      : 0;
+
+    // Risk cases resolved (red RAG that became complete)
+    const riskCasesResolved = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(analyses)
+      .innerJoin(tickets, eq(analyses.ticketId, tickets.id))
+      .where(and(
+        eq(tickets.organizationId, organizationId),
+        eq(analyses.ragScore, 'red'),
+        eq(tickets.status, 'COMPLETE')
+      ));
+
+    const risk_cases_resolved = riskCasesResolved[0]?.count || 0;
+
+    return {
+      cases_this_month,
+      cases_last_month,
+      completion_rate,
+      avg_response_time,
+      participation_rate,
+      risk_cases_resolved
+    };
   }
 }
 
