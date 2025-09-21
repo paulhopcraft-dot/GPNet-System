@@ -1947,6 +1947,187 @@ export class DatabaseStorage implements IStorage {
       specialistWorkload
     };
   }
+
+  // ===============================================
+  // MEDICAL DOCUMENT PROCESSING IMPLEMENTATIONS
+  // ===============================================
+  
+  // Medical Documents
+  async createMedicalDocument(document: InsertMedicalDocument): Promise<MedicalDocument> {
+    const [result] = await db
+      .insert(medicalDocuments)
+      .values(document)
+      .returning();
+    return result;
+  }
+
+  async getMedicalDocument(id: string): Promise<MedicalDocument | undefined> {
+    const [document] = await db
+      .select()
+      .from(medicalDocuments)
+      .where(eq(medicalDocuments.id, id));
+    return document || undefined;
+  }
+
+  async getMedicalDocumentsByTicket(ticketId: string): Promise<MedicalDocument[]> {
+    return await db
+      .select()
+      .from(medicalDocuments)
+      .where(eq(medicalDocuments.ticketId, ticketId))
+      .orderBy(desc(medicalDocuments.createdAt));
+  }
+
+  async getMedicalDocumentsByWorker(workerId: string): Promise<MedicalDocument[]> {
+    return await db
+      .select()
+      .from(medicalDocuments)
+      .where(eq(medicalDocuments.workerId, workerId))
+      .orderBy(desc(medicalDocuments.createdAt));
+  }
+
+  async updateMedicalDocument(id: string, updates: Partial<InsertMedicalDocument>): Promise<MedicalDocument> {
+    const [document] = await db
+      .update(medicalDocuments)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(medicalDocuments.id, id))
+      .returning();
+    return document;
+  }
+
+  async findDocumentByChecksum(checksum: string): Promise<MedicalDocument | undefined> {
+    const [document] = await db
+      .select()
+      .from(medicalDocuments)
+      .where(eq(medicalDocuments.checksum, checksum));
+    return document || undefined;
+  }
+
+  async getMedicalDocumentsPendingReview(): Promise<MedicalDocument[]> {
+    return await db
+      .select()
+      .from(medicalDocuments)
+      .where(eq(medicalDocuments.requiresReview, true))
+      .orderBy(desc(medicalDocuments.createdAt));
+  }
+  
+  // Document Processing Jobs
+  async createDocumentProcessingJob(job: InsertDocumentProcessingJob): Promise<DocumentProcessingJob> {
+    const [result] = await db
+      .insert(documentProcessingJobs)
+      .values(job)
+      .returning();
+    return result;
+  }
+
+  async getDocumentProcessingJob(id: string): Promise<DocumentProcessingJob | undefined> {
+    const [job] = await db
+      .select()
+      .from(documentProcessingJobs)
+      .where(eq(documentProcessingJobs.id, id));
+    return job || undefined;
+  }
+
+  async updateDocumentProcessingJob(id: string, updates: Partial<InsertDocumentProcessingJob>): Promise<DocumentProcessingJob> {
+    const [job] = await db
+      .update(documentProcessingJobs)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(documentProcessingJobs.id, id))
+      .returning();
+    return job;
+  }
+
+  async getDocumentProcessingJobsByStatus(status: string): Promise<DocumentProcessingJob[]> {
+    return await db
+      .select()
+      .from(documentProcessingJobs)
+      .where(eq(documentProcessingJobs.status, status))
+      .orderBy(desc(documentProcessingJobs.createdAt));
+  }
+  
+  // Document Processing Logs
+  async createDocumentProcessingLog(log: InsertDocumentProcessingLog): Promise<DocumentProcessingLog> {
+    const [result] = await db
+      .insert(documentProcessingLogs)
+      .values(log)
+      .returning();
+    return result;
+  }
+
+  async getDocumentProcessingLogsByDocument(documentId: string): Promise<DocumentProcessingLog[]> {
+    return await db
+      .select()
+      .from(documentProcessingLogs)
+      .where(eq(documentProcessingLogs.documentId, documentId))
+      .orderBy(desc(documentProcessingLogs.createdAt));
+  }
+
+  async getDocumentProcessingLogsByJob(jobId: string): Promise<DocumentProcessingLog[]> {
+    return await db
+      .select()
+      .from(documentProcessingLogs)
+      .where(eq(documentProcessingLogs.jobId, jobId))
+      .orderBy(desc(documentProcessingLogs.createdAt));
+  }
+  
+  // Helper methods for webhook processing
+  async findTicketByFreshdeskId(freshdeskId: number): Promise<Ticket | undefined> {
+    const [ticket] = await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.fdId, freshdeskId));
+    return ticket || undefined;
+  }
+
+  async findWorkerByEmail(email: string): Promise<Worker | undefined> {
+    const [worker] = await db
+      .select()
+      .from(workers)
+      .where(eq(workers.email, email));
+    return worker || undefined;
+  }
+
+  async findOpenTicketsForWorker(workerId: string): Promise<Ticket[]> {
+    return await db
+      .select()
+      .from(tickets)
+      .where(and(
+        eq(tickets.workerId, workerId),
+        sql`${tickets.status} NOT IN ('COMPLETE', 'CLOSED', 'ARCHIVED')`
+      ))
+      .orderBy(desc(tickets.createdAt));
+  }
+
+  async linkTicketToFreshdesk(ticketId: string, freshdeskId: number): Promise<void> {
+    await db
+      .update(tickets)
+      .set({ fdId: freshdeskId, updatedAt: new Date() })
+      .where(eq(tickets.id, ticketId));
+  }
+
+  async getCaseByTicketId(ticketId: string): Promise<any | undefined> {
+    // Note: Using formSubmissions as a proxy for case data since cases table structure varies
+    const [caseData] = await db
+      .select()
+      .from(formSubmissions)
+      .where(eq(formSubmissions.ticketId, ticketId));
+    return caseData || undefined;
+  }
+
+  async updateCase(caseId: string, updates: any): Promise<any> {
+    // Note: This is a placeholder - would need proper case table structure
+    // For now, we'll update the ticket next step and status
+    const [ticket] = await db
+      .update(tickets)
+      .set({ 
+        nextStep: updates.nextStep || undefined,
+        lastStep: updates.lastStep || undefined,
+        lastStepCompletedAt: updates.lastStepCompletedAt || undefined,
+        updatedAt: new Date()
+      })
+      .where(eq(tickets.id, caseId))
+      .returning();
+    return ticket;
+  }
 }
 
 export const storage = new DatabaseStorage();

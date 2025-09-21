@@ -3,6 +3,16 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+// Handle webhook raw body BEFORE global JSON parser
+app.use('/api/medical-documents/freshdesk-webhook', express.raw({
+  type: 'application/json',
+  limit: '1mb',
+  verify: (req: any, _res, buf: Buffer) => {
+    req.rawBody = buf.toString('utf8');
+  }
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
