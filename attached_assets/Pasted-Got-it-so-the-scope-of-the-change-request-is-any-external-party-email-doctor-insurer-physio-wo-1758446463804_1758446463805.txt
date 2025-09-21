@@ -1,0 +1,88 @@
+Got it — so the scope of the change request is any external party email (doctor, insurer, physio, worker, etc.), and the workflow must auto-map it into the correct case. I’ll refine the request into a technical/functional spec that covers that mapping logic.
+
+⸻
+
+GPNet Change Request (Refined)
+
+Change ID / Title:
+Ad Hoc External Emails → Case Workflow Integration
+
+⸻
+
+Current State
+	•	Workers, doctors, physiotherapists, insurers, and other external parties often email managers directly.
+	•	These communications are currently unmanaged if they bypass GPNet.
+	•	No system exists to reliably capture, link, and act on these ad hoc emails.
+
+⸻
+
+Requested Change
+
+When a manager forwards any external email to support@gpnet:
+	1.	Email Capture & Parsing
+	•	System ingests the forwarded email.
+	•	Extracts key metadata: sender, recipient, subject, body, attachments.
+	2.	Case Association Logic
+The system matches the email to the correct worker case by checking:
+	•	Worker’s email address (if present in thread).
+	•	Worker’s name (in subject/body).
+	•	Known treating doctor / physiotherapist / insurer contacts linked to that case.
+	•	Manager’s identity (as case manager).
+⚠️ If confidence <100%, flag as “unmatched” → route to GPNet admin queue for manual linking.
+	3.	System Action
+	•	Files the email in the matched case history.
+	•	Summarizes content (Michelle AI).
+	•	Identifies potential action items (Michelle AI recommended next step).
+	4.	Manager Notification & Workflow
+	•	Manager receives confirmation email with:
+	•	Summary of the forwarded email.
+	•	Recommended next step.
+	•	A “Click Here” link → opens worker’s Case Page.
+	5.	Case Page (Manager View)
+Displays:
+	•	Worker status (at work / off work).
+	•	Doctor details.
+	•	Job role / title.
+	•	Injury details.
+	•	Access to last medical certificate & last medical report.
+	•	Access to list of completed self-assessment checks.
+	•	Access to any medical diagnoses.
+	•	Summary panel of last status + last steps.
+	•	Recommended next step from Michelle AI.
+	6.	Manager Action
+	•	Accept Michelle’s suggestion (default), or override with their own.
+	•	GPNet executes the action (e.g. message to worker, follow-up request to doctor).
+	•	Case updates automatically.
+
+⸻
+
+Reason / Justification
+	•	Creates a single pipeline for all external communications.
+	•	Eliminates lost or unmanaged ad hoc emails.
+	•	Gives managers structured, AI-guided next steps.
+	•	Strengthens compliance (every external contact logged in case history).
+
+⸻
+
+Impact
+	•	Systems: Email forwarding capture, parsing + NLP, case matching engine, case page UI.
+	•	Users (Managers): Clearer workflow, less guesswork, consistent next-step guidance.
+	•	Processes: All external contact handled through one unified workflow.
+	•	Compliance: Complete audit trail of external communication and case handling.
+
+⸻
+
+Priority / Urgency
+
+High — closes compliance gap and reduces risk of unmanaged communications.
+
+⸻
+
+👉 Do you want me to now draft the Replit/Roylett functional build spec for this, including:
+	•	Email parsing rules,
+	•	Case matching algorithm (priority order of matching signals),
+	•	Manager notification template,
+	•	Case page UI layout, and
+	•	Michelle AI recommendation flow?
+
+That way you’d have a developer-ready blueprint for immediate implementation.

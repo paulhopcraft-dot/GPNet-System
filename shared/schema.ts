@@ -254,6 +254,152 @@ export const archiveIndex = pgTable("archive_index", {
   restoredBy: varchar("restored_by"),
 });
 
+// ===============================================
+// EXTERNAL EMAIL INTEGRATION SYSTEM
+// ===============================================
+
+// External emails table for managing forwarded emails from external parties
+export const externalEmails = pgTable("external_emails", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Email identification
+  ticketId: varchar("ticket_id").references(() => tickets.id), // Linked case (null if unmatched)
+  organizationId: varchar("organization_id").references(() => organizations.id),
+  messageId: text("message_id"), // Original email message ID for deduplication
+  
+  // Forwarding context
+  forwardedBy: varchar("forwarded_by").notNull(), // Manager who forwarded the email
+  forwardedAt: timestamp("forwarded_at").defaultNow(),
+  
+  // Original email metadata
+  originalSender: text("original_sender").notNull(), // Original sender email
+  originalSenderName: text("original_sender_name"),
+  originalRecipient: text("original_recipient"),
+  originalSubject: text("original_subject").notNull(),
+  originalDate: timestamp("original_date"),
+  
+  // Email content
+  subject: text("subject").notNull(), // Forwarded email subject
+  body: text("body").notNull(), // Email body content
+  htmlBody: text("html_body"), // HTML version if available
+  threadHistory: jsonb("thread_history"), // Previous messages in thread
+  
+  // Case matching
+  confidenceScore: integer("confidence_score"), // Matching confidence 0-100
+  matchType: text("match_type"), // "worker_email", "worker_name", "treating_provider", "manager_context"
+  matchReasoning: text("match_reasoning"), // Why this case was selected
+  isManuallyLinked: boolean("is_manually_linked").default(false),
+  
+  // Processing status
+  processingStatus: text("processing_status").default("pending"), // "pending", "processing", "matched", "unmatched", "error"
+  errorMessage: text("error_message"),
+  
+  // AI analysis
+  aiSummary: text("ai_summary"), // Michelle's summary
+  urgencyLevel: text("urgency_level"), // "low", "medium", "high", "critical"
+  extractedEntities: jsonb("extracted_entities"), // Names, dates, medical terms, etc.
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Email attachments table for external email attachments
+export const emailAttachments = pgTable("email_attachments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Linking
+  externalEmailId: varchar("external_email_id").references(() => externalEmails.id).notNull(),
+  ticketId: varchar("ticket_id").references(() => tickets.id), // For easy case access
+  
+  // File metadata
+  filename: text("filename").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  filePath: text("file_path").notNull(), // Storage path
+  fileSize: integer("file_size"), // Size in bytes
+  mimeType: text("mime_type"),
+  
+  // Processing
+  isProcessed: boolean("is_processed").default(false),
+  extractedText: text("extracted_text"), // OCR/extracted content for PDFs
+  
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+});
+
+// Case providers table for enhanced provider contact management
+export const caseProviders = pgTable("case_providers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Relationships
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  organizationId: varchar("organization_id").references(() => organizations.id),
+  
+  // Provider identification
+  providerType: text("provider_type").notNull(), // "doctor", "physiotherapist", "insurer", "specialist", "employer_contact"
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone"),
+  clinicName: text("clinic_name"),
+  address: text("address"),
+  
+  // Provider relationship
+  relationshipType: text("relationship_type"), // "treating", "consulting", "referring", "primary", "secondary"
+  isPrimary: boolean("is_primary").default(false),
+  isActive: boolean("is_active").default(true),
+  
+  // Communication tracking
+  lastContactDate: timestamp("last_contact_date"),
+  communicationPreference: text("communication_preference").default("email"), // "email", "phone", "fax"
+  
+  // Metadata
+  providerNumber: text("provider_number"), // Medical provider number
+  specialty: text("specialty"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// AI recommendations table for Michelle's email analysis and action suggestions
+export const aiRecommendations = pgTable("ai_recommendations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Context linking
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  externalEmailId: varchar("external_email_id").references(() => externalEmails.id), // Email that triggered this
+  conversationId: varchar("conversation_id").references(() => conversations.id), // Michelle conversation context
+  
+  // Recommendation details
+  recommendationType: text("recommendation_type").notNull(), // "next_step", "follow_up", "escalation", "document_request"
+  title: text("title").notNull(), // Short description
+  description: text("description").notNull(), // Detailed recommendation
+  priority: text("priority").default("medium"), // "low", "medium", "high", "urgent"
+  
+  // Action details
+  suggestedAction: text("suggested_action").notNull(), // "contact_worker", "request_medical_cert", "follow_up_doctor", etc.
+  actionDetails: jsonb("action_details"), // Structured action parameters
+  estimatedTimeframe: text("estimated_timeframe"), // "immediate", "within_24h", "within_week"
+  requiredResources: jsonb("required_resources"), // What's needed to complete
+  
+  // AI metadata
+  confidenceScore: integer("confidence_score"), // AI confidence 0-100
+  model: text("model").default("gpt-5"), // AI model used
+  reasoning: text("reasoning"), // Why this recommendation was made
+  
+  // Manager interaction
+  status: text("status").default("pending"), // "pending", "accepted", "modified", "rejected", "completed"
+  managerDecision: text("manager_decision"), // Manager's chosen action
+  managerNotes: text("manager_notes"),
+  decidedBy: varchar("decided_by"), // Manager who made the decision
+  decidedAt: timestamp("decided_at"),
+  
+  // Execution tracking
+  executedAt: timestamp("executed_at"),
+  executionResult: text("execution_result"), // "success", "failed", "partial"
+  executionNotes: text("execution_notes"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Michelle AI conversations table for tracking AI interactions
 export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -914,6 +1060,31 @@ export const insertSpecialistAssignmentSchema = createInsertSchema(specialistAss
   updatedAt: true,
 });
 
+// Schema definitions for external email integration tables
+export const insertExternalEmailSchema = createInsertSchema(externalEmails).omit({
+  id: true,
+  forwardedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEmailAttachmentSchema = createInsertSchema(emailAttachments).omit({
+  id: true,
+  uploadedAt: true,
+});
+
+export const insertCaseProviderSchema = createInsertSchema(caseProviders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAiRecommendationSchema = createInsertSchema(aiRecommendations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Type definitions for new tables
 export type InsertLegislationDocument = z.infer<typeof insertLegislationDocumentSchema>;
 export type LegislationDocument = typeof legislationDocuments.$inferSelect;
@@ -967,6 +1138,19 @@ export type Escalation = typeof escalations.$inferSelect;
 
 export type InsertSpecialistAssignment = z.infer<typeof insertSpecialistAssignmentSchema>;
 export type SpecialistAssignment = typeof specialistAssignments.$inferSelect;
+
+// Type definitions for external email integration tables
+export type InsertExternalEmail = z.infer<typeof insertExternalEmailSchema>;
+export type ExternalEmail = typeof externalEmails.$inferSelect;
+
+export type InsertEmailAttachment = z.infer<typeof insertEmailAttachmentSchema>;
+export type EmailAttachment = typeof emailAttachments.$inferSelect;
+
+export type InsertCaseProvider = z.infer<typeof insertCaseProviderSchema>;
+export type CaseProvider = typeof caseProviders.$inferSelect;
+
+export type InsertAiRecommendation = z.infer<typeof insertAiRecommendationSchema>;
+export type AiRecommendation = typeof aiRecommendations.$inferSelect;
 
 // Authentication and session types
 export const loginSchema = z.object({
