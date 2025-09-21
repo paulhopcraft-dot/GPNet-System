@@ -400,4 +400,101 @@ router.get('/pending-review', requireAdmin, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/medical-documents/download/:storageKey
+ * Securely download a stored medical document
+ */
+router.get('/download/:storageKey', requireAdmin, async (req, res) => {
+  try {
+    const { storageKey } = req.params;
+    
+    // Validate storage key format (must start with medical-docs/)
+    if (!storageKey || !storageKey.startsWith('medical-docs/')) {
+      return res.status(400).json({ 
+        error: 'Invalid storage key format',
+        hint: 'Storage key must start with medical-docs/'
+      });
+    }
+
+    // Prevent path traversal attacks
+    if (storageKey.includes('..') || storageKey.includes('/./') || storageKey.includes('//')) {
+      return res.status(400).json({ error: 'Invalid storage key: path traversal detected' });
+    }
+
+    // Import filesystem modules
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    
+    // Get private storage directory with fallback
+    const privateDir = process.env.PRIVATE_OBJECT_DIR || '/tmp/private-storage';
+    const filePath = path.join(privateDir, storageKey);
+    
+    // Verify file exists and is within allowed directory
+    try {
+      const stats = await fs.stat(filePath);
+      
+      if (!stats.isFile()) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      
+      // Security: Verify the resolved path is still within private directory
+      const resolvedPath = path.resolve(filePath);
+      const resolvedPrivateDir = path.resolve(privateDir);
+      
+      if (!resolvedPath.startsWith(resolvedPrivateDir)) {
+        return res.status(403).json({ error: 'Access denied: file outside allowed directory' });
+      }
+      
+    } catch (error) {
+      console.error('File access error:', error);
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Determine content type from file extension
+    const ext = path.extname(storageKey).toLowerCase();
+    let contentType = 'application/octet-stream';
+    
+    switch (ext) {
+      case '.pdf':
+        contentType = 'application/pdf';
+        break;
+      case '.png':
+        contentType = 'image/png';
+        break;
+      case '.jpg':
+      case '.jpeg':
+        contentType = 'image/jpeg';
+        break;
+      case '.gif':
+        contentType = 'image/gif';
+        break;
+      case '.tiff':
+      case '.tif':
+        contentType = 'image/tiff';
+        break;
+    }
+
+    // Set security headers
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${path.basename(storageKey)}"`,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, no-cache, no-store, must-revalidate'
+    });
+
+    // Stream the file to client
+    const fileBuffer = await fs.readFile(filePath);
+    res.send(fileBuffer);
+    
+    console.log(`Document downloaded: ${storageKey} (${fileBuffer.length} bytes)`);
+
+  } catch (error) {
+    console.error('Document download failed:', error);
+    res.status(500).json({ 
+      error: 'Document download failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export { router as medicalDocumentRoutes };
