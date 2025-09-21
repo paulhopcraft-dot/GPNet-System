@@ -702,10 +702,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize medical document processing services
   const { initDocumentProcessingService } = await import('./documentProcessingService.js');
   const { initFreshdeskWebhookService } = await import('./freshdeskWebhookService.js');
+  const { initBackgroundJobQueue } = await import('./backgroundJobQueue.js');
   
   // Initialize services with storage
   initDocumentProcessingService(storage);
   initFreshdeskWebhookService(storage);
+  
+  // Initialize background job queue for async processing
+  const jobQueue = initBackgroundJobQueue(storage);
+  console.log('Background job queue initialized and started');
   
   // Medical document processing routes
   const { medicalDocumentRoutes } = await import('./medicalDocumentRoutes.js');

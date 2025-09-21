@@ -80,6 +80,42 @@ router.get('/health', async (req, res) => {
 });
 
 /**
+ * GET /api/medical-documents/queue-stats
+ * Get background job queue statistics
+ * No authentication required - for monitoring purposes
+ */
+router.get('/queue-stats', async (req, res) => {
+  try {
+    const { getBackgroundJobQueue } = await import('./backgroundJobQueue.js');
+    const jobQueue = getBackgroundJobQueue();
+    
+    if (!jobQueue) {
+      return res.json({
+        success: false,
+        error: 'Background job queue not initialized',
+        stats: { queued: 0, processing: 0, completed: 0, failed: 0 }
+      });
+    }
+
+    const stats = await jobQueue.getQueueStats();
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      stats,
+      queueActive: true
+    });
+
+  } catch (error) {
+    console.error('Queue stats check failed:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Queue stats check failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
  * POST /api/medical-documents/freshdesk-webhook
  * Process incoming Freshdesk webhooks for medical document attachments
  */
