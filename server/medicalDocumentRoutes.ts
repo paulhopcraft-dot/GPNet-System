@@ -5,8 +5,12 @@ import { ocrService } from './ocrService.js';
 import { requireAdmin } from './adminRoutes.js';
 import { z } from 'zod';
 import { fromZodError } from 'zod-validation-error';
+import express from 'express';
 
 const router = Router();
+
+// Raw body is now handled at application level in server/index.ts
+// This ensures it runs before global express.json() middleware
 
 // Validation schemas
 const webhookEventSchema = z.object({
@@ -42,14 +46,26 @@ router.post('/freshdesk-webhook', async (req, res) => {
   try {
     console.log('Received Freshdesk webhook for medical document processing');
 
-    // Validate webhook signature (in production)
-    const signature = req.headers['x-freshdesk-webhook-signature'] as string;
+    // Parse JSON from raw body for webhook processing
+    let parsedBody;
+    const rawBody = (req as any).rawBody || '';
+    
+    try {
+      parsedBody = JSON.parse(rawBody);
+    } catch (error) {
+      console.error('Invalid JSON in webhook payload:', error);
+      return res.status(400).json({ error: 'Invalid JSON payload' });
+    }
+
+    // Validate webhook signature (required in production)
+    // Freshdesk sends X-Freshdesk-Signature header
+    const signature = (req.headers['x-freshdesk-signature'] || req.headers['X-Freshdesk-Signature']) as string;
     const webhookSecret = process.env.FRESHDESK_WEBHOOK_SECRET;
     
     if (webhookSecret && signature) {
       const { FreshdeskWebhookService } = await import('./freshdeskWebhookService.js');
       const isValid = FreshdeskWebhookService.validateWebhookSignature(
-        JSON.stringify(req.body),
+        rawBody,
         signature,
         webhookSecret
       );
@@ -65,7 +81,7 @@ router.post('/freshdesk-webhook', async (req, res) => {
     }
 
     // Validate request payload
-    const validationResult = webhookEventSchema.safeParse(req.body);
+    const validationResult = webhookEventSchema.safeParse(parsedBody);
     if (!validationResult.success) {
       const errorMessage = fromZodError(validationResult.error).toString();
       console.error('Invalid webhook payload:', errorMessage);
@@ -222,9 +238,9 @@ router.get('/ticket/:ticketId', requireAdmin, async (req, res) => {
   try {
     const { ticketId } = req.params;
 
-    // This would query the medical documents table
-    // For now, return placeholder data
-    const documents = []; 
+    // Query medical documents from storage
+    const { storage } = await import('./storage.js');
+    const documents = await storage.getMedicalDocumentsByTicket(ticketId);
 
     res.json({
       success: true,
@@ -255,13 +271,21 @@ router.put('/:documentId/review', requireAdmin, async (req, res) => {
       return res.status(400).json({ error: 'approved field is required and must be boolean' });
     }
 
-    // This would update the document with review results
+    // Update document with review results in storage
+    const { storage } = await import('./storage.js');
+    const updatedDocument = await storage.updateMedicalDocument(documentId, {
+      requiresReview: false,
+      reviewedBy: 'admin-user', // TODO: Get from session
+      reviewedAt: new Date()
+    });
+
     console.log(`Document ${documentId} reviewed: ${approved ? 'approved' : 'rejected'}`);
 
     res.json({
       success: true,
       documentId,
       approved,
+      document: updatedDocument,
       message: 'Review submitted successfully'
     });
 
@@ -280,8 +304,9 @@ router.put('/:documentId/review', requireAdmin, async (req, res) => {
  */
 router.get('/pending-review', requireAdmin, async (req, res) => {
   try {
-    // This would query documents where requiresReview = true
-    const pendingDocuments = [];
+    // Query documents requiring review from storage
+    const { storage } = await import('./storage.js');
+    const pendingDocuments = await storage.getMedicalDocumentsPendingReview();
 
     res.json({
       success: true,
