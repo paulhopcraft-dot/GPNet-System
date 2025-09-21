@@ -5,19 +5,22 @@ import {
   letterTemplates, generatedLetters, freshdeskTickets, freshdeskSyncLogs,
   organizations, clientUsers, adminUsers, auditEvents, archiveIndex,
   specialists, escalations, specialistAssignments,
+  medicalDocuments, documentProcessingJobs, documentProcessingLogs,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
   type Injury, type Stakeholder, type RtwPlan, type RiskHistory,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
   type LetterTemplate, type GeneratedLetter, type FreshdeskTicket, type FreshdeskSyncLog,
   type Organization, type ClientUser, type AdminUser, type AuditEvent, type ArchiveIndex,
   type Specialist, type Escalation, type SpecialistAssignment,
+  type MedicalDocument, type DocumentProcessingJob, type DocumentProcessingLog,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
   type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
   type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter,
   type InsertFreshdeskTicket, type InsertFreshdeskSyncLog,
   type InsertOrganization, type InsertClientUser, type InsertAdminUser, type InsertAuditEvent, type InsertArchiveIndex,
-  type InsertSpecialist, type InsertEscalation, type InsertSpecialistAssignment
+  type InsertSpecialist, type InsertEscalation, type InsertSpecialistAssignment,
+  type InsertMedicalDocument, type InsertDocumentProcessingJob, type InsertDocumentProcessingLog
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql } from "drizzle-orm";
@@ -243,6 +246,38 @@ export interface IStorage {
   createArchiveEntry(entry: InsertArchiveIndex): Promise<ArchiveIndex>;
   getArchivedEntities(entityType?: string, organizationId?: string): Promise<ArchiveIndex[]>;
   restoreArchivedEntity(id: string, restoredBy: string): Promise<ArchiveIndex>;
+
+  // ===============================================
+  // MEDICAL DOCUMENT PROCESSING
+  // ===============================================
+  
+  // Medical Documents
+  createMedicalDocument(document: InsertMedicalDocument): Promise<MedicalDocument>;
+  getMedicalDocument(id: string): Promise<MedicalDocument | undefined>;
+  getMedicalDocumentsByTicket(ticketId: string): Promise<MedicalDocument[]>;
+  getMedicalDocumentsByWorker(workerId: string): Promise<MedicalDocument[]>;
+  updateMedicalDocument(id: string, updates: Partial<InsertMedicalDocument>): Promise<MedicalDocument>;
+  findDocumentByChecksum(checksum: string): Promise<MedicalDocument | undefined>;
+  getMedicalDocumentsPendingReview(): Promise<MedicalDocument[]>;
+  
+  // Document Processing Jobs
+  createDocumentProcessingJob(job: InsertDocumentProcessingJob): Promise<DocumentProcessingJob>;
+  getDocumentProcessingJob(id: string): Promise<DocumentProcessingJob | undefined>;
+  updateDocumentProcessingJob(id: string, updates: Partial<InsertDocumentProcessingJob>): Promise<DocumentProcessingJob>;
+  getDocumentProcessingJobsByStatus(status: string): Promise<DocumentProcessingJob[]>;
+  
+  // Document Processing Logs
+  createDocumentProcessingLog(log: InsertDocumentProcessingLog): Promise<DocumentProcessingLog>;
+  getDocumentProcessingLogsByDocument(documentId: string): Promise<DocumentProcessingLog[]>;
+  getDocumentProcessingLogsByJob(jobId: string): Promise<DocumentProcessingLog[]>;
+  
+  // Helper methods for webhook processing
+  findTicketByFreshdeskId(freshdeskId: number): Promise<Ticket | undefined>;
+  findWorkerByEmail(email: string): Promise<Worker | undefined>;
+  findOpenTicketsForWorker(workerId: string): Promise<Ticket[]>;
+  linkTicketToFreshdesk(ticketId: string, freshdeskId: number): Promise<void>;
+  getCaseByTicketId(ticketId: string): Promise<any | undefined>;
+  updateCase(caseId: string, updates: any): Promise<any>;
 
   // Multi-tenant data access (add organizationId context to existing methods)
   getAllTicketsForOrganization(organizationId: string): Promise<Ticket[]>;

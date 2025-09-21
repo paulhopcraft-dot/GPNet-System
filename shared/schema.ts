@@ -1007,6 +1007,106 @@ export const freshdeskSyncLogs = pgTable("freshdesk_sync_logs", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Medical Documents for attachment processing per Roylett specification
+export const medicalDocuments = pgTable("medical_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id),
+  workerId: varchar("worker_id").notNull().references(() => workers.id),
+  sourceType: text("source_type").notNull(), // "freshdesk_attachment", "manual_upload", "email_attachment"
+  sourceId: varchar("source_id"), // Freshdesk attachment ID, email ID, etc.
+  
+  // Document metadata
+  kind: text("kind").notNull(), // "medical_certificate", "diagnosis_report", "fit_note", "specialist_letter", "radiology_report", "other"
+  originalFilename: varchar("original_filename").notNull(),
+  fileUrl: varchar("file_url").notNull(), // Object storage URL
+  contentType: varchar("content_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  checksum: varchar("checksum").notNull(), // For idempotency
+  
+  // Extracted medical data
+  patientName: varchar("patient_name"),
+  doctorName: varchar("doctor_name"),
+  providerNo: varchar("provider_no"),
+  clinicName: varchar("clinic_name"),
+  clinicPhone: varchar("clinic_phone"),
+  issueDate: text("issue_date"), // Using text for date flexibility
+  diagnosis: text("diagnosis"),
+  restrictions: text("restrictions"),
+  fitStatus: text("fit_status"), // "fit_unrestricted", "fit_with_restrictions", "unfit"
+  validFrom: text("valid_from"), // Using text for date flexibility
+  validTo: text("valid_to"),
+  reviewOn: text("review_on"),
+  capacityNotes: text("capacity_notes"),
+  signatory: varchar("signatory"),
+  signaturePresent: boolean("signature_present").default(false),
+  
+  // Additional fields for specialist reports
+  icdCodes: text("icd_codes").array(),
+  investigations: text("investigations"),
+  treatmentPlan: text("treatment_plan"),
+  followUpInterval: varchar("follow_up_interval"),
+  redFlags: text("red_flags"),
+  
+  // Processing metadata
+  confidence: integer("confidence").default(0), // Overall confidence 0-100
+  fieldConfidences: jsonb("field_confidences"), // Per-field confidence scores
+  requiresReview: boolean("requires_review").default(false),
+  isCurrentCertificate: boolean("is_current_certificate").default(false),
+  
+  // Status and tracking
+  processingStatus: text("processing_status").default("pending").notNull(), // "pending", "processing", "completed", "failed", "requires_review"
+  reviewedBy: varchar("reviewed_by").references(() => clientUsers.id),
+  reviewedAt: timestamp("reviewed_at"),
+  
+  // Audit trail
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Document processing jobs queue
+export const documentProcessingJobs = pgTable("document_processing_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id),
+  attachmentUrl: varchar("attachment_url").notNull(),
+  companyId: varchar("company_id"),
+  requesterEmail: varchar("requester_email"),
+  
+  // Job status
+  status: text("status").default("pending").notNull(), // "pending", "processing", "completed", "failed", "retrying"
+  priority: text("priority").default("normal").notNull(), // "low", "normal", "high", "urgent"
+  
+  // Processing metadata
+  attempts: integer("attempts").default(0),
+  maxRetries: integer("max_retries").default(3),
+  errorMessage: text("error_message"),
+  processingStartedAt: timestamp("processing_started_at"),
+  processingCompletedAt: timestamp("processing_completed_at"),
+  
+  // Result reference
+  documentId: varchar("document_id").references(() => medicalDocuments.id),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Document processing audit log
+export const documentProcessingLogs = pgTable("document_processing_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentId: varchar("document_id").notNull().references(() => medicalDocuments.id),
+  jobId: varchar("job_id").references(() => documentProcessingJobs.id),
+  
+  // Event details
+  eventType: text("event_type").notNull(), // "download_started", "download_completed", "ocr_started", "ocr_completed", "validation_completed", "storage_completed", "case_updated", "review_required", "error"
+  message: text("message").notNull(),
+  details: jsonb("details"),
+  
+  // Context
+  actorId: varchar("actor_id"),
+  actorType: text("actor_type").default("system"), // "system", "user", "admin"
+  
+  createdAt: timestamp("created_at").defaultNow().notNull()
+});
+
 // Schema definitions for new tables
 export const insertLegislationDocumentSchema = createInsertSchema(legislationDocuments).omit({
   id: true,
@@ -1270,3 +1370,90 @@ export const stepUpdateSchema = z.object({
 export type RtwStepId = "eligibility_assessment" | "month_2_review" | "month_3_assessment" | "non_compliance_escalation";
 export type RtwComplianceStatus = "compliant" | "non_compliant" | "pending";
 export type RtwOutcome = "completed" | "escalated" | "terminated" | "withdrawn";
+
+// Medical Document schemas and types per Roylett specification
+export const insertMedicalDocumentSchema = createInsertSchema(medicalDocuments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertDocumentProcessingJobSchema = createInsertSchema(documentProcessingJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertDocumentProcessingLogSchema = createInsertSchema(documentProcessingLogs).omit({
+  id: true,
+  createdAt: true
+});
+
+export type InsertMedicalDocument = z.infer<typeof insertMedicalDocumentSchema>;
+export type MedicalDocument = typeof medicalDocuments.$inferSelect;
+
+export type InsertDocumentProcessingJob = z.infer<typeof insertDocumentProcessingJobSchema>;
+export type DocumentProcessingJob = typeof documentProcessingJobs.$inferSelect;
+
+export type InsertDocumentProcessingLog = z.infer<typeof insertDocumentProcessingLogSchema>;
+export type DocumentProcessingLog = typeof documentProcessingLogs.$inferSelect;
+
+// Document kinds enumeration
+export const DocumentKind = {
+  MEDICAL_CERTIFICATE: "medical_certificate",
+  DIAGNOSIS_REPORT: "diagnosis_report", 
+  FIT_NOTE: "fit_note",
+  SPECIALIST_LETTER: "specialist_letter",
+  RADIOLOGY_REPORT: "radiology_report",
+  OTHER: "other"
+} as const;
+
+export type DocumentKind = typeof DocumentKind[keyof typeof DocumentKind];
+
+// Fit status enumeration  
+export const FitStatus = {
+  FIT_UNRESTRICTED: "fit_unrestricted",
+  FIT_WITH_RESTRICTIONS: "fit_with_restrictions", 
+  UNFIT: "unfit"
+} as const;
+
+export type FitStatus = typeof FitStatus[keyof typeof FitStatus];
+
+// Processing status enumeration
+export const ProcessingStatus = {
+  PENDING: "pending",
+  PROCESSING: "processing",
+  COMPLETED: "completed", 
+  FAILED: "failed",
+  REQUIRES_REVIEW: "requires_review"
+} as const;
+
+export type ProcessingStatus = typeof ProcessingStatus[keyof typeof ProcessingStatus];
+
+// OCR and validation schemas
+export const ocrFieldExtractionSchema = z.object({
+  patientName: z.string().optional(),
+  doctorName: z.string().optional(),
+  providerNo: z.string().optional(),
+  clinicName: z.string().optional(),
+  clinicPhone: z.string().optional(),
+  issueDate: z.string().optional(),
+  diagnosis: z.string().optional(),
+  restrictions: z.string().optional(),
+  fitStatus: z.enum(["fit_unrestricted", "fit_with_restrictions", "unfit"]).optional(),
+  validFrom: z.string().optional(),
+  validTo: z.string().optional(),
+  reviewOn: z.string().optional(),
+  capacityNotes: z.string().optional(),
+  signatory: z.string().optional(),
+  signaturePresent: z.boolean().optional(),
+  icdCodes: z.array(z.string()).optional(),
+  investigations: z.string().optional(),
+  treatmentPlan: z.string().optional(),
+  followUpInterval: z.string().optional(),
+  redFlags: z.string().optional(),
+  confidence: z.number().min(0).max(100).optional(),
+  fieldConfidences: z.record(z.number().min(0).max(100)).optional()
+});
+
+export type OcrFieldExtraction = z.infer<typeof ocrFieldExtractionSchema>;
