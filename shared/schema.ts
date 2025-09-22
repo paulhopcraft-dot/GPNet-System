@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, unique, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -187,6 +187,48 @@ export const organizations = pgTable("organizations", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ===============================================
+// WEBHOOK SECURITY TABLES  
+// ===============================================
+
+// Rate limiting tracking table for webhook security
+export const webhookRateLimits = pgTable("webhook_rate_limits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ipAddress: varchar("ip_address", { length: 45 }).notNull(), // Support IPv6
+  requestCount: integer("request_count").notNull().default(1),
+  windowStart: timestamp("window_start").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  ipAddressIdx: index("webhook_rate_limits_ip_address_idx").on(table.ipAddress),
+  expiresAtIdx: index("webhook_rate_limits_expires_at_idx").on(table.expiresAt),
+}));
+
+// Idempotency tracking table for webhook security  
+export const webhookIdempotency = pgTable("webhook_idempotency", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  submissionId: varchar("submission_id").notNull(), // Removed .unique() for composite constraint
+  endpoint: varchar("endpoint").notNull(), // e.g., "/api/webhook/pre-employment"
+  processedAt: timestamp("processed_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(), 
+  ipAddress: varchar("ip_address", { length: 45 }), // Track source IP
+  userAgent: text("user_agent"), // Track user agent for debugging
+}, (table) => ({
+  // Composite unique constraint - each submission can be processed once per endpoint
+  submissionEndpointUnique: unique("webhook_idempotency_submission_endpoint_unique")
+    .on(table.submissionId, table.endpoint),
+  submissionIdIdx: index("webhook_idempotency_submission_id_idx").on(table.submissionId),
+  expiresAtIdx: index("webhook_idempotency_expires_at_idx").on(table.expiresAt),
+  endpointIdx: index("webhook_idempotency_endpoint_idx").on(table.endpoint),
+}));
+
+export type InsertWebhookRateLimit = typeof webhookRateLimits.$inferInsert;
+export type WebhookRateLimit = typeof webhookRateLimits.$inferSelect;
+
+export type InsertWebhookIdempotency = typeof webhookIdempotency.$inferInsert;
+export type WebhookIdempotency = typeof webhookIdempotency.$inferSelect;
 
 // Client users table (legacy - keep for backward compatibility)
 export const clientUsers = pgTable("client_users", {

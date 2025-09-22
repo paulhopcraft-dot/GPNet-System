@@ -34,11 +34,10 @@ const WEBHOOK_CONFIG = {
   MAX_PAYLOAD_SIZE: 1024 * 1024,
 } as const;
 
-// Rate limiting store (in production, use Redis)
-const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
-
-// Idempotency store to prevent duplicate submissions (in production, use Redis)
-const idempotencyStore = new Set<string>();
+// Import database for persistent storage
+import { db } from "./db";
+import { webhookRateLimits, webhookIdempotency } from "../shared/schema";
+import { eq, and, lt, gte, sql } from "drizzle-orm";
 
 /**
  * Simple payload size check middleware for webhook routes
@@ -91,99 +90,127 @@ function validateWebhookSignature(rawBody: Buffer, signature: string, secret: st
 }
 
 /**
- * Rate limiting middleware
+ * Database-backed rate limiting middleware with automatic cleanup
  */
-function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
-  // Get real client IP, handling proxy headers
-  const clientIp = req.headers['x-forwarded-for'] as string 
-    || req.headers['x-real-ip'] as string
-    || req.connection.remoteAddress 
-    || req.ip 
-    || 'unknown';
+async function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
+  try {
+    // Get real client IP, handling proxy headers
+    const clientIp = req.headers['x-forwarded-for'] as string 
+      || req.headers['x-real-ip'] as string
+      || req.connection.remoteAddress 
+      || req.ip 
+      || 'unknown';
+      
+    // If multiple IPs in X-Forwarded-For, use the first (original client)
+    const realIp = typeof clientIp === 'string' ? clientIp.split(',')[0].trim() : clientIp;
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - 60000); // 1 minute window
+    const expiresAt = new Date(now.getTime() + 3600000); // Expire in 1 hour
     
-  // If multiple IPs in X-Forwarded-For, use the first (original client)
-  const realIp = typeof clientIp === 'string' ? clientIp.split(',')[0].trim() : clientIp;
-  const now = Date.now();
-  const windowMs = 60 * 1000; // 1 minute window
-  
-  // Clean up expired entries
-  const entries = Array.from(rateLimitStore.entries());
-  for (const [ip, data] of entries) {
-    if (now > data.resetTime) {
-      rateLimitStore.delete(ip);
+    // Clean up expired entries (run cleanup occasionally)
+    if (Math.random() < 0.1) { // 10% chance to run cleanup
+      await db.delete(webhookRateLimits)
+        .where(lt(webhookRateLimits.expiresAt, now));
     }
+    
+    // Check existing rate limit entries for this IP within the current window
+    const recentRequests = await db.select()
+      .from(webhookRateLimits)
+      .where(and(
+        eq(webhookRateLimits.ipAddress, realIp),
+        gte(webhookRateLimits.windowStart, windowStart)
+      ));
+    
+    const requestCount = recentRequests.reduce((sum, entry) => sum + entry.requestCount, 0);
+    
+    if (requestCount >= WEBHOOK_CONFIG.RATE_LIMIT) {
+      console.warn(`Rate limit exceeded for IP: ${realIp} (${requestCount} requests)`);
+      return res.status(429).json({
+        error: "Rate limit exceeded",
+        message: "Too many requests, please try again later"
+      });
+    }
+    
+    // Record this request
+    await db.insert(webhookRateLimits)
+      .values({
+        ipAddress: realIp,
+        requestCount: 1,
+        windowStart: now,
+        expiresAt: expiresAt
+      });
+    
+    next();
+  } catch (error) {
+    console.error('Rate limiting error:', error);
+    // In case of database error, allow request to proceed (fail open)
+    next();
   }
-  
-  // Check current rate for this IP
-  const current = rateLimitStore.get(realIp);
-  
-  if (!current) {
-    // First request from this IP
-    rateLimitStore.set(realIp, {
-      count: 1,
-      resetTime: now + windowMs
-    });
-    return next();
-  }
-  
-  if (now > current.resetTime) {
-    // Window expired, reset
-    rateLimitStore.set(realIp, {
-      count: 1,
-      resetTime: now + windowMs
-    });
-    return next();
-  }
-  
-  if (current.count >= WEBHOOK_CONFIG.RATE_LIMIT) {
-    console.warn(`Rate limit exceeded for IP: ${realIp}`);
-    return res.status(429).json({
-      error: "Rate limit exceeded",
-      message: "Too many requests, please try again later"
-    });
-  }
-  
-  // Increment counter
-  current.count++;
-  next();
 }
 
 /**
- * Idempotency middleware to prevent duplicate submissions using submission IDs
+ * Database-backed idempotency middleware to prevent duplicate submissions
  */
-function idempotencyMiddleware(req: Request, res: Response, next: NextFunction) {
-  // Extract submission ID from Jotform payload
-  const submissionId = extractSubmissionId(req.body);
-  
-  if (!submissionId) {
-    // No submission ID available - skip idempotency check but log warning
-    console.warn('No submission ID found in payload - skipping idempotency check');
-    return next();
+async function idempotencyMiddleware(req: Request, res: Response, next: NextFunction) {
+  try {
+    // Extract submission ID from Jotform payload
+    const submissionId = extractSubmissionId(req.body);
+    
+    if (!submissionId) {
+      // No submission ID available - skip idempotency check but log warning
+      console.warn('No submission ID found in payload - skipping idempotency check');
+      return next();
+    }
+    
+    const endpoint = req.path;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 3600000); // Expire in 24 hours
+    const clientIp = req.headers['x-forwarded-for'] as string 
+      || req.headers['x-real-ip'] as string
+      || req.ip || 'unknown';
+    const realIp = typeof clientIp === 'string' ? clientIp.split(',')[0].trim() : clientIp;
+    const userAgent = req.headers['user-agent'] as string;
+    
+    // Clean up expired entries occasionally
+    if (Math.random() < 0.05) { // 5% chance to run cleanup
+      await db.delete(webhookIdempotency)
+        .where(lt(webhookIdempotency.expiresAt, now));
+    }
+    
+    // Single INSERT with conflict detection to prevent race conditions
+    // If the insert conflicts (duplicate), no row is returned, indicating it was already processed
+    const insertResult = await db
+      .insert(webhookIdempotency)
+      .values({
+        submissionId,
+        endpoint,
+        expiresAt,
+        ipAddress: realIp,
+        userAgent
+      })
+      .onConflictDoNothing({
+        target: [webhookIdempotency.submissionId, webhookIdempotency.endpoint]
+      })
+      .returning({ id: webhookIdempotency.id });
+
+    // If no row was returned, it means this submission already existed (conflict)
+    if (insertResult.length === 0) {
+      console.warn(`Duplicate submission detected: ${submissionId} for ${endpoint}`);
+      return res.status(409).json({
+        error: "Duplicate submission",
+        message: `Submission ${submissionId} has already been processed`,
+        submissionId
+      });
+    }
+    
+    console.log(`Idempotency record created for ${submissionId} on ${endpoint}`);
+    
+    next();
+  } catch (error) {
+    console.error('Idempotency check error:', error);
+    // In case of database error, allow request to proceed (fail open)
+    next();
   }
-  
-  // Create idempotency key: provider + endpoint + submissionId
-  const endpoint = req.path;
-  const idempotencyKey = `jotform:${endpoint}:${submissionId}`;
-  
-  if (idempotencyStore.has(idempotencyKey)) {
-    console.warn(`Duplicate submission detected: ${submissionId} for ${endpoint}`);
-    return res.status(409).json({
-      error: "Duplicate submission",
-      message: `Submission ${submissionId} has already been processed`,
-      submissionId
-    });
-  }
-  
-  // Store the submission ID
-  idempotencyStore.add(idempotencyKey);
-  
-  // Clean up old entries periodically (simple cleanup every 100 requests)
-  if (idempotencyStore.size > 1000) {
-    const keysToDelete = Array.from(idempotencyStore).slice(0, 500);
-    keysToDelete.forEach(key => idempotencyStore.delete(key));
-  }
-  
-  next();
 }
 
 /**
@@ -233,61 +260,81 @@ function extractSubmissionId(body: any): string | null {
 }
 
 /**
- * Main webhook security middleware
+ * Main webhook security middleware - now handles async operations
  */
-export function webhookSecurityMiddleware(req: Request, res: Response, next: NextFunction) {
-  // Apply rate limiting
-  rateLimitMiddleware(req, res, (rateLimitError) => {
-    if (rateLimitError) return;
-    
-    // Apply idempotency check
-    idempotencyMiddleware(req, res, (idempotencyError) => {
-      if (idempotencyError) return;
-      
-      // Skip signature validation in development mode
-      if (process.env.NODE_ENV === 'development') {
-        console.log('Webhook security: Development mode - skipping signature validation');
-        return next();
-      }
-      
-      // Production mode - validate webhook signature
-      const signature = req.headers['x-jotform-signature'] as string || req.headers['jotform-signature'] as string;
-      
-      if (!signature) {
-        console.log('Webhook security: Missing signature header');
-        return res.status(401).json({
-          error: 'Unauthorized',
-          message: 'Webhook signature required'
-        });
-      }
-      
-      if (!req.rawBodyBuffer) {
-        console.log('Webhook security: Missing raw body for signature verification');
-        return res.status(400).json({
-          error: 'Bad Request', 
-          message: 'Request body required for signature verification'
-        });
-      }
-      
-      // Validate signature using raw body
-      const isValidSignature = validateWebhookSignature(
-        req.rawBodyBuffer,
-        signature,
-        WEBHOOK_CONFIG.SHARED_SECRET
-      );
-      
-      if (!isValidSignature) {
-        console.log('Webhook security: Invalid signature');
-        return res.status(401).json({
-          error: 'Unauthorized',
-          message: 'Invalid webhook signature'
-        });
-      }
-      
-      console.log('Webhook security: Signature validation passed');
-      next();
+export async function webhookSecurityMiddleware(req: Request, res: Response, next: NextFunction) {
+  try {
+    // Apply rate limiting (async)
+    await new Promise<void>((resolve, reject) => {
+      rateLimitMiddleware(req, res, (error?: any) => {
+        if (error) reject(error);
+        else resolve();
+      });
     });
-  });
+    
+    // Apply idempotency check (async)
+    await new Promise<void>((resolve, reject) => {
+      idempotencyMiddleware(req, res, (error?: any) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+    
+    // Skip signature validation in development mode
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Webhook security: Development mode - skipping signature validation');
+      return next();
+    }
+    
+    // Production mode - validate webhook signature
+    const signature = req.headers['x-jotform-signature'] as string || req.headers['jotform-signature'] as string;
+    
+    if (!signature) {
+      console.log('Webhook security: Missing signature header');
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Webhook signature required'
+      });
+    }
+    
+    if (!req.rawBodyBuffer) {
+      console.log('Webhook security: Missing raw body for signature verification');
+      return res.status(400).json({
+        error: 'Bad Request', 
+        message: 'Request body required for signature verification'
+      });
+    }
+    
+    // Validate signature using raw body
+    const isValidSignature = validateWebhookSignature(
+      req.rawBodyBuffer,
+      signature,
+      WEBHOOK_CONFIG.SHARED_SECRET
+    );
+    
+    if (!isValidSignature) {
+      console.log('Webhook security: Invalid signature');
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Invalid webhook signature'
+      });
+    }
+    
+    console.log('Webhook security: Signature validation passed');
+    next();
+  } catch (error) {
+    console.error('Webhook security middleware error:', error);
+    // In case of error, fail open in development, fail closed in production
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('Development mode: allowing request despite security error');
+      next();
+    } else {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Security validation failed'
+      });
+    }
+  }
 }
 
 /**
