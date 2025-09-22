@@ -44,7 +44,7 @@ export class AuthService {
           actorId: 'anonymous',
           actorType: 'client_user',
           actorEmail: email,
-          organizationId: organizationId || null,
+          companyId: organizationId || null,
           action: 'Login attempt failed',
           result: 'failed',
           details: { reason: 'user_not_found_or_archived', email }
@@ -60,7 +60,7 @@ export class AuthService {
           actorId: user.id,
           actorType: 'client_user',
           actorEmail: user.email,
-          organizationId: user.organizationId,
+          companyId: user.organizationId,
           action: 'Login failed - no password hash',
           result: 'failed',
           details: { email: user.email, reason: 'missing_password_hash' }
@@ -77,7 +77,7 @@ export class AuthService {
           actorId: user.id,
           actorType: 'client_user',
           actorEmail: user.email,
-          organizationId: user.organizationId,
+          companyId: user.organizationId,
           action: 'Login failed - invalid password',
           result: 'failed',
           details: { email: user.email }
@@ -94,7 +94,7 @@ export class AuthService {
         actorId: user.id,
         actorType: 'client_user',
         actorEmail: user.email,
-        organizationId: user.organizationId,
+        companyId: user.organizationId,
         action: 'Client login successful',
         result: 'success',
         details: { email: user.email, loginCount: updatedUser.loginCount }
@@ -119,7 +119,7 @@ export class AuthService {
           actorId: 'anonymous',
           actorType: 'admin',
           actorEmail: email,
-          organizationId: null,
+          companyId: null,
           action: 'Admin login attempt failed',
           result: 'failed',
           details: { reason: 'admin_not_found_or_archived', email }
@@ -135,7 +135,7 @@ export class AuthService {
           actorId: user.id,
           actorType: 'admin',
           actorEmail: user.email,
-          organizationId: null,
+          companyId: null,
           action: 'Admin login failed - no password hash',
           result: 'failed',
           details: { email: user.email, reason: 'missing_password_hash' }
@@ -152,7 +152,7 @@ export class AuthService {
           actorId: user.id,
           actorType: 'admin',
           actorEmail: user.email,
-          organizationId: null,
+          companyId: null,
           action: 'Admin login failed - invalid password',
           result: 'failed',
           details: { email: user.email }
@@ -169,7 +169,7 @@ export class AuthService {
         actorId: user.id,
         actorType: 'admin',
         actorEmail: user.email,
-        organizationId: null,
+        companyId: null,
         action: 'Admin login successful',
         result: 'success',
         details: { 
@@ -223,7 +223,7 @@ export class AuthService {
         actorId: user.id,
         actorType: 'client_user',
         actorEmail: user.email,
-        organizationId: user.organizationId,
+        companyId: user.organizationId,
         action: 'New client user registered',
         result: 'success',
         details: { email: user.email, role: user.role }
@@ -270,7 +270,7 @@ export class AuthService {
         eventCategory: 'admin',
         actorId: createdBy,
         actorType: 'admin',
-        organizationId: null,
+        companyId: null,
         action: 'New admin user created',
         result: 'success',
         details: { 
@@ -333,7 +333,7 @@ export class AuthService {
         actorId: adminId,
         actorType: 'admin',
         actorEmail: admin.email,
-        organizationId: targetOrgId,
+        companyId: targetOrgId,
         targetType: 'organization',
         targetId: targetOrgId,
         action: `Admin started impersonating organization: ${targetOrg.name}`,
@@ -368,7 +368,7 @@ export class AuthService {
         actorId: adminId,
         actorType: 'admin',
         actorEmail: admin.email,
-        organizationId: targetOrgId || null,
+        companyId: targetOrgId || null,
         action: 'Admin stopped impersonating organization',
         result: 'success',
         details: { 
@@ -435,7 +435,7 @@ export class AuthService {
         actorId: userId,
         actorType: isAdmin ? 'admin' : 'client_user',
         actorEmail: user.email,
-        organizationId: isAdmin ? null : (user as ClientUser).organizationId,
+        companyId: isAdmin ? null : (user as ClientUser).organizationId,
         action: `Password changed for ${isAdmin ? 'admin' : 'client'}: ${user.email}`,
         result: 'success',
         details: { email: user.email, userType: isAdmin ? 'admin' : 'client' }

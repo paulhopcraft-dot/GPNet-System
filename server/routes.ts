@@ -2453,7 +2453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         generatedAt: new Date().toISOString(),
         generatedBy: "GPNet System",
         companyName: ticket.companyName || "Company Name Not Specified",
-        recommendations: analysis.recommendations || []
+        recommendations: Array.isArray(analysis.recommendations) ? analysis.recommendations : []
       };
       
       const pdfBuffer = await pdfService.generatePreEmploymentReport(reportData);
