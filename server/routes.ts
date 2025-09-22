@@ -21,6 +21,7 @@ import { createEmailProcessingService, type EmailProcessingResult } from "./emai
 import { type RawEmailData } from "./emailParsingService";
 import { emailDraftRoutes } from "./emailDraftRoutes";
 import { companyMatchingRoutes } from "./companyMatchingRoutes";
+import { autoAllocationRoutes } from "./autoAllocationRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -731,6 +732,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Company matching routes
   app.use('/api/company-matching', companyMatchingRoutes);
+  
+  // Auto-allocation routes
+  app.use('/api/auto-allocation', autoAllocationRoutes);
   
   // Create email processing service instance
   const emailProcessingService = createEmailProcessingService(storage);

@@ -43,6 +43,10 @@ export interface IStorage {
   completeCurrentStep(id: string, completionNotes?: string): Promise<Ticket>;
   updateTicketStepAndComplete(id: string, nextStep: string, assignedTo?: string, completionNotes?: string): Promise<Ticket>;
   
+  // Ticket Assignment
+  updateTicket(id: string, updates: Partial<InsertTicket>): Promise<Ticket>;
+  getTicketsByAssignee(assignedTo: string): Promise<Ticket[]>;
+  
   // Workers
   createWorker(worker: InsertWorker): Promise<Worker>;
   getWorker(id: string): Promise<Worker | undefined>;
@@ -394,6 +398,24 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tickets.id, id))
       .returning();
     return ticket;
+  }
+
+  // Ticket Assignment Methods
+  async updateTicket(id: string, updates: Partial<InsertTicket>): Promise<Ticket> {
+    const [ticket] = await db
+      .update(tickets)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(tickets.id, id))
+      .returning();
+    return ticket;
+  }
+
+  async getTicketsByAssignee(assignedTo: string): Promise<Ticket[]> {
+    return await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.assignedTo, assignedTo))
+      .orderBy(desc(tickets.updatedAt));
   }
 
   async updateTicketStepAndComplete(id: string, nextStep: string, assignedTo?: string, completionNotes?: string): Promise<Ticket> {
