@@ -14,11 +14,18 @@ export interface JotformRawPayload {
  * Normalizes Jotform boolean fields
  * Jotform sends: "Yes", "No", "true", "false", "1", "0", or actual booleans
  */
-function normalizeBoolean(value: string | boolean | undefined): boolean | undefined {
+function normalizeBoolean(value: string | string[] | boolean | undefined): boolean | undefined {
   if (value === undefined || value === null) return undefined;
   
   // If already a boolean, return as-is
   if (typeof value === 'boolean') return value;
+  
+  // If it's an array, take the first valid element
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    if (!first) return undefined;
+    value = first;
+  }
   
   // If not a string, try to convert
   if (typeof value !== 'string') return undefined;
@@ -37,14 +44,55 @@ function normalizeBoolean(value: string | boolean | undefined): boolean | undefi
 }
 
 /**
+ * Normalizes Jotform yes/no fields to string enums
+ * Jotform sends: "Yes", "No", "true", "false", "1", "0", or actual booleans
+ * Returns: "yes", "no", or undefined
+ */
+function normalizeYesNo(value: string | string[] | boolean | undefined): "yes" | "no" | undefined {
+  if (value === undefined || value === null) return undefined;
+  
+  // If already a boolean, convert to string
+  if (typeof value === 'boolean') return value ? "yes" : "no";
+  
+  // If it's an array, take the first valid element
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    if (!first) return undefined;
+    value = first;
+  }
+  
+  // If not a string, try to convert
+  if (typeof value !== 'string') return undefined;
+  
+  const normalized = value.toLowerCase().trim();
+  
+  // Handle common yes/no representations
+  if (normalized === 'yes' || normalized === 'true' || normalized === '1') {
+    return "yes";
+  }
+  if (normalized === 'no' || normalized === 'false' || normalized === '0') {
+    return "no";
+  }
+  
+  return undefined;
+}
+
+/**
  * Normalizes Jotform number fields
  * Jotform sends: "123", "45.67", "0", "" or actual numbers
  */
-function normalizeNumber(value: string | number | undefined): number | undefined {
+function normalizeNumber(value: string | string[] | number | undefined): number | undefined {
   if (value === undefined || value === null) return undefined;
   
   // If already a number, return as-is
   if (typeof value === 'number') return isNaN(value) ? undefined : value;
+  
+  // If it's an array, take the first valid element
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    if (!first) return undefined;
+    value = first;
+  }
   
   // If not a string, try to convert
   if (typeof value !== 'string') return undefined;
@@ -59,11 +107,18 @@ function normalizeNumber(value: string | number | undefined): number | undefined
  * Normalizes Jotform integer fields
  * Jotform sends: "123", "0", "" or actual numbers
  */
-function normalizeInteger(value: string | number | undefined): number | undefined {
+function normalizeInteger(value: string | string[] | number | undefined): number | undefined {
   if (value === undefined || value === null) return undefined;
   
   // If already a number, return rounded
   if (typeof value === 'number') return isNaN(value) ? undefined : Math.round(value);
+  
+  // If it's an array, take the first valid element
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    if (!first) return undefined;
+    value = first;
+  }
   
   // If not a string, try to convert
   if (typeof value !== 'string') return undefined;
@@ -99,8 +154,16 @@ function normalizeArray(value: string | string[] | undefined): string[] | undefi
  * Normalizes Jotform string fields
  * Trims whitespace and converts empty strings to undefined
  */
-function normalizeString(value: string | undefined): string | undefined {
-  if (!value || typeof value !== 'string') return undefined;
+function normalizeString(value: string | string[] | undefined): string | undefined {
+  if (!value) return undefined;
+  
+  // If it's an array, take the first non-empty element
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    return first ? first.trim() : undefined;
+  }
+  
+  if (typeof value !== 'string') return undefined;
   
   const trimmed = value.trim();
   return trimmed === '' ? undefined : trimmed;
@@ -110,8 +173,19 @@ function normalizeString(value: string | undefined): string | undefined {
  * Normalizes date fields from Jotform
  * Jotform sends: "2025-09-22", "09/22/2025", ""
  */
-function normalizeDate(value: string | undefined): string | undefined {
-  if (!value || value.trim() === '') return undefined;
+function normalizeDate(value: string | string[] | undefined): string | undefined {
+  if (!value) return undefined;
+  
+  // If it's an array, take the first valid element
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    if (!first) return undefined;
+    value = first;
+  }
+  
+  if (typeof value !== 'string') return undefined;
+  
+  if (value.trim() === '') return undefined;
   
   const trimmed = value.trim();
   
@@ -149,7 +223,7 @@ export function normalizePreEmploymentData(rawPayload: JotformRawPayload): any {
     standing: normalizeBoolean(rawPayload.standing),
     sitting: normalizeBoolean(rawPayload.sitting),
     walking: normalizeBoolean(rawPayload.walking),
-    repetitiveTasks: normalizeBoolean(rawPayload.repetitiveTasks || rawPayload.repetitive_tasks),
+    repetitiveTasks: normalizeYesNo(rawPayload.repetitiveTasks || rawPayload.repetitive_tasks),
     
     // Health Information
     medicalConditions: normalizeArray(rawPayload.medicalConditions || rawPayload.medical_conditions),
