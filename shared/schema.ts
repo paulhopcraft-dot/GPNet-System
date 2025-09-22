@@ -297,6 +297,110 @@ export const archiveIndex = pgTable("archive_index", {
 });
 
 // ===============================================
+// MANAGER-INITIATED CHECK SYSTEM
+// ===============================================
+
+// Health checks table for storing check types and JotForm URLs
+export const checks = pgTable("checks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Check identification
+  checkKey: text("check_key").notNull().unique(), // "pre_employment", "injury", "mental_health", "exit"
+  displayName: text("display_name").notNull(), // "Pre-Employment Check", "Injury Assessment"
+  description: text("description"), // Optional description of the check
+  
+  // JotForm integration
+  checkUrl: text("check_url").notNull(), // Base JotForm URL
+  requiresTicketId: boolean("requires_ticket_id").default(true), // Whether to append ticket_id to URL
+  
+  // Management
+  active: boolean("active").default(true),
+  sortOrder: integer("sort_order").default(0),
+  
+  // Audit
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdBy: varchar("created_by"), // Admin user who created
+  updatedBy: varchar("updated_by"), // Admin user who last updated
+});
+
+// Company aliases table for fuzzy matching company names
+export const companyAliases = pgTable("company_aliases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Company identification
+  companyId: varchar("company_id").references(() => organizations.id).notNull(),
+  aliasName: text("alias_name").notNull(), // Alternative company name
+  normalizedName: text("normalized_name").notNull(), // Normalized version for matching
+  
+  // Matching configuration
+  isPreferred: boolean("is_preferred").default(false), // Primary company name
+  confidence: integer("confidence").default(100), // Matching confidence 0-100
+  
+  // Audit
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: varchar("created_by"), // Admin user who created
+}, (table) => ({
+  // Unique constraint for normalized names per company
+  uniqueNormalizedAlias: unique().on(table.companyId, table.normalizedName),
+}));
+
+// Email drafts table for manager review workflow
+export const emailDrafts = pgTable("email_drafts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Context linking
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  workerId: varchar("worker_id").references(() => workers.id).notNull(),
+  checkId: varchar("check_id").references(() => checks.id).notNull(),
+  managerId: varchar("manager_id"), // Manager who initiated the check
+  
+  // Email content
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  checkLink: text("check_link").notNull(), // Generated JotForm link with ticket_id
+  
+  // Manager workflow
+  status: text("status").default("draft"), // "draft", "sent", "expired"
+  managerEmail: text("manager_email").notNull(), // Where to send the draft
+  sentToManagerAt: timestamp("sent_to_manager_at"),
+  forwardedToWorkerAt: timestamp("forwarded_to_worker_at"),
+  
+  // Expiry and security
+  expiresAt: timestamp("expires_at"), // Draft expiry
+  linkToken: text("link_token"), // Signed token for secure links
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Check requests table for tracking manager-initiated check workflows
+export const checkRequests = pgTable("check_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Request context
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  workerId: varchar("worker_id").references(() => workers.id).notNull(),
+  checkId: varchar("check_id").references(() => checks.id).notNull(),
+  emailDraftId: varchar("email_draft_id").references(() => emailDrafts.id),
+  
+  // Manager context
+  requestedBy: varchar("requested_by").notNull(), // Manager user ID
+  requestReason: text("request_reason"), // Why this check was requested
+  urgency: text("urgency").default("normal"), // "low", "normal", "high", "urgent"
+  
+  // Michelle dialogue context
+  dialogueContext: jsonb("dialogue_context"), // Store Michelle conversation data
+  
+  // Workflow status
+  status: text("status").default("initiated"), // "initiated", "draft_sent", "completed", "expired"
+  completedAt: timestamp("completed_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ===============================================
 // EXTERNAL EMAIL INTEGRATION SYSTEM
 // ===============================================
 
@@ -1457,3 +1561,63 @@ export const ocrFieldExtractionSchema = z.object({
 });
 
 export type OcrFieldExtraction = z.infer<typeof ocrFieldExtractionSchema>;
+
+// ===============================================
+// MANAGER-INITIATED CHECK SYSTEM SCHEMAS
+// ===============================================
+
+// Insert schemas for new check management tables
+export const insertCheckSchema = createInsertSchema(checks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertCompanyAliasSchema = createInsertSchema(companyAliases).omit({
+  id: true,
+  createdAt: true
+});
+
+export const insertEmailDraftSchema = createInsertSchema(emailDrafts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertCheckRequestSchema = createInsertSchema(checkRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+// Type exports for new tables
+export type InsertCheck = z.infer<typeof insertCheckSchema>;
+export type Check = typeof checks.$inferSelect;
+
+export type InsertCompanyAlias = z.infer<typeof insertCompanyAliasSchema>;
+export type CompanyAlias = typeof companyAliases.$inferSelect;
+
+export type InsertEmailDraft = z.infer<typeof insertEmailDraftSchema>;
+export type EmailDraft = typeof emailDrafts.$inferSelect;
+
+export type InsertCheckRequest = z.infer<typeof insertCheckRequestSchema>;
+export type CheckRequest = typeof checkRequests.$inferSelect;
+
+// Check status enums
+export const CheckStatus = {
+  INITIATED: "initiated",
+  DRAFT_SENT: "draft_sent", 
+  COMPLETED: "completed",
+  EXPIRED: "expired"
+} as const;
+
+export type CheckStatus = typeof CheckStatus[keyof typeof CheckStatus];
+
+// Email draft status enums
+export const EmailDraftStatus = {
+  DRAFT: "draft",
+  SENT: "sent",
+  EXPIRED: "expired"
+} as const;
+
+export type EmailDraftStatus = typeof EmailDraftStatus[keyof typeof EmailDraftStatus];
