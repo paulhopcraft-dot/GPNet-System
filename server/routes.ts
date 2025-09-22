@@ -11,6 +11,7 @@ import {
   normalizeMentalHealthData, 
   normalizeExitCheckData, 
   normalizePreventionCheckData,
+  normalizeGeneralHealthData,
   type JotformRawPayload 
 } from "./jotformPayloadNormalizer";
 import { 
@@ -19,6 +20,7 @@ import {
   mentalHealthFormSchema, type MentalHealthFormData,
   exitCheckFormSchema, type ExitCheckFormData,
   preventionCheckFormSchema, type PreventionCheckFormData,
+  generalHealthFormSchema, type GeneralHealthFormData,
   rtwPlanSchema, insertStakeholderSchema,
   emailRiskAssessmentSchema, manualRiskUpdateSchema, stepUpdateSchema 
 } from "@shared/schema";
@@ -1269,6 +1271,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         error: "Internal server error", 
         message: "Failed to process exit check submission" 
+      });
+    }
+  });
+
+  // General Health and Well-being webhook endpoint
+  app.post("/api/webhook/general-health", webhookSecurityMiddleware, async (req, res) => {
+    try {
+      console.log("Received general health webhook - processing general health and well-being form");
+      
+      // Normalize Jotform payload before validation
+      const normalizedData = normalizeGeneralHealthData(req.body as JotformRawPayload);
+      
+      // Validate the general health form data
+      const validationResult = generalHealthFormSchema.safeParse(normalizedData);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid general health form data", details: errorMessage });
+      }
+
+      const formData = validationResult.data;
+
+      // Create worker record
+      const worker = await storage.createWorker({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        dateOfBirth: formData.dateOfBirth || "", 
+        phone: formData.phone,
+        email: formData.email,
+        roleApplied: formData.position || "Unknown Position",
+        site: formData.department || null,
+      });
+
+      // Create ticket for general health case
+      const ticket = await storage.createTicket({
+        workerId: worker.id,
+        caseType: "general_health",
+        status: "NEW",
+        priority: "medium",
+      });
+
+      // Create form submission record with raw payload for auditing
+      await storage.createFormSubmission({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        rawData: req.body, // Store actual raw Jotform payload
+      });
+
+      // Update ticket status to AWAITING_REVIEW
+      await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
+
+      console.log(`Created general health case ${ticket.id}`);
+
+      res.json({
+        success: true,
+        ticketId: ticket.id,
+        caseType: "general_health",
+        status: "AWAITING_REVIEW",
+        message: "General health and well-being assessment processed successfully",
+      });
+
+    } catch (error) {
+      console.error("Error processing general health submission:", error);
+      res.status(500).json({ 
+        error: "Internal server error", 
+        message: "Failed to process general health submission" 
       });
     }
   });

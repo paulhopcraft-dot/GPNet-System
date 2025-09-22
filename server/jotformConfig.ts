@@ -7,6 +7,7 @@ export const JOTFORM_LINKS = {
   PRE_EMPLOYMENT_CHECK: "https://form.jotform.com/250927279768475",
   INJURY_ASSESSMENT: "https://form.jotform.com/240273367274054",
   PREVENTION_CHECK: "https://form.jotform.com/240266476492059",
+  GENERAL_HEALTH_WELLBEING: "https://form.jotform.com/240032989875064",
   // Additional forms to be added:
   // FITNESS_FOR_WORK: "",
   // RETURN_TO_WORK: "",
@@ -20,6 +21,7 @@ export const JOTFORM_CONFIG = {
     PRE_EMPLOYMENT_CHECK: "/api/webhook/jotform",
     INJURY_ASSESSMENT: "/api/webhook/injury",
     PREVENTION_CHECK: "/api/webhook/prevention-check",
+    GENERAL_HEALTH_WELLBEING: "/api/webhook/general-health",
     FITNESS_FOR_WORK: "/api/webhook/fitness-check",
     RETURN_TO_WORK: "/api/webhook/rtw-check",
   },
@@ -31,6 +33,7 @@ export const JOTFORM_CONFIG = {
     PRE_EMPLOYMENT_CHECK: "pre_employment", 
     INJURY_ASSESSMENT: "injury",
     PREVENTION_CHECK: "prevention_check",
+    GENERAL_HEALTH_WELLBEING: "general_health",
     FITNESS_FOR_WORK: "fitness_assessment",
     RETURN_TO_WORK: "rtw_assessment",
   }
