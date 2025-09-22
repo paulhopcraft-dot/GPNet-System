@@ -5,8 +5,8 @@ export const JOTFORM_LINKS = {
   MENTAL_HEALTH_CHECK: "https://form.jotform.com/251677479546070",
   EXIT_CHECK: "https://form.jotform.com/240032827738053",
   PRE_EMPLOYMENT_CHECK: "https://form.jotform.com/250927279768475",
+  INJURY_ASSESSMENT: "https://form.jotform.com/240273367274054",
   // Additional forms to be added:
-  // INJURY_ASSESSMENT: "",
   // FITNESS_FOR_WORK: "",
   // RETURN_TO_WORK: "",
 } as const;
