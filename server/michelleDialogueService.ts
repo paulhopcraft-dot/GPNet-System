@@ -1,6 +1,7 @@
 import { storage } from './storage.js';
 import { z } from 'zod';
 import { PHISanitizer } from './phiSanitization.js';
+import { emailDraftingService } from './emailDraftingService.js';
 
 // Types for dialogue system
 interface DialogueContext {
@@ -533,7 +534,7 @@ Provide helpful, conversational responses. Ask one question at a time. Be encour
   }
 
   /**
-   * Create check request from dialogue data
+   * Create check request from dialogue data with automatic email draft generation
    */
   async createCheckRequestFromDialogue(context: DialogueContext): Promise<any> {
     const { collectedData } = context;
@@ -542,23 +543,99 @@ Provide helpful, conversational responses. Ask one question at a time. Be encour
       throw new Error('Dialogue not complete - missing required information');
     }
 
-    // Create the check request using our existing API
-    const requestData = {
-      workerEmail: collectedData.workerEmail!,
-      workerFirstName: collectedData.workerFirstName!,
-      workerLastName: collectedData.workerLastName!,
-      checkKey: collectedData.suggestedCheckKey!,
-      requestReason: collectedData.additionalNotes || 'Manager-initiated via Michelle dialogue',
-      urgency: collectedData.urgencyLevel || 'normal',
-      managerEmail: context.managerId, // Using managerId as email for now
-      dialogueContext: {
-        conversationId: context.conversationId,
-        stage: context.stage,
-        timestamp: new Date()
+    try {
+      // First create worker if needed
+      let worker = await storage.getWorkerByEmail(collectedData.workerEmail!);
+      if (!worker) {
+        worker = await storage.createWorker({
+          firstName: collectedData.workerFirstName!,
+          lastName: collectedData.workerLastName!,
+          email: collectedData.workerEmail!,
+          roleApplied: collectedData.roleApplied || 'General Position',
+          companyName: collectedData.companyName
+        });
       }
-    };
 
-    return requestData;
+      // Create ticket
+      const ticket = await storage.createTicket({
+        workerId: worker.id,
+        caseType: "manager_initiated",
+        status: "NEW",
+        priority: this.mapUrgencyToPriority(collectedData.urgencyLevel || 'medium')
+      });
+
+      // Get the check configuration
+      const check = await storage.getCheckByKey(collectedData.suggestedCheckKey!);
+      if (!check) {
+        throw new Error(`Check configuration not found: ${collectedData.suggestedCheckKey}`);
+      }
+
+      // Create check request
+      const checkRequest = await storage.createCheckRequest({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        checkId: check.id,
+        requestedBy: context.managerId, // Manager email
+        requestReason: collectedData.additionalNotes || 'Manager-initiated via Michelle dialogue',
+        urgency: collectedData.urgencyLevel || 'medium',
+        dialogueContext: {
+          conversationId: context.conversationId,
+          stage: context.stage,
+          timestamp: new Date()
+        }
+      });
+
+      // Automatically generate email draft
+      let emailDraftId: string | null = null;
+      try {
+        emailDraftId = await emailDraftingService.createEmailDraft({
+          ticketId: ticket.id,
+          workerId: worker.id,
+          checkId: check.id,
+          managerEmail: context.managerId,
+          urgency: collectedData.urgencyLevel || 'medium',
+          customMessage: collectedData.additionalNotes,
+          companyInstructions: collectedData.companyName ? 
+            `This health check is required for your role at ${collectedData.companyName}.` : 
+            undefined
+        });
+
+        console.log('Email draft generated successfully:', emailDraftId);
+      } catch (emailError) {
+        console.error('Failed to generate email draft:', emailError);
+        // Don't fail the whole request if email draft fails
+      }
+
+      return {
+        success: true,
+        checkRequest,
+        ticket,
+        worker,
+        check,
+        emailDraftId,
+        message: emailDraftId ? 
+          'Health check request created successfully with email draft ready for review' :
+          'Health check request created successfully (email draft generation failed - please create manually)'
+      };
+
+    } catch (error) {
+      console.error('Failed to create check request from dialogue:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Map urgency level to ticket priority
+   */
+  private mapUrgencyToPriority(urgency: string): string {
+    const priorityMap: Record<string, string> = {
+      'low': 'Low',
+      'medium': 'Medium', 
+      'high': 'High',
+      'urgent': 'Urgent'
+    };
+    
+    return priorityMap[urgency] || 'Medium';
   }
 
   /**
