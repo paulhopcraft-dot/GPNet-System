@@ -18,6 +18,7 @@ import FitForWorkAssessment from "@/pages/FitForWorkAssessment";
 import RtwCompliance from "@/pages/RtwCompliance";
 import NatalieDashboard from "@/pages/natalie-dashboard";
 import ManagerDashboard from "@/pages/ManagerDashboard";
+import CheckManagement from "@/pages/CheckManagement";
 import NotFound from "@/pages/not-found";
 import { MichelleWidget } from "@/components/MichelleWidget";
 
@@ -55,6 +56,12 @@ function Router() {
             managerEmail="manager@company.com" 
             managerName="Demo Manager" 
           />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/checks">
+        <ProtectedRoute requireAdmin>
+          <CheckManagement />
         </ProtectedRoute>
       </Route>
       
