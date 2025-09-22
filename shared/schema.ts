@@ -1086,6 +1086,63 @@ export const exitCheckFormSchema = z.object({
 
 export type ExitCheckFormData = z.infer<typeof exitCheckFormSchema>;
 
+// General Health and Well-being Form Schema
+export const generalHealthFormSchema = z.object({
+  // Personal Information
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Valid email is required"),
+  phone: z.string().min(1, "Phone number is required"),
+  dateOfBirth: z.string().optional(),
+  employeeId: z.string().optional(),
+  department: z.string().optional(),
+  position: z.string().optional(),
+  
+  // General Health Status
+  overallHealthRating: z.enum(["excellent", "very_good", "good", "fair", "poor"]),
+  currentHealthConditions: z.string().optional(),
+  medications: z.string().optional(),
+  allergies: z.string().optional(),
+  
+  // Physical Health
+  physicalFitness: z.number().min(1).max(5).optional(),
+  energyLevel: z.number().min(1).max(10).optional(),
+  sleepQuality: z.number().min(1).max(5).optional(),
+  exerciseFrequency: z.enum(["daily", "weekly", "monthly", "rarely", "never"]).optional(),
+  
+  // Mental and Emotional Well-being
+  stressLevel: z.number().min(1).max(10).optional(),
+  moodStability: z.number().min(1).max(5).optional(),
+  workLifeBalance: z.number().min(1).max(5).optional(),
+  socialSupport: z.enum(["excellent", "good", "adequate", "poor", "none"]).optional(),
+  
+  // Lifestyle Factors
+  smokingStatus: z.enum(["never", "former", "current"]).optional(),
+  alcoholConsumption: z.enum(["none", "occasional", "moderate", "frequent"]).optional(),
+  dietQuality: z.number().min(1).max(5).optional(),
+  
+  // Work-Related Health
+  workplaceStressors: z.array(z.string()).optional(),
+  physicalDemands: z.number().min(1).max(5).optional(),
+  workEnvironmentSatisfaction: z.number().min(1).max(5).optional(),
+  occupationalHealthConcerns: z.string().optional(),
+  
+  // Support and Resources
+  healthGoals: z.string().optional(),
+  supportNeeded: z.array(z.string()).optional(),
+  interestedPrograms: z.array(z.string()).optional(),
+  
+  // Additional Information
+  additionalComments: z.string().optional(),
+  
+  // Consent & Declaration
+  consentToShare: z.boolean().refine(val => val === true, "Consent is required"),
+  signature: z.string().min(1, "Signature is required"),
+  signatureDate: z.string().min(1, "Signature date is required"),
+});
+
+export type GeneralHealthFormData = z.infer<typeof generalHealthFormSchema>;
+
 // Prevention Check Form Schema
 export const preventionCheckFormSchema = z.object({
   // Personal Information

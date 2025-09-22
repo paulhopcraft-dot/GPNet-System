@@ -330,6 +330,120 @@ export function normalizeExitCheckData(rawPayload: JotformRawPayload): any {
 }
 
 /**
+ * Map Jotform enum values to schema canonical values
+ */
+function mapHealthRating(value: any): string {
+  if (!value) return "good"; // default
+  const str = String(value).toLowerCase();
+  if (str.includes("excellent")) return "excellent";
+  if (str.includes("very") && str.includes("good")) return "very_good";
+  if (str.includes("good")) return "good";
+  if (str.includes("fair")) return "fair";
+  if (str.includes("poor")) return "poor";
+  return "good";
+}
+
+function mapExerciseFrequency(value: any): string {
+  if (!value) return "weekly"; // default
+  const str = String(value).toLowerCase();
+  if (str.includes("daily")) return "daily";
+  if (str.includes("weekly")) return "weekly";
+  if (str.includes("monthly")) return "monthly";
+  if (str.includes("rarely")) return "rarely";
+  if (str.includes("never")) return "never";
+  return "weekly";
+}
+
+function mapSocialSupport(value: any): string {
+  if (!value) return "adequate"; // default
+  const str = String(value).toLowerCase();
+  if (str.includes("excellent")) return "excellent";
+  if (str.includes("good")) return "good";
+  if (str.includes("adequate")) return "adequate";
+  if (str.includes("poor")) return "poor";
+  if (str.includes("none")) return "none";
+  return "adequate";
+}
+
+function mapSmokingStatus(value: any): string {
+  if (!value) return "never"; // default
+  const str = String(value).toLowerCase();
+  if (str.includes("never")) return "never";
+  if (str.includes("former")) return "former";
+  if (str.includes("current")) return "current";
+  return "never";
+}
+
+function mapAlcoholConsumption(value: any): string {
+  if (!value) return "none"; // default
+  const str = String(value).toLowerCase();
+  if (str.includes("none")) return "none";
+  if (str.includes("occasional")) return "occasional";
+  if (str.includes("moderate")) return "moderate";
+  if (str.includes("frequent")) return "frequent";
+  return "none";
+}
+
+/**
+ * General Health and Well-being Form Normalizer
+ */
+export function normalizeGeneralHealthData(rawPayload: JotformRawPayload): any {
+  return {
+    // Personal Information
+    firstName: normalizeString(rawPayload.firstName || rawPayload.first_name),
+    lastName: normalizeString(rawPayload.lastName || rawPayload.last_name),
+    email: normalizeString(rawPayload.email),
+    phone: normalizeString(rawPayload.phone),
+    dateOfBirth: normalizeDate(rawPayload.dateOfBirth || rawPayload.date_of_birth),
+    employeeId: normalizeString(rawPayload.employeeId || rawPayload.employee_id),
+    department: normalizeString(rawPayload.department),
+    position: normalizeString(rawPayload.position),
+    
+    // General Health Status
+    overallHealthRating: mapHealthRating(rawPayload.overallHealthRating || rawPayload.overall_health_rating),
+    currentHealthConditions: normalizeString(rawPayload.currentHealthConditions || rawPayload.current_health_conditions),
+    medications: normalizeString(rawPayload.medications),
+    allergies: normalizeString(rawPayload.allergies),
+    
+    // Physical Health
+    physicalFitness: normalizeInteger(rawPayload.physicalFitness || rawPayload.physical_fitness),
+    energyLevel: normalizeInteger(rawPayload.energyLevel || rawPayload.energy_level),
+    sleepQuality: normalizeInteger(rawPayload.sleepQuality || rawPayload.sleep_quality),
+    exerciseFrequency: mapExerciseFrequency(rawPayload.exerciseFrequency || rawPayload.exercise_frequency),
+    
+    // Mental and Emotional Well-being
+    stressLevel: normalizeInteger(rawPayload.stressLevel || rawPayload.stress_level),
+    moodStability: normalizeInteger(rawPayload.moodStability || rawPayload.mood_stability),
+    workLifeBalance: normalizeInteger(rawPayload.workLifeBalance || rawPayload.work_life_balance),
+    socialSupport: mapSocialSupport(rawPayload.socialSupport || rawPayload.social_support),
+    
+    // Lifestyle Factors
+    smokingStatus: mapSmokingStatus(rawPayload.smokingStatus || rawPayload.smoking_status),
+    alcoholConsumption: mapAlcoholConsumption(rawPayload.alcoholConsumption || rawPayload.alcohol_consumption),
+    dietQuality: normalizeInteger(rawPayload.dietQuality || rawPayload.diet_quality),
+    
+    // Work-Related Health
+    workplaceStressors: normalizeArray(rawPayload.workplaceStressors || rawPayload.workplace_stressors),
+    physicalDemands: normalizeInteger(rawPayload.physicalDemands || rawPayload.physical_demands),
+    workEnvironmentSatisfaction: normalizeInteger(rawPayload.workEnvironmentSatisfaction || rawPayload.work_environment_satisfaction),
+    occupationalHealthConcerns: normalizeString(rawPayload.occupationalHealthConcerns || rawPayload.occupational_health_concerns),
+    
+    // Support and Resources
+    healthGoals: normalizeString(rawPayload.healthGoals || rawPayload.health_goals),
+    supportNeeded: normalizeArray(rawPayload.supportNeeded || rawPayload.support_needed),
+    interestedPrograms: normalizeArray(rawPayload.interestedPrograms || rawPayload.interested_programs),
+    
+    // Additional Information
+    additionalComments: normalizeString(rawPayload.additionalComments || rawPayload.additional_comments),
+    
+    // Consent & Declaration
+    consentToShare: normalizeBoolean(rawPayload.consentToShare || rawPayload.consent_to_share),
+    signature: normalizeString(rawPayload.signature),
+    signatureDate: normalizeDate(rawPayload.signatureDate || rawPayload.signature_date),
+  };
+}
+
+/**
  * Normalizes Prevention Check form data from Jotform
  */
 export function normalizePreventionCheckData(rawPayload: JotformRawPayload): any {
