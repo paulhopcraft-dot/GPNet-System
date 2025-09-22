@@ -19,6 +19,7 @@ import { requireAuth } from "./authRoutes";
 import { requireAdmin } from "./adminRoutes";
 import { createEmailProcessingService, type EmailProcessingResult } from "./emailProcessingService";
 import { type RawEmailData } from "./emailParsingService";
+import { emailDraftRoutes } from "./emailDraftRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -723,6 +724,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Michelle dialogue routes
   const { michelleRoutes } = await import('./michelleRoutes.js');
   app.use('/api/michelle', michelleRoutes);
+  
+  // Email drafting routes
+  app.use('/api/email-drafts', emailDraftRoutes);
   
   // Create email processing service instance
   const emailProcessingService = createEmailProcessingService(storage);

@@ -299,6 +299,48 @@ If you have received this email in error, please delete it immediately and notif
   }
 
   /**
+   * Send a generic email
+   */
+  async sendEmail(options: {
+    to: string;
+    subject: string;
+    html?: string;
+    text?: string;
+    from?: string;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!this.isAvailable()) {
+      return {
+        success: false,
+        error: 'Email service is not available'
+      };
+    }
+
+    try {
+      const result = await this.transporter!.sendMail({
+        from: options.from || `"${this.fromName}" <${this.fromAddress}>`,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text || (options.html ? options.html.replace(/<[^>]*>/g, '') : undefined)
+      });
+
+      console.log(`Email sent successfully: ${result.messageId}`);
+      
+      return {
+        success: true,
+        messageId: result.messageId
+      };
+      
+    } catch (error) {
+      console.error('Email sending failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown email error'
+      };
+    }
+  }
+
+  /**
    * Send test email to verify configuration
    */
   async sendTestEmail(recipientEmail: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
