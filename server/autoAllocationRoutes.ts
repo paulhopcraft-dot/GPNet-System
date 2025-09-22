@@ -360,10 +360,10 @@ router.patch('/config', requireAdmin, async (req, res) => {
     const configUpdate = z.object({
       maxWorkloadPerCoordinator: z.number().min(1).max(100).optional(),
       priorityWeights: z.object({
-        urgent: z.number().min(0).max(200).optional(),
-        high: z.number().min(0).max(200).optional(),
-        medium: z.number().min(0).max(200).optional(),
-        low: z.number().min(0).max(200).optional()
+        urgent: z.number().min(0).max(200),
+        high: z.number().min(0).max(200),
+        medium: z.number().min(0).max(200),
+        low: z.number().min(0).max(200)
       }).optional(),
       specializationBonus: z.number().min(0).max(100).optional(),
       companyExperienceBonus: z.number().min(0).max(100).optional(),

@@ -97,7 +97,7 @@ router.post('/organizations/:id/archive', requireAdmin, async (req: Request, res
       actorId: req.session.user!.id,
       actorType: 'admin',
       actorEmail: req.session.user!.email,
-      organizationId: id,
+      companyId: id,
       targetType: 'organization',
       targetId: id,
       action: `Admin archived organization: ${organization.name}`,
@@ -157,7 +157,7 @@ router.post('/client-users/:id/suspend', requireAdmin, async (req: Request, res:
       actorId: req.session.user!.id,
       actorType: 'admin',
       actorEmail: req.session.user!.email,
-      organizationId: user.organizationId,
+      companyId: user.organizationId,
       targetType: 'user',
       targetId: id,
       action: `Admin ${newStatus === 'active' ? 'activated' : 'suspended'} user: ${user.email}`,
@@ -298,7 +298,7 @@ router.get('/audit-logs', requireAdmin, async (req: Request, res: Response) => {
     // Enhance with organization names
     const enhancedEvents = await Promise.all(
       auditEvents.map(async (event) => {
-        const org = event.organizationId ? await storage.getOrganization(event.organizationId) : null;
+        const org = event.companyId ? await storage.getOrganization(event.companyId) : null;
         return {
           ...event,
           organizationName: org?.name || null
@@ -414,7 +414,7 @@ router.get('/unmatched-emails', requireAdmin, async (req: Request, res: Response
   try {
     const unmatchedEmails = await db.select({
       id: externalEmails.id,
-      organizationId: externalEmails.organizationId,
+      organizationId: externalEmails.companyId,
       originalSender: externalEmails.originalSender,
       originalSenderName: externalEmails.originalSenderName,
       originalSubject: externalEmails.originalSubject,
