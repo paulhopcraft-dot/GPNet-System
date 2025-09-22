@@ -4,8 +4,10 @@ import {
   legislationDocuments, rtwWorkflowSteps, complianceAudit, workerParticipationEvents,
   letterTemplates, generatedLetters, freshdeskTickets, freshdeskSyncLogs,
   organizations, clientUsers, adminUsers, auditEvents, archiveIndex,
+  externalEmails, emailAttachments, caseProviders, aiRecommendations, conversations, conversationMessages,
   specialists, escalations, specialistAssignments,
   medicalDocuments, documentProcessingJobs, documentProcessingLogs,
+  checks, companyAliases, emailDrafts, checkRequests,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
   type Injury, type Stakeholder, type RtwPlan, type RiskHistory,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
@@ -13,6 +15,7 @@ import {
   type Organization, type ClientUser, type AdminUser, type AuditEvent, type ArchiveIndex,
   type Specialist, type Escalation, type SpecialistAssignment,
   type MedicalDocument, type DocumentProcessingJob, type DocumentProcessingLog,
+  type Check, type CompanyAlias, type EmailDraft, type CheckRequest,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
   type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
@@ -20,10 +23,11 @@ import {
   type InsertFreshdeskTicket, type InsertFreshdeskSyncLog,
   type InsertOrganization, type InsertClientUser, type InsertAdminUser, type InsertAuditEvent, type InsertArchiveIndex,
   type InsertSpecialist, type InsertEscalation, type InsertSpecialistAssignment,
-  type InsertMedicalDocument, type InsertDocumentProcessingJob, type InsertDocumentProcessingLog
+  type InsertMedicalDocument, type InsertDocumentProcessingJob, type InsertDocumentProcessingLog,
+  type InsertCheck, type InsertCompanyAlias, type InsertEmailDraft, type InsertCheckRequest
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, asc } from "drizzle-orm";
 
 // Storage interface for GPNet operations
 export interface IStorage {
@@ -1440,7 +1444,7 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
     
     if (filters) {
-      if (filters.organizationId) conditions.push(eq(auditEvents.organizationId, filters.organizationId));
+      if (filters.organizationId) conditions.push(eq(auditEvents.companyId, filters.organizationId));
       if (filters.actorId) conditions.push(eq(auditEvents.actorId, filters.actorId));
       if (filters.eventType) conditions.push(eq(auditEvents.eventType, filters.eventType));
       // Add date filtering if needed
@@ -1467,7 +1471,7 @@ export class DatabaseStorage implements IStorage {
   async getArchivedEntities(entityType?: string, organizationId?: string): Promise<ArchiveIndex[]> {
     const conditions = [];
     if (entityType) conditions.push(eq(archiveIndex.entityType, entityType));
-    if (organizationId) conditions.push(eq(archiveIndex.organizationId, organizationId));
+    if (organizationId) conditions.push(eq(archiveIndex.companyId, organizationId));
     
     let query = db.select().from(archiveIndex);
     
@@ -2127,6 +2131,172 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tickets.id, caseId))
       .returning();
     return ticket;
+  }
+
+  // ===============================================
+  // MANAGER-INITIATED CHECK SYSTEM STORAGE METHODS
+  // ===============================================
+
+  // Check management CRUD
+  async createCheck(data: InsertCheck): Promise<Check> {
+    const [check] = await db
+      .insert(checks)
+      .values(data)
+      .returning();
+    return check;
+  }
+
+  async getChecks(): Promise<Check[]> {
+    return await db
+      .select()
+      .from(checks)
+      .orderBy(asc(checks.sortOrder), asc(checks.displayName));
+  }
+
+  async getActiveChecks(): Promise<Check[]> {
+    return await db
+      .select()
+      .from(checks)
+      .where(eq(checks.active, true))
+      .orderBy(asc(checks.sortOrder), asc(checks.displayName));
+  }
+
+  async getCheckById(id: string): Promise<Check | undefined> {
+    const [check] = await db
+      .select()
+      .from(checks)
+      .where(eq(checks.id, id));
+    return check || undefined;
+  }
+
+  async getCheckByKey(checkKey: string): Promise<Check | undefined> {
+    const [check] = await db
+      .select()
+      .from(checks)
+      .where(eq(checks.checkKey, checkKey));
+    return check || undefined;
+  }
+
+  async updateCheck(id: string, data: Partial<InsertCheck>): Promise<Check> {
+    const [check] = await db
+      .update(checks)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(checks.id, id))
+      .returning();
+    return check;
+  }
+
+  async deleteCheck(id: string): Promise<void> {
+    await db
+      .delete(checks)
+      .where(eq(checks.id, id));
+  }
+
+  // Company aliases management
+  async createCompanyAlias(data: InsertCompanyAlias): Promise<CompanyAlias> {
+    const [alias] = await db
+      .insert(companyAliases)
+      .values(data)
+      .returning();
+    return alias;
+  }
+
+  async getCompanyAliases(companyId: string): Promise<CompanyAlias[]> {
+    return await db
+      .select()
+      .from(companyAliases)
+      .where(eq(companyAliases.companyId, companyId))
+      .orderBy(desc(companyAliases.isPreferred), asc(companyAliases.aliasName));
+  }
+
+  async findCompanyByAlias(normalizedName: string): Promise<CompanyAlias[]> {
+    return await db
+      .select()
+      .from(companyAliases)
+      .where(eq(companyAliases.normalizedName, normalizedName))
+      .orderBy(desc(companyAliases.confidence));
+  }
+
+  async deleteCompanyAlias(id: string): Promise<void> {
+    await db
+      .delete(companyAliases)
+      .where(eq(companyAliases.id, id));
+  }
+
+  // Email drafts management
+  async createEmailDraft(data: InsertEmailDraft): Promise<EmailDraft> {
+    const [draft] = await db
+      .insert(emailDrafts)
+      .values(data)
+      .returning();
+    return draft;
+  }
+
+  async getEmailDraft(id: string): Promise<EmailDraft | undefined> {
+    const [draft] = await db
+      .select()
+      .from(emailDrafts)
+      .where(eq(emailDrafts.id, id));
+    return draft || undefined;
+  }
+
+  async updateEmailDraft(id: string, data: Partial<InsertEmailDraft>): Promise<EmailDraft> {
+    const [draft] = await db
+      .update(emailDrafts)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(emailDrafts.id, id))
+      .returning();
+    return draft;
+  }
+
+  async getEmailDraftsForManager(managerEmail: string): Promise<EmailDraft[]> {
+    return await db
+      .select()
+      .from(emailDrafts)
+      .where(eq(emailDrafts.managerEmail, managerEmail))
+      .orderBy(desc(emailDrafts.createdAt));
+  }
+
+  // Check requests management
+  async createCheckRequest(data: InsertCheckRequest): Promise<CheckRequest> {
+    const [request] = await db
+      .insert(checkRequests)
+      .values(data)
+      .returning();
+    return request;
+  }
+
+  async getCheckRequest(id: string): Promise<CheckRequest | undefined> {
+    const [request] = await db
+      .select()
+      .from(checkRequests)
+      .where(eq(checkRequests.id, id));
+    return request || undefined;
+  }
+
+  async updateCheckRequest(id: string, data: Partial<InsertCheckRequest>): Promise<CheckRequest> {
+    const [request] = await db
+      .update(checkRequests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(checkRequests.id, id))
+      .returning();
+    return request;
+  }
+
+  async getCheckRequestsForManager(managerId: string): Promise<CheckRequest[]> {
+    return await db
+      .select()
+      .from(checkRequests)
+      .where(eq(checkRequests.requestedBy, managerId))
+      .orderBy(desc(checkRequests.createdAt));
+  }
+
+  async getPendingCheckRequests(): Promise<CheckRequest[]> {
+    return await db
+      .select()
+      .from(checkRequests)
+      .where(sql`${checkRequests.status} IN ('initiated', 'draft_sent')`)
+      .orderBy(desc(checkRequests.createdAt));
   }
 }
 

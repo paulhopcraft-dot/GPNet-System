@@ -716,6 +716,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { medicalDocumentRoutes } = await import('./medicalDocumentRoutes.js');
   app.use('/api/medical-documents', medicalDocumentRoutes);
   
+  // Check management routes
+  const { checkManagementRoutes } = await import('./checkManagementRoutes.js');
+  app.use('/api/check-management', checkManagementRoutes);
+  
   // Create email processing service instance
   const emailProcessingService = createEmailProcessingService(storage);
   
