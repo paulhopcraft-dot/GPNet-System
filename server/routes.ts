@@ -4,6 +4,15 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { storage } from "./storage";
 import authRoutes from "./authRoutes";
+import { webhookSecurityMiddleware } from "./webhookSecurity";
+import { 
+  normalizePreEmploymentData, 
+  normalizeInjuryData, 
+  normalizeMentalHealthData, 
+  normalizeExitCheckData, 
+  normalizePreventionCheckData,
+  type JotformRawPayload 
+} from "./jotformPayloadNormalizer";
 import { 
   preEmploymentFormSchema, type PreEmploymentFormData, 
   injuryFormSchema, type InjuryFormData,
@@ -743,12 +752,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const emailProcessingService = createEmailProcessingService(storage);
   
   // Jotform webhook endpoint for receiving form submissions
-  app.post("/api/webhook/jotform", async (req, res) => {
+  app.post("/api/webhook/jotform", webhookSecurityMiddleware, async (req, res) => {
     try {
       console.log("Received Jotform webhook - processing pre-employment form");
       
+      // Normalize Jotform payload before validation
+      const normalizedData = normalizePreEmploymentData(req.body as JotformRawPayload);
+      
       // Validate the form data
-      const validationResult = preEmploymentFormSchema.safeParse(req.body);
+      const validationResult = preEmploymentFormSchema.safeParse(normalizedData);
       if (!validationResult.success) {
         const errorMessage = fromZodError(validationResult.error).toString();
         return res.status(400).json({ error: "Invalid form data", details: errorMessage });
@@ -913,12 +925,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Injury webhook endpoint for receiving injury form submissions
-  app.post("/api/webhook/injury", async (req, res) => {
+  app.post("/api/webhook/injury", webhookSecurityMiddleware, async (req, res) => {
     try {
       console.log("Received injury webhook - processing injury form");
       
+      // Normalize Jotform payload before validation
+      const normalizedData = normalizeInjuryData(req.body as JotformRawPayload);
+      
       // Validate the injury form data
-      const validationResult = injuryFormSchema.safeParse(req.body);
+      const validationResult = injuryFormSchema.safeParse(normalizedData);
       if (!validationResult.success) {
         const errorMessage = fromZodError(validationResult.error).toString();
         return res.status(400).json({ error: "Invalid injury form data", details: errorMessage });
@@ -1129,12 +1144,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Mental Health Check webhook endpoint
-  app.post("/api/webhook/mental-health", async (req, res) => {
+  app.post("/api/webhook/mental-health", webhookSecurityMiddleware, async (req, res) => {
     try {
       console.log("Received mental health webhook - processing mental health form");
       
+      // Normalize Jotform payload before validation
+      const normalizedData = normalizeMentalHealthData(req.body as JotformRawPayload);
+      
       // Validate the mental health form data
-      const validationResult = mentalHealthFormSchema.safeParse(req.body);
+      const validationResult = mentalHealthFormSchema.safeParse(normalizedData);
       if (!validationResult.success) {
         const errorMessage = fromZodError(validationResult.error).toString();
         return res.status(400).json({ error: "Invalid mental health form data", details: errorMessage });
@@ -1191,12 +1209,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Exit Check webhook endpoint
-  app.post("/api/webhook/exit-check", async (req, res) => {
+  app.post("/api/webhook/exit-check", webhookSecurityMiddleware, async (req, res) => {
     try {
       console.log("Received exit check webhook - processing exit check form");
       
+      // Normalize Jotform payload before validation
+      const normalizedData = normalizeExitCheckData(req.body as JotformRawPayload);
+      
       // Validate the exit check form data
-      const validationResult = exitCheckFormSchema.safeParse(req.body);
+      const validationResult = exitCheckFormSchema.safeParse(normalizedData);
       if (!validationResult.success) {
         const errorMessage = fromZodError(validationResult.error).toString();
         return res.status(400).json({ error: "Invalid exit check form data", details: errorMessage });
@@ -1253,12 +1274,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Prevention Check webhook endpoint
-  app.post("/api/webhook/prevention-check", async (req, res) => {
+  app.post("/api/webhook/prevention-check", webhookSecurityMiddleware, async (req, res) => {
     try {
       console.log("Received prevention check webhook - processing prevention check form");
       
+      // Normalize Jotform payload before validation
+      const normalizedData = normalizePreventionCheckData(req.body as JotformRawPayload);
+      
       // Validate the prevention check form data
-      const validationResult = preventionCheckFormSchema.safeParse(req.body);
+      const validationResult = preventionCheckFormSchema.safeParse(normalizedData);
       if (!validationResult.success) {
         const errorMessage = fromZodError(validationResult.error).toString();
         return res.status(400).json({ error: "Invalid prevention check form data", details: errorMessage });

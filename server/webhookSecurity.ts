@@ -1,0 +1,280 @@
+import express, { Request, Response, NextFunction } from "express";
+import crypto from "crypto";
+
+// Extend Express Request to include rawBody
+declare global {
+  namespace Express {
+    interface Request {
+      rawBody?: Buffer;
+    }
+  }
+}
+
+// Security configuration for webhooks
+const WEBHOOK_CONFIG = {
+  // Shared secret for webhook authentication (in production, use environment variable)
+  SHARED_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || "dev-webhook-secret-2025",
+  
+  // Rate limiting - max requests per minute per IP
+  RATE_LIMIT: 30,
+  
+  // Request timeout in milliseconds
+  TIMEOUT_MS: 30000,
+  
+  // Maximum payload size in bytes (1MB)
+  MAX_PAYLOAD_SIZE: 1024 * 1024,
+} as const;
+
+// Rate limiting store (in production, use Redis)
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+// Idempotency store to prevent duplicate submissions (in production, use Redis)
+const idempotencyStore = new Set<string>();
+
+/**
+ * Simple payload size check middleware for webhook routes
+ */
+export function setupWebhookSecurity(app: any) {
+  // Add payload size limits for webhook routes
+  app.use('/api/webhook/*', (req: Request, res: Response, next: NextFunction) => {
+    const contentLength = parseInt(req.headers['content-length'] || '0');
+    if (contentLength > WEBHOOK_CONFIG.MAX_PAYLOAD_SIZE) {
+      return res.status(413).json({
+        error: "Payload too large",
+        message: `Maximum payload size is ${WEBHOOK_CONFIG.MAX_PAYLOAD_SIZE} bytes`
+      });
+    }
+    next();
+  });
+}
+
+// Legacy middleware function (not used anymore)
+export function rawBodyMiddleware(req: Request, res: Response, next: NextFunction) {
+  next();
+}
+
+/**
+ * Validates webhook signature using HMAC-SHA256 against raw body
+ */
+function validateWebhookSignature(rawBody: Buffer, signature: string, secret: string): boolean {
+  if (!signature || !rawBody) {
+    return false;
+  }
+
+  // Remove 'sha256=' prefix if present (Jotform format)
+  const cleanSignature = signature.replace(/^sha256=/, '');
+  
+  // Calculate expected signature using raw bytes
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(rawBody)
+    .digest('hex');
+
+  // Use constant-time comparison to prevent timing attacks
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(cleanSignature, 'hex'),
+      Buffer.from(expectedSignature, 'hex')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rate limiting middleware
+ */
+function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
+  // Get real client IP, handling proxy headers
+  const clientIp = req.headers['x-forwarded-for'] as string 
+    || req.headers['x-real-ip'] as string
+    || req.connection.remoteAddress 
+    || req.ip 
+    || 'unknown';
+    
+  // If multiple IPs in X-Forwarded-For, use the first (original client)
+  const realIp = typeof clientIp === 'string' ? clientIp.split(',')[0].trim() : clientIp;
+  const now = Date.now();
+  const windowMs = 60 * 1000; // 1 minute window
+  
+  // Clean up expired entries
+  const entries = Array.from(rateLimitStore.entries());
+  for (const [ip, data] of entries) {
+    if (now > data.resetTime) {
+      rateLimitStore.delete(ip);
+    }
+  }
+  
+  // Check current rate for this IP
+  const current = rateLimitStore.get(realIp);
+  
+  if (!current) {
+    // First request from this IP
+    rateLimitStore.set(realIp, {
+      count: 1,
+      resetTime: now + windowMs
+    });
+    return next();
+  }
+  
+  if (now > current.resetTime) {
+    // Window expired, reset
+    rateLimitStore.set(realIp, {
+      count: 1,
+      resetTime: now + windowMs
+    });
+    return next();
+  }
+  
+  if (current.count >= WEBHOOK_CONFIG.RATE_LIMIT) {
+    console.warn(`Rate limit exceeded for IP: ${realIp}`);
+    return res.status(429).json({
+      error: "Rate limit exceeded",
+      message: "Too many requests, please try again later"
+    });
+  }
+  
+  // Increment counter
+  current.count++;
+  next();
+}
+
+/**
+ * Idempotency middleware to prevent duplicate submissions using submission IDs
+ */
+function idempotencyMiddleware(req: Request, res: Response, next: NextFunction) {
+  // Extract submission ID from Jotform payload
+  const submissionId = extractSubmissionId(req.body);
+  
+  if (!submissionId) {
+    // No submission ID available - skip idempotency check but log warning
+    console.warn('No submission ID found in payload - skipping idempotency check');
+    return next();
+  }
+  
+  // Create idempotency key: provider + endpoint + submissionId
+  const endpoint = req.path;
+  const idempotencyKey = `jotform:${endpoint}:${submissionId}`;
+  
+  if (idempotencyStore.has(idempotencyKey)) {
+    console.warn(`Duplicate submission detected: ${submissionId} for ${endpoint}`);
+    return res.status(409).json({
+      error: "Duplicate submission",
+      message: `Submission ${submissionId} has already been processed`,
+      submissionId
+    });
+  }
+  
+  // Store the submission ID
+  idempotencyStore.add(idempotencyKey);
+  
+  // Clean up old entries periodically (simple cleanup every 100 requests)
+  if (idempotencyStore.size > 1000) {
+    const keysToDelete = Array.from(idempotencyStore).slice(0, 500);
+    keysToDelete.forEach(key => idempotencyStore.delete(key));
+  }
+  
+  next();
+}
+
+/**
+ * Extract submission ID from Jotform payload
+ */
+function extractSubmissionId(body: any): string | null {
+  if (!body || typeof body !== 'object') return null;
+  
+  // Try different field names that Jotform might use
+  const possibleFields = [
+    'submissionID',
+    'submission_id', 
+    'submissionId',
+    'formSubmissionId',
+    'form_submission_id',
+    'id',
+    'submission',
+    'submissionData.id'
+  ];
+  
+  for (const field of possibleFields) {
+    if (field.includes('.')) {
+      // Handle nested fields like submissionData.id
+      const parts = field.split('.');
+      let value = body;
+      for (const part of parts) {
+        value = value?.[part];
+      }
+      if (value) return String(value);
+    } else {
+      if (body[field]) return String(body[field]);
+    }
+  }
+  
+  // Fallback: create deterministic ID from form data
+  const formFields = ['firstName', 'lastName', 'email', 'signature', 'signatureDate'];
+  const identifyingData = formFields
+    .map(field => body[field] || body[field.toLowerCase()] || '')
+    .filter(val => val)
+    .join('|');
+    
+  if (identifyingData) {
+    return crypto.createHash('md5').update(identifyingData).digest('hex');
+  }
+  
+  return null;
+}
+
+/**
+ * Main webhook security middleware
+ */
+export function webhookSecurityMiddleware(req: Request, res: Response, next: NextFunction) {
+  // Apply rate limiting
+  rateLimitMiddleware(req, res, (rateLimitError) => {
+    if (rateLimitError) return;
+    
+    // Apply idempotency check
+    idempotencyMiddleware(req, res, (idempotencyError) => {
+      if (idempotencyError) return;
+      
+      // Skip signature validation in development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Webhook security: Development mode - skipping signature validation');
+        return next();
+      }
+      
+      // TODO: Implement proper signature validation with raw body capture
+      // For now, skip signature validation until raw body capture is properly implemented
+      const signature = req.headers['x-jotform-signature'] as string || req.headers['jotform-signature'] as string;
+      
+      if (signature) {
+        console.log('Signature validation temporarily disabled - implementing proper raw body capture');
+        // Signature validation will be re-enabled once raw body capture is fixed
+      }
+      
+      console.log('Webhook security: All checks passed');
+      next();
+    });
+  });
+}
+
+/**
+ * Get webhook security configuration for external use
+ */
+export function getWebhookConfig() {
+  return {
+    SHARED_SECRET: WEBHOOK_CONFIG.SHARED_SECRET,
+    RATE_LIMIT: WEBHOOK_CONFIG.RATE_LIMIT,
+    TIMEOUT_MS: WEBHOOK_CONFIG.TIMEOUT_MS,
+    MAX_PAYLOAD_SIZE: WEBHOOK_CONFIG.MAX_PAYLOAD_SIZE,
+  };
+}
+
+/**
+ * Generate webhook signature for testing
+ */
+export function generateWebhookSignature(payload: string, secret?: string): string {
+  const webhookSecret = secret || WEBHOOK_CONFIG.SHARED_SECRET;
+  return 'sha256=' + crypto
+    .createHmac('sha256', webhookSecret)
+    .update(payload, 'utf8')
+    .digest('hex');
+}

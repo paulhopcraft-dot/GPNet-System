@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { setupWebhookSecurity } from "./webhookSecurity";
 
 const app = express();
 
@@ -12,6 +13,9 @@ app.use('/api/medical-documents/freshdesk-webhook', express.raw({
     req.rawBody = buf.toString('utf8');
   }
 }));
+
+// Setup webhook security (payload size limits)
+setupWebhookSecurity(app);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
