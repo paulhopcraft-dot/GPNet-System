@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { setupWebhookSecurity } from "./webhookSecurity";
+import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecurity";
 
 const app = express();
 
@@ -26,6 +26,9 @@ app.use('/api/webhook/*', express.json({
 
 // Setup webhook security (payload size limits)
 setupWebhookSecurity(app);
+
+// Mount webhook security middleware on all webhook routes BEFORE other middleware
+app.use('/api/webhook', webhookSecurityMiddleware);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
