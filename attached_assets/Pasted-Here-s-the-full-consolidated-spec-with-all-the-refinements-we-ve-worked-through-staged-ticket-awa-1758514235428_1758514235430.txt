@@ -1,0 +1,155 @@
+Here’s the full consolidated spec with all the refinements we’ve worked through — staged, ticket-aware, with company name backup, and admin management for check links.
+
+⸻
+
+Change Request – Manager Check Allocation & Drafting Flow
+
+Title
+
+Manager-Initiated Check Allocation, Email Drafting, Ticket-Aware Links, and Check-Link Management (CRUD)
+
+⸻
+
+Stage 1 – Manager Dialogue & Check Creation
+	•	Manager logs into their GPNet dashboard.
+	•	Michelle (chat agent) is already displayed, greeting with “What can I do? How can I help?”
+	•	Manager indicates they want to create a worker check.
+	•	Michelle runs through structured prompts:
+	•	Who (worker details)
+	•	What (concern/injury/health check)
+	•	Why (reason for check)
+	•	Where (work site / context)
+	•	When (timing)
+	•	How (circumstances).
+	•	Michelle determines the correct check type (e.g., Injury / Prevention / New Starter / Exit).
+	•	GPNet locates or creates the Freshdesk ticket for the case.
+
+⸻
+
+Stage 2 – Drafting & Sending Email
+	•	Michelle generates a pre-formatted email in worker-friendly wording.
+	•	GPNet system retrieves the stored link for the chosen check type (Jotform).
+	•	GPNet attaches the ticket_id (and optional company_id/worker_email) to the URL as querystring parameters.
+	•	Example:
+
+https://form.jotform.com/1234567890?ticket_id=FD-12345&company_id=LMW001&worker_email=jane.smith%40client.com
+
+
+	•	The check link can carry a signed token & expiry for tamper protection.
+	•	Draft email is sent to the manager first for review.
+	•	Manager forwards the email directly to the worker.
+
+⸻
+
+Stage 3 – Worker Check Completion & Auto-Allocation
+	•	Worker clicks the link and completes the check.
+	•	Ticket ID is captured in a hidden field and sent back with the submission.
+	•	Worker is also required to type in the COMPANY NAME (visible field).
+	•	Resolution order:
+	1.	If ticket_id present and valid → attach directly to that Freshdesk ticket.
+	2.	Else if company_id present → attach to that company’s open case.
+	3.	Else run COMPANY NAME tolerant matching (normalize → alias → fuzzy).
+	4.	If still ambiguous → create Needs Allocation alert for GPNet (Natalie).
+	•	Conflict handling: If ticket_id resolves but COMPANY NAME does not match the expected company, flag as conflict → alert Natalie.
+
+⸻
+
+Stage 4 – Handling Ad-Hoc Emails
+	•	When external emails arrive (doctor, physio, insurer, etc.) not linked to a ticket:
+	•	Michelle attempts auto-match based on:
+	•	Worker email
+	•	Worker name
+	•	Case manager mention
+	•	Known treating provider
+	•	If auto-match confidence is low → email is flagged in Natalie’s admin view for manual allocation.
+
+⸻
+
+Stage 5 – Business Rules for Existing Cases
+	•	Once a worker has an active case:
+	•	All follow-up checks are automatically routed to Freshdesk and linked to that case.
+	•	Michelle autonomously manages these follow-ups.
+	•	Manager involvement is only required for escalations or special approvals.
+
+⸻
+
+Data Model – Check Links
+
+Table: checks
+	•	id (uuid)
+	•	check_key (string, unique)
+	•	display_name (string; e.g., “Injury Check”)
+	•	check_url (string; base Jotform URL)
+	•	active (boolean)
+	•	sort_order (int)
+	•	created_at / updated_at
+	•	created_by / updated_by
+
+Lookup logic:
+	•	Michelle uses check_key to select the correct active check.
+	•	System appends ticket_id and other parameters to the base URL when generating links.
+
+⸻
+
+Admin UI – Check Management (CRUD)
+	•	Checks page for GPNet staff only.
+	•	Features:
+	•	List all checks (name, key, URL, active status, updated timestamp).
+	•	Actions: Create, Edit, Deactivate/Activate, Delete (soft delete).
+	•	Manage aliases and order.
+	•	Admin can add new checks at any time; no code changes required.
+	•	Validation:
+	•	Unique check_key.
+	•	URL must be HTTPS and valid Jotform pattern.
+	•	Optional “Test input” tool to simulate how an entry would resolve.
+
+⸻
+
+Company Name Matching & Backup
+	•	COMPANY NAME is always a required field on the form.
+	•	Matching rules:
+	1.	Normalize and exact match (strip Pty Ltd/Ltd, punctuation, case, etc.).
+	2.	Alias table match.
+	3.	Fuzzy match ≥90% → auto-attach.
+	4.	80–89% → Needs Allocation alert with candidate list.
+	•	Audit: Store raw entry, normalized text, resolved company, confidence, and match rule.
+	•	Admin UI for Company & Aliases: add/edit/remove aliases; prevent duplicates.
+
+⸻
+
+Acceptance Criteria (Key)
+	1.	Manager can request a check; Michelle guides inputs and selects type.
+	2.	Draft email is generated with the correct stored link, extended with ticket_id.
+	3.	Worker submission with ticket_id attaches directly to Freshdesk ticket.
+	4.	COMPANY NAME is still required and validated as a backup.
+	5.	Mismatches (ticket vs company name) → flagged to Natalie.
+	6.	Aliases and fuzzy matching resolve most near-miss entries.
+	7.	Admin can CRUD checks and company aliases from UI.
+	8.	Audit log tracks who created/edited/deactivated/deleted checks and aliases.
+	9.	If link signature/expiry fails → worker sees a graceful error page with “Request new link.”
+	10.	Historical tickets retain links even if a check is later deactivated.
+
+⸻
+
+Build Phases
+	•	Phase 1 (MVP):
+	•	Stage 1 + Stage 2
+	•	CRUD for checks (admin UI)
+	•	Ticket ID injection into links
+	•	Draft email generation flow
+	•	Phase 2:
+	•	Stage 3–5 (auto-allocation, company matching, ad-hoc handling, business rules)
+	•	Conflict flagging
+	•	Alias management + fuzzy matching
+	•	“Needs Allocation” workflow for Natalie
+
+⸻
+
+✅ This spec makes it clear:
+	•	Jotform links are provided, stored, and managed in GPNet.
+	•	Each worker’s check URL carries the ticket_id for auto-allocation.
+	•	COMPANY NAME is always collected as a backup safety net.
+
+⸻
+
+Do you want me to also draft a sample admin UI mockup description (like a simple table view + form) so Roylett knows exactly what the CRUD screen should look like?
