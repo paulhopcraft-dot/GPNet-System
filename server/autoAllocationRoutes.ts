@@ -1,7 +1,8 @@
 import express from 'express';
 import { z } from 'zod';
 import { autoAllocationService, AllocationRequestSchema } from './autoAllocationService';
-import { requireAuth, requireAdmin } from './authRoutes';
+import { requireAuth } from './authRoutes';
+import { requireAdmin } from './adminRoutes';
 
 const router = express.Router();
 
