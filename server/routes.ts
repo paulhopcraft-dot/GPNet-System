@@ -9,6 +9,7 @@ import {
   injuryFormSchema, type InjuryFormData,
   mentalHealthFormSchema, type MentalHealthFormData,
   exitCheckFormSchema, type ExitCheckFormData,
+  preventionCheckFormSchema, type PreventionCheckFormData,
   rtwPlanSchema, insertStakeholderSchema,
   emailRiskAssessmentSchema, manualRiskUpdateSchema, stepUpdateSchema 
 } from "@shared/schema";
@@ -1247,6 +1248,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         error: "Internal server error", 
         message: "Failed to process exit check submission" 
+      });
+    }
+  });
+
+  // Prevention Check webhook endpoint
+  app.post("/api/webhook/prevention-check", async (req, res) => {
+    try {
+      console.log("Received prevention check webhook - processing prevention check form");
+      
+      // Validate the prevention check form data
+      const validationResult = preventionCheckFormSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid prevention check form data", details: errorMessage });
+      }
+
+      const formData = validationResult.data;
+
+      // Create worker record
+      const worker = await storage.createWorker({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        dateOfBirth: formData.dateOfBirth || "", 
+        phone: formData.phone,
+        email: formData.email,
+        roleApplied: formData.position || "Unknown Position",
+        site: formData.department || null,
+      });
+
+      // Create ticket for prevention check case
+      const ticket = await storage.createTicket({
+        workerId: worker.id,
+        caseType: "prevention_check",
+        status: "NEW",
+        priority: "medium",
+      });
+
+      // Create form submission record
+      await storage.createFormSubmission({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        rawData: formData,
+      });
+
+      // Update ticket status to AWAITING_REVIEW
+      await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
+
+      console.log(`Created prevention check case ${ticket.id}`);
+
+      res.json({
+        success: true,
+        ticketId: ticket.id,
+        caseType: "prevention_check",
+        status: "AWAITING_REVIEW",
+        message: "Prevention check processed successfully",
+      });
+
+    } catch (error) {
+      console.error("Error processing prevention check submission:", error);
+      res.status(500).json({ 
+        error: "Internal server error", 
+        message: "Failed to process prevention check submission" 
       });
     }
   });

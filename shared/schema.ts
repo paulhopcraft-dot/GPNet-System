@@ -1044,6 +1044,48 @@ export const exitCheckFormSchema = z.object({
 
 export type ExitCheckFormData = z.infer<typeof exitCheckFormSchema>;
 
+// Prevention Check Form Schema
+export const preventionCheckFormSchema = z.object({
+  // Personal Information
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Valid email is required"),
+  phone: z.string().min(1, "Phone number is required"),
+  dateOfBirth: z.string().optional(),
+  employeeId: z.string().optional(),
+  department: z.string().optional(),
+  position: z.string().optional(),
+  
+  // Risk Assessment
+  workEnvironmentRisks: z.array(z.string()).optional(),
+  physicalDemands: z.string().optional(),
+  ergonomicConcerns: z.string().optional(),
+  hazardExposure: z.array(z.string()).optional(),
+  
+  // Health and Fitness
+  currentHealthStatus: z.enum(["excellent", "good", "fair", "poor"]).optional(),
+  fitnessLevel: z.number().min(1).max(5).optional(),
+  previousInjuries: z.string().optional(),
+  currentMedications: z.string().optional(),
+  
+  // Prevention Measures
+  safetyTrainingCompleted: z.boolean().optional(),
+  ppeUsage: z.string().optional(),
+  workstationSetup: z.string().optional(),
+  exerciseRoutine: z.string().optional(),
+  
+  // Recommendations
+  recommendedPreventionMeasures: z.array(z.string()).optional(),
+  additionalComments: z.string().optional(),
+  
+  // Consent & Declaration
+  consentToShare: z.boolean().refine(val => val === true, "Consent is required"),
+  signature: z.string().min(1, "Signature is required"),
+  signatureDate: z.string().min(1, "Signature date is required"),
+});
+
+export type PreventionCheckFormData = z.infer<typeof preventionCheckFormSchema>;
+
 // RTW Plan validation schema
 export const rtwPlanSchema = z.object({
   ticketId: z.string().min(1, "Ticket ID is required"),
