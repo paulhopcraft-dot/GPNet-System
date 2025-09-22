@@ -9,9 +9,9 @@ const router = express.Router();
 // In-memory store for dialogue contexts (in production, use Redis or database)
 const activeDialogues = new Map<string, DialogueContext>();
 
-// Middleware to require authenticated user (can be manager or admin)
+// Middleware to require authenticated user (consistent with system standards)
 const requireAuth = (req: any, res: any, next: any) => {
-  if (!req.session?.user?.id) {
+  if (!req.session?.user?.id || !req.session?.isAuthenticated) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   next();

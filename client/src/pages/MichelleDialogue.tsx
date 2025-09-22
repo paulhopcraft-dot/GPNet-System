@@ -63,7 +63,10 @@ export default function MichelleDialogue() {
 
   // Start dialogue session
   const startSessionMutation = useMutation({
-    mutationFn: () => apiRequest('/api/michelle/start', 'POST'),
+    mutationFn: async () => {
+      const response = await apiRequest('/api/michelle/start', 'POST');
+      return await response.json();
+    },
     onSuccess: (response) => {
       const data = response.data;
       setCurrentSession({
@@ -98,13 +101,14 @@ export default function MichelleDialogue() {
 
   // Send message to Michelle
   const sendMessageMutation = useMutation({
-    mutationFn: (message: string) => {
+    mutationFn: async (message: string) => {
       if (!currentSession) throw new Error('No active session');
       
-      return apiRequest('/api/michelle/message', 'POST', {
+      const response = await apiRequest('/api/michelle/message', 'POST', {
         conversationId: currentSession.conversationId,
         message
       });
+      return await response.json();
     },
     onSuccess: (response) => {
       const data = response.data;
@@ -150,12 +154,13 @@ export default function MichelleDialogue() {
 
   // Submit check request
   const submitRequestMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (!currentSession) throw new Error('No active session');
       
-      return apiRequest('/api/michelle/submit-request', 'POST', {
+      const response = await apiRequest('/api/michelle/submit-request', 'POST', {
         conversationId: currentSession.conversationId
       });
+      return await response.json();
     },
     onSuccess: (response) => {
       const data = response.data;
