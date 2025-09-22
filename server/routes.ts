@@ -20,6 +20,7 @@ import { requireAdmin } from "./adminRoutes";
 import { createEmailProcessingService, type EmailProcessingResult } from "./emailProcessingService";
 import { type RawEmailData } from "./emailParsingService";
 import { emailDraftRoutes } from "./emailDraftRoutes";
+import { companyMatchingRoutes } from "./companyMatchingRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -727,6 +728,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Email drafting routes
   app.use('/api/email-drafts', emailDraftRoutes);
+  
+  // Company matching routes
+  app.use('/api/company-matching', companyMatchingRoutes);
   
   // Create email processing service instance
   const emailProcessingService = createEmailProcessingService(storage);

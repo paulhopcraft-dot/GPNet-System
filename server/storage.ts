@@ -315,6 +315,14 @@ export interface IStorage {
     assignmentType: string;
   }): Promise<SpecialistAssignment>;
   getEscalationDashboardData(): Promise<any>;
+
+  // Company Aliases (for fuzzy matching)
+  createCompanyAlias(data: InsertCompanyAlias): Promise<CompanyAlias>;
+  getCompanyAliases(companyId: string): Promise<CompanyAlias[]>;
+  getAllCompanyAliases(): Promise<CompanyAlias[]>;
+  getCompanyAliasesForOrganization(organizationId: string): Promise<CompanyAlias[]>;
+  findCompanyByAlias(normalizedName: string): Promise<CompanyAlias[]>;
+  deleteCompanyAlias(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2221,6 +2229,18 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(companyAliases)
       .where(eq(companyAliases.id, id));
+  }
+
+  async getAllCompanyAliases(): Promise<CompanyAlias[]> {
+    return await db
+      .select()
+      .from(companyAliases)
+      .orderBy(desc(companyAliases.confidence), asc(companyAliases.aliasName));
+  }
+
+  async getCompanyAliasesForOrganization(organizationId: string): Promise<CompanyAlias[]> {
+    // This is an alias for getCompanyAliases for better method naming
+    return this.getCompanyAliases(organizationId);
   }
 
   // Email drafts management
