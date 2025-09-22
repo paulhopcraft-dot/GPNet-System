@@ -720,6 +720,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { checkManagementRoutes } = await import('./checkManagementRoutes.js');
   app.use('/api/check-management', checkManagementRoutes);
   
+  // Michelle dialogue routes
+  const { michelleRoutes } = await import('./michelleRoutes.js');
+  app.use('/api/michelle', michelleRoutes);
+  
   // Create email processing service instance
   const emailProcessingService = createEmailProcessingService(storage);
   

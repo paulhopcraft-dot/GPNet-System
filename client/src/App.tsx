@@ -19,6 +19,7 @@ import RtwCompliance from "@/pages/RtwCompliance";
 import NatalieDashboard from "@/pages/natalie-dashboard";
 import ManagerDashboard from "@/pages/ManagerDashboard";
 import CheckManagement from "@/pages/CheckManagement";
+import MichelleDialogue from "@/pages/MichelleDialogue";
 import NotFound from "@/pages/not-found";
 import { MichelleWidget } from "@/components/MichelleWidget";
 
@@ -62,6 +63,12 @@ function Router() {
       <Route path="/checks">
         <ProtectedRoute requireAdmin>
           <CheckManagement />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/michelle">
+        <ProtectedRoute>
+          <MichelleDialogue />
         </ProtectedRoute>
       </Route>
       
