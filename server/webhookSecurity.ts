@@ -5,15 +5,24 @@ import crypto from "crypto";
 declare global {
   namespace Express {
     interface Request {
-      rawBody?: Buffer;
+      rawBody?: string;
+      rawBodyBuffer?: Buffer;
     }
   }
 }
 
+// Validate webhook secret is configured for production
+if (process.env.NODE_ENV !== 'development' && !process.env.JOTFORM_WEBHOOK_SECRET) {
+  throw new Error('JOTFORM_WEBHOOK_SECRET environment variable is required in production');
+}
+
 // Security configuration for webhooks
 const WEBHOOK_CONFIG = {
-  // Shared secret for webhook authentication (in production, use environment variable)
-  SHARED_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || "dev-webhook-secret-2025",
+  // Shared secret for webhook authentication (required in production)
+  SHARED_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || 
+    (process.env.NODE_ENV === 'development' ? "dev-webhook-secret-2025" : (() => {
+      throw new Error('JOTFORM_WEBHOOK_SECRET is required');
+    })()),
   
   // Rate limiting - max requests per minute per IP
   RATE_LIMIT: 30,
@@ -241,16 +250,41 @@ export function webhookSecurityMiddleware(req: Request, res: Response, next: Nex
         return next();
       }
       
-      // TODO: Implement proper signature validation with raw body capture
-      // For now, skip signature validation until raw body capture is properly implemented
+      // Production mode - validate webhook signature
       const signature = req.headers['x-jotform-signature'] as string || req.headers['jotform-signature'] as string;
       
-      if (signature) {
-        console.log('Signature validation temporarily disabled - implementing proper raw body capture');
-        // Signature validation will be re-enabled once raw body capture is fixed
+      if (!signature) {
+        console.log('Webhook security: Missing signature header');
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Webhook signature required'
+        });
       }
       
-      console.log('Webhook security: All checks passed');
+      if (!req.rawBodyBuffer) {
+        console.log('Webhook security: Missing raw body for signature verification');
+        return res.status(400).json({
+          error: 'Bad Request', 
+          message: 'Request body required for signature verification'
+        });
+      }
+      
+      // Validate signature using raw body
+      const isValidSignature = validateWebhookSignature(
+        req.rawBodyBuffer,
+        signature,
+        WEBHOOK_CONFIG.SHARED_SECRET
+      );
+      
+      if (!isValidSignature) {
+        console.log('Webhook security: Invalid signature');
+        return res.status(401).json({
+          error: 'Unauthorized',
+          message: 'Invalid webhook signature'
+        });
+      }
+      
+      console.log('Webhook security: Signature validation passed');
       next();
     });
   });

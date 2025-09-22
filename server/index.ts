@@ -14,6 +14,16 @@ app.use('/api/medical-documents/freshdesk-webhook', express.raw({
   }
 }));
 
+// Handle Jotform webhook body parsing with raw body capture for signature verification
+app.use('/api/webhook/*', express.json({
+  limit: '1mb',
+  verify: (req: any, _res, buf: Buffer) => {
+    // Store raw buffer for signature verification while still allowing JSON parsing
+    req.rawBodyBuffer = buf;
+    req.rawBody = buf.toString('utf8');
+  }
+}));
+
 // Setup webhook security (payload size limits)
 setupWebhookSecurity(app);
 
