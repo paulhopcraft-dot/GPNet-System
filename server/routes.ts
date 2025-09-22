@@ -6,7 +6,9 @@ import { storage } from "./storage";
 import authRoutes from "./authRoutes";
 import { 
   preEmploymentFormSchema, type PreEmploymentFormData, 
-  injuryFormSchema, type InjuryFormData, 
+  injuryFormSchema, type InjuryFormData,
+  mentalHealthFormSchema, type MentalHealthFormData,
+  exitCheckFormSchema, type ExitCheckFormData,
   rtwPlanSchema, insertStakeholderSchema,
   emailRiskAssessmentSchema, manualRiskUpdateSchema, stepUpdateSchema 
 } from "@shared/schema";
@@ -1121,6 +1123,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         error: "Internal server error", 
         message: "Failed to process injury report" 
+      });
+    }
+  });
+
+  // Mental Health Check webhook endpoint
+  app.post("/api/webhook/mental-health", async (req, res) => {
+    try {
+      console.log("Received mental health webhook - processing mental health form");
+      
+      // Validate the mental health form data
+      const validationResult = mentalHealthFormSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid mental health form data", details: errorMessage });
+      }
+
+      const formData = validationResult.data;
+
+      // Create worker record
+      const worker = await storage.createWorker({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        dateOfBirth: formData.dateOfBirth || "", 
+        phone: formData.phone,
+        email: formData.email,
+        roleApplied: formData.position || "Unknown Position",
+        site: formData.department || null,
+      });
+
+      // Create ticket for mental health case
+      const ticket = await storage.createTicket({
+        workerId: worker.id,
+        caseType: "mental_health",
+        status: "NEW",
+        priority: formData.urgencyLevel === "immediate" || formData.urgencyLevel === "high" ? "high" : "medium",
+      });
+
+      // Create form submission record
+      await storage.createFormSubmission({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        rawData: formData,
+      });
+
+      // Update ticket status to AWAITING_REVIEW
+      await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
+
+      console.log(`Created mental health case ${ticket.id}`);
+
+      res.json({
+        success: true,
+        ticketId: ticket.id,
+        caseType: "mental_health",
+        status: "AWAITING_REVIEW",
+        message: "Mental health assessment processed successfully",
+      });
+
+    } catch (error) {
+      console.error("Error processing mental health submission:", error);
+      res.status(500).json({ 
+        error: "Internal server error", 
+        message: "Failed to process mental health submission" 
+      });
+    }
+  });
+
+  // Exit Check webhook endpoint
+  app.post("/api/webhook/exit-check", async (req, res) => {
+    try {
+      console.log("Received exit check webhook - processing exit check form");
+      
+      // Validate the exit check form data
+      const validationResult = exitCheckFormSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid exit check form data", details: errorMessage });
+      }
+
+      const formData = validationResult.data;
+
+      // Create worker record
+      const worker = await storage.createWorker({
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        dateOfBirth: "", // Not captured in exit form
+        phone: formData.phone,
+        email: formData.email,
+        roleApplied: formData.position,
+        site: formData.department,
+      });
+
+      // Create ticket for exit check case
+      const ticket = await storage.createTicket({
+        workerId: worker.id,
+        caseType: "exit_check",
+        status: "NEW",
+        priority: "medium",
+      });
+
+      // Create form submission record
+      await storage.createFormSubmission({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        rawData: formData,
+      });
+
+      // Update ticket status to AWAITING_REVIEW
+      await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
+
+      console.log(`Created exit check case ${ticket.id}`);
+
+      res.json({
+        success: true,
+        ticketId: ticket.id,
+        caseType: "exit_check",
+        status: "AWAITING_REVIEW",
+        message: "Exit check processed successfully",
+      });
+
+    } catch (error) {
+      console.error("Error processing exit check submission:", error);
+      res.status(500).json({ 
+        error: "Internal server error", 
+        message: "Failed to process exit check submission" 
       });
     }
   });

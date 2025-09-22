@@ -955,6 +955,95 @@ export const injuryFormSchema = z.object({
 
 export type InjuryFormData = z.infer<typeof injuryFormSchema>;
 
+// Mental Health Check Form Schema
+export const mentalHealthFormSchema = z.object({
+  // Personal Information
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Valid email is required"),
+  phone: z.string().min(1, "Phone number is required"),
+  dateOfBirth: z.string().optional(),
+  employeeId: z.string().optional(),
+  department: z.string().optional(),
+  position: z.string().optional(),
+  
+  // Mental Health Assessment
+  mentalHealthConcerns: z.string().optional(),
+  stressLevel: z.number().min(1).max(10).optional(),
+  anxietyLevel: z.number().min(1).max(10).optional(),
+  sleepQuality: z.number().min(1).max(5).optional(),
+  workLifeBalance: z.number().min(1).max(5).optional(),
+  supportNeeded: z.array(z.string()).optional(),
+  previousMentalHealthTreatment: z.string().optional(),
+  currentMedications: z.string().optional(),
+  
+  // Workplace Factors
+  workplaceStressors: z.array(z.string()).optional(),
+  workloadConcerns: z.string().optional(),
+  relationshipIssues: z.string().optional(),
+  
+  // Support and Resources
+  accessToSupport: z.enum(["yes", "no", "unsure"]).optional(),
+  preferredSupportType: z.array(z.string()).optional(),
+  urgencyLevel: z.enum(["low", "medium", "high", "immediate"]).optional(),
+  
+  // Additional Information
+  additionalComments: z.string().optional(),
+  
+  // Consent & Declaration
+  consentToShare: z.boolean().refine(val => val === true, "Consent is required"),
+  signature: z.string().min(1, "Signature is required"),
+  signatureDate: z.string().min(1, "Signature date is required"),
+});
+
+export type MentalHealthFormData = z.infer<typeof mentalHealthFormSchema>;
+
+// Exit Check Form Schema  
+export const exitCheckFormSchema = z.object({
+  // Personal Information
+  firstName: z.string().min(1, "First name is required"),
+  lastName: z.string().min(1, "Last name is required"),
+  email: z.string().email("Valid email is required"),
+  phone: z.string().min(1, "Phone number is required"),
+  employeeId: z.string().optional(),
+  department: z.string().min(1, "Department is required"),
+  position: z.string().min(1, "Position is required"),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  
+  // Exit Details
+  reasonForLeaving: z.string().min(1, "Reason for leaving is required"),
+  voluntaryDeparture: z.boolean(),
+  newEmployer: z.string().optional(),
+  
+  // Health Status at Exit
+  currentHealthStatus: z.enum(["excellent", "good", "fair", "poor"]),
+  healthConcerns: z.string().optional(),
+  workRelatedInjuries: z.string().optional(),
+  ongoingTreatment: z.string().optional(),
+  
+  // Workplace Assessment
+  workplaceSafety: z.number().min(1).max(5),
+  equipmentCondition: z.number().min(1).max(5),
+  managementSupport: z.number().min(1).max(5),
+  trainingAdequacy: z.number().min(1).max(5),
+  
+  // Recommendations
+  improvementSuggestions: z.string().optional(),
+  recommendCompany: z.enum(["yes", "no", "neutral"]).optional(),
+  futureEmployabilityFactors: z.string().optional(),
+  
+  // Additional Information
+  additionalComments: z.string().optional(),
+  
+  // Consent & Declaration
+  consentToShare: z.boolean().refine(val => val === true, "Consent is required"),
+  signature: z.string().min(1, "Signature is required"),
+  signatureDate: z.string().min(1, "Signature date is required"),
+});
+
+export type ExitCheckFormData = z.infer<typeof exitCheckFormSchema>;
+
 // RTW Plan validation schema
 export const rtwPlanSchema = z.object({
   ticketId: z.string().min(1, "Ticket ID is required"),
