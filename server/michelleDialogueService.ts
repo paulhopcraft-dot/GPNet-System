@@ -1,5 +1,6 @@
 import { storage } from './storage.js';
 import { z } from 'zod';
+import { PHISanitizer } from './phiSanitization.js';
 
 // Types for dialogue system
 interface DialogueContext {
@@ -124,6 +125,37 @@ class MichelleDialogueService {
   }
 
   /**
+   * Sanitize collected data to prevent PHI leakage in system prompts
+   */
+  private sanitizeCollectedData(collectedData: DialogueContext['collectedData'], sanitizer: PHISanitizer): DialogueContext['collectedData'] {
+    const sanitized: DialogueContext['collectedData'] = {};
+    
+    if (collectedData.workerFirstName) {
+      sanitized.workerFirstName = sanitizer.sanitizeText(collectedData.workerFirstName).sanitizedText;
+    }
+    if (collectedData.workerLastName) {
+      sanitized.workerLastName = sanitizer.sanitizeText(collectedData.workerLastName).sanitizedText;
+    }
+    if (collectedData.workerEmail) {
+      sanitized.workerEmail = sanitizer.sanitizeText(collectedData.workerEmail).sanitizedText;
+    }
+    if (collectedData.companyName) {
+      sanitized.companyName = sanitizer.sanitizeText(collectedData.companyName).sanitizedText;
+    }
+    if (collectedData.additionalNotes) {
+      sanitized.additionalNotes = sanitizer.sanitizeText(collectedData.additionalNotes).sanitizedText;
+    }
+    
+    // Keep non-PHI fields as-is
+    sanitized.roleApplied = collectedData.roleApplied;
+    sanitized.urgencyLevel = collectedData.urgencyLevel;
+    sanitized.requestReason = collectedData.requestReason;
+    sanitized.suggestedCheckKey = collectedData.suggestedCheckKey;
+    
+    return sanitized;
+  }
+
+  /**
    * Generate AI-powered response using OpenAI
    */
   private async generateAIResponse(
@@ -131,7 +163,18 @@ class MichelleDialogueService {
     userMessage: string
   ): Promise<DialogueResponse> {
     try {
-      const systemPrompt = this.buildSystemPrompt(context);
+      // Initialize PHI sanitizer for data protection
+      const phiSanitizer = new PHISanitizer();
+      
+      // Create sanitized context for system prompt to prevent PHI leakage
+      const sanitizedContext = {
+        ...context,
+        collectedData: this.sanitizeCollectedData(context.collectedData, phiSanitizer)
+      };
+      const systemPrompt = this.buildSystemPrompt(sanitizedContext);
+      
+      // Sanitize user message before sending to OpenAI
+      const sanitizedUserMessage = phiSanitizer.sanitizeText(userMessage).sanitizedText;
       
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -145,9 +188,9 @@ class MichelleDialogueService {
             { role: 'system', content: systemPrompt },
             ...context.conversationHistory.slice(-6).map(msg => ({
               role: msg.role === 'michelle' ? 'assistant' : 'user',
-              content: msg.message
+              content: phiSanitizer.sanitizeText(msg.message).sanitizedText
             })),
-            { role: 'user', content: userMessage }
+            { role: 'user', content: sanitizedUserMessage }
           ],
           temperature: 0.7,
           max_tokens: 500
