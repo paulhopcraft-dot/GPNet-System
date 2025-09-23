@@ -78,8 +78,71 @@ export default function PreEmploymentForm({
   });
 
   const handleSubmit = (data: PreEmploymentFormData) => {
-    console.log("Form submitted:", data);
-    onSubmit?.(data);
+    console.log("Raw form data from handleSubmit:", data);
+    
+    // Get ALL form values including defaults - this is key!
+    const allFormValues = form.getValues();
+    console.log("All form values from getValues():", allFormValues);
+    
+    // Build complete submission data using getValues() and explicit defaults
+    const submissionData: PreEmploymentFormData = {
+      // Required personal fields
+      firstName: allFormValues.firstName || "",
+      lastName: allFormValues.lastName || "",
+      dateOfBirth: allFormValues.dateOfBirth || "",
+      phone: allFormValues.phone || "",
+      email: allFormValues.email || "",
+      roleApplied: allFormValues.roleApplied || "",
+      site: allFormValues.site || "",
+      
+      // Medical history (optional)
+      previousInjuries: allFormValues.previousInjuries || "",
+      conditions: allFormValues.conditions || [],
+      medications: allFormValues.medications || "",
+      allergies: allFormValues.allergies || "",
+      
+      // Musculoskeletal fields (required with defaults from form)
+      mskBack: allFormValues.mskBack ?? "none",
+      mskNeck: allFormValues.mskNeck ?? "none", 
+      mskShoulders: allFormValues.mskShoulders ?? "none",
+      mskElbows: allFormValues.mskElbows ?? "none",
+      mskWrists: allFormValues.mskWrists ?? "none",
+      mskHips: allFormValues.mskHips ?? "none",
+      mskKnees: allFormValues.mskKnees ?? "none",
+      mskAnkles: allFormValues.mskAnkles ?? "none",
+      
+      // Optional musculoskeletal details
+      mskBackDetails: allFormValues.mskBackDetails || "",
+      mskNeckDetails: allFormValues.mskNeckDetails || "",
+      mskShouldersDetails: allFormValues.mskShouldersDetails || "",
+      mskElbowsDetails: allFormValues.mskElbowsDetails || "",
+      mskWristsDetails: allFormValues.mskWristsDetails || "",
+      mskHipsDetails: allFormValues.mskHipsDetails || "",
+      mskKneesDetails: allFormValues.mskKneesDetails || "",
+      mskAnklesDetails: allFormValues.mskAnklesDetails || "",
+      
+      // Functional capacity (required with defaults from form)
+      liftingKg: allFormValues.liftingKg ?? 25,
+      standingMins: allFormValues.standingMins ?? 60,
+      walkingMins: allFormValues.walkingMins ?? 30,
+      repetitiveTasks: allFormValues.repetitiveTasks ?? "no",
+      repetitiveTasksDetails: allFormValues.repetitiveTasksDetails || "",
+      
+      // Psychosocial (required with defaults from form)
+      sleepRating: allFormValues.sleepRating ?? 3,
+      stressRating: allFormValues.stressRating ?? 3,
+      supportRating: allFormValues.supportRating ?? 3,
+      psychosocialComments: allFormValues.psychosocialComments || "",
+      
+      // Consent (required)
+      consentToShare: allFormValues.consentToShare ?? false,
+      signature: allFormValues.signature || "",
+      signatureDate: allFormValues.signatureDate || "",
+    };
+    
+    console.log("Final submission data with ALL fields included:", submissionData);
+    console.log("Submission payload that will be sent to server:", JSON.stringify(submissionData, null, 2));
+    onSubmit?.(submissionData);
   };
 
   const nextSection = async () => {
