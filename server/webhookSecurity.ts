@@ -11,18 +11,14 @@ declare global {
   }
 }
 
-// Validate webhook secret is configured for production
-if (process.env.NODE_ENV !== 'development' && !process.env.JOTFORM_WEBHOOK_SECRET) {
-  throw new Error('JOTFORM_WEBHOOK_SECRET environment variable is required in production');
-}
+// Note: Jotform does not support webhook secrets/signatures
+// Webhook security relies on rate limiting, idempotency, and payload validation
+console.log('Webhook security: Using Jotform-compatible security (no signature validation)');
 
 // Security configuration for webhooks
 const WEBHOOK_CONFIG = {
-  // Shared secret for webhook authentication (required in production)
-  SHARED_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || 
-    (process.env.NODE_ENV === 'development' ? "dev-webhook-secret-2025" : (() => {
-      throw new Error('JOTFORM_WEBHOOK_SECRET is required');
-    })()),
+  // Shared secret not used for Jotform webhooks (they don't support signatures)
+  SHARED_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || "unused-for-jotform",
   
   // Rate limiting - max requests per minute per IP
   RATE_LIMIT: 30,
@@ -125,10 +121,11 @@ async function rateLimitMiddleware(req: Request, res: Response, next: NextFuncti
     
     if (requestCount >= WEBHOOK_CONFIG.RATE_LIMIT) {
       console.warn(`Rate limit exceeded for IP: ${realIp} (${requestCount} requests)`);
-      return res.status(429).json({
+      res.status(429).json({
         error: "Rate limit exceeded",
         message: "Too many requests, please try again later"
       });
+      return; // Don't call next() when blocking
     }
     
     // Record this request
@@ -196,11 +193,12 @@ async function idempotencyMiddleware(req: Request, res: Response, next: NextFunc
     // If no row was returned, it means this submission already existed (conflict)
     if (insertResult.length === 0) {
       console.warn(`Duplicate submission detected: ${submissionId} for ${endpoint}`);
-      return res.status(409).json({
+      res.status(409).json({
         error: "Duplicate submission",
         message: `Submission ${submissionId} has already been processed`,
         submissionId
       });
+      return; // Don't call next() when blocking
     }
     
     console.log(`Idempotency record created for ${submissionId} on ${endpoint}`);
@@ -270,7 +268,17 @@ export async function webhookSecurityMiddleware(req: Request, res: Response, nex
         if (error) reject(error);
         else resolve();
       });
+      
+      // If response was sent (blocked), resolve immediately
+      setTimeout(() => {
+        if (res.headersSent) {
+          resolve();
+        }
+      }, 0);
     });
+    
+    // If rate limit blocked the request, don't continue
+    if (res.headersSent) return;
     
     // Apply idempotency check (async)
     await new Promise<void>((resolve, reject) => {
@@ -278,49 +286,21 @@ export async function webhookSecurityMiddleware(req: Request, res: Response, nex
         if (error) reject(error);
         else resolve();
       });
+      
+      // If response was sent (blocked), resolve immediately
+      setTimeout(() => {
+        if (res.headersSent) {
+          resolve();
+        }
+      }, 0);
     });
     
-    // Skip signature validation in development mode
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Webhook security: Development mode - skipping signature validation');
-      return next();
-    }
+    // If idempotency blocked the request, don't continue
+    if (res.headersSent) return;
     
-    // Production mode - validate webhook signature
-    const signature = req.headers['x-jotform-signature'] as string || req.headers['jotform-signature'] as string;
-    
-    if (!signature) {
-      console.log('Webhook security: Missing signature header');
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Webhook signature required'
-      });
-    }
-    
-    if (!req.rawBodyBuffer) {
-      console.log('Webhook security: Missing raw body for signature verification');
-      return res.status(400).json({
-        error: 'Bad Request', 
-        message: 'Request body required for signature verification'
-      });
-    }
-    
-    // Validate signature using raw body
-    const isValidSignature = validateWebhookSignature(
-      req.rawBodyBuffer,
-      signature,
-      WEBHOOK_CONFIG.SHARED_SECRET
-    );
-    
-    if (!isValidSignature) {
-      console.log('Webhook security: Invalid signature');
-      return res.status(401).json({
-        error: 'Unauthorized',
-        message: 'Invalid webhook signature'
-      });
-    }
-    
-    console.log('Webhook security: Signature validation passed');
+    // Jotform does not support webhook signatures, so we skip signature validation
+    // Security is provided through rate limiting, idempotency checks, and payload validation
+    console.log('Webhook security: Jotform webhook - skipping signature validation (not supported)');
     next();
   } catch (error) {
     console.error('Webhook security middleware error:', error);
@@ -329,10 +309,12 @@ export async function webhookSecurityMiddleware(req: Request, res: Response, nex
       console.warn('Development mode: allowing request despite security error');
       next();
     } else {
-      res.status(500).json({
-        error: 'Internal server error',
-        message: 'Security validation failed'
-      });
+      if (!res.headersSent) {
+        res.status(500).json({
+          error: 'Internal server error',
+          message: 'Security validation failed'
+        });
+      }
     }
   }
 }
@@ -342,7 +324,7 @@ export async function webhookSecurityMiddleware(req: Request, res: Response, nex
  */
 export function getWebhookConfig() {
   return {
-    SHARED_SECRET: WEBHOOK_CONFIG.SHARED_SECRET,
+    SHARED_SECRET: "N/A - Jotform does not support webhook signatures",
     RATE_LIMIT: WEBHOOK_CONFIG.RATE_LIMIT,
     TIMEOUT_MS: WEBHOOK_CONFIG.TIMEOUT_MS,
     MAX_PAYLOAD_SIZE: WEBHOOK_CONFIG.MAX_PAYLOAD_SIZE,
