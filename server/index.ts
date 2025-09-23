@@ -76,8 +76,14 @@ app.use((req, res, next) => {
 
   // Add API route protection middleware before static serving
   app.use('/api/*', (req, res, next) => {
-    // Ensure API routes are handled by the registered routes, not static serving
+    // Mark that this is an API route
+    res.locals.isApiRoute = true;
     next();
+  });
+
+  // Catch unhandled API routes and return 404 instead of serving static files
+  app.use('/api/*', (req, res) => {
+    res.status(404).json({ error: 'API endpoint not found' });
   });
 
   // importantly only setup vite in development and after
