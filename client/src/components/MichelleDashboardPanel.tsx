@@ -171,7 +171,7 @@ export default function MichelleDashboardPanel({
       newSuggestions.push(
         {
           id: "create-case",
-          text: "Start a new pre-employment assessment",
+          text: "Create new case",
           action: "create_case",
           icon: Users,
           priority: "medium"
