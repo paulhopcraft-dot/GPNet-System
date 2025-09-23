@@ -75,7 +75,7 @@ export class MichelleAI {
     const sessionId = uuidv4();
     
     const [conversation] = await db.insert(conversations).values({
-      organizationId: context.organizationId || null,
+      companyId: context.organizationId || null,
       ticketId: context.ticketId || null,
       workerId: context.workerId || null,
       conversationType: context.conversationType,
@@ -697,6 +697,67 @@ Based on this information, generate specific actionable recommendations for the 
       .update(conversations)
       .set({ status: "archived", updatedAt: new Date() })
       .where(eq(conversations.id, conversationId));
+  }
+
+  /**
+   * Simple chat interface for the Michelle widget
+   * This wraps the more complex conversation management for easy frontend use
+   */
+  async chat(
+    conversationId: string,
+    message: string,
+    userContext: MichelleContext,
+    context?: {
+      currentPage?: string;
+      caseId?: string;
+      workerName?: string;
+      checkType?: string;
+    }
+  ): Promise<ConversationResponse> {
+    try {
+      // Check if conversation exists, if not create one
+      const existingConversation = await this.getConversationWithContext(conversationId);
+      
+      if (!existingConversation) {
+        // Create new conversation with the specific ID
+        const michelleContext: MichelleContext = {
+          conversationType: context?.caseId ? "case_specific" : "client_scoped",
+          organizationId: userContext.organizationId,
+          ticketId: context?.caseId,
+          userRole: userContext.userRole || "client_user"
+        };
+        
+        // Create conversation record directly with the provided ID
+        await db.insert(conversations).values({
+          id: conversationId,
+          companyId: michelleContext.organizationId || null,
+          ticketId: michelleContext.ticketId || null,
+          workerId: null,
+          conversationType: michelleContext.conversationType,
+          sessionId: `session_${Date.now()}`,
+          title: this.generateConversationTitle(michelleContext),
+          status: "active",
+          isPrivate: michelleContext.conversationType === "universal_admin",
+          accessLevel: michelleContext.userRole === "admin" ? "restricted" : "standard"
+        });
+      }
+
+      // Send message and get response
+      return await this.sendMessage(conversationId, message, userContext);
+      
+    } catch (error) {
+      console.error("Chat error:", error);
+      // Fallback response for errors
+      return {
+        conversationId,
+        response: "I apologize, but I encountered an issue processing your request. Please try again or contact support if the problem persists.",
+        confidence: 50,
+        tokenUsage: {
+          promptTokens: 0,
+          completionTokens: 0
+        }
+      };
+    }
   }
 }
 
