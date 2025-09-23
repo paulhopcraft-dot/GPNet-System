@@ -282,6 +282,13 @@ export const adminUsers = pgTable("admin_users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// User sessions table for Express session management
+export const userSessions = pgTable("user_sessions", {
+  sid: varchar("sid").primaryKey(), // Session ID
+  sess: jsonb("sess").notNull(), // Session data
+  expire: timestamp("expire").notNull(), // Session expiration
+});
+
 // Audit events table for immutable audit log
 export const auditEvents = pgTable("audit_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
