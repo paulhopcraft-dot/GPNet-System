@@ -38,7 +38,7 @@ export class AuthService {
       const user = await storage.getClientUserByEmail(email, organizationId);
       
       if (!user || user.isArchived) {
-        await this.logAuditEvent({
+        await this.safeLogAudit({
           eventType: 'CLIENT_LOGIN_FAILED',
           eventCategory: 'auth',
           actorId: 'anonymous',
@@ -54,7 +54,7 @@ export class AuthService {
 
       // Guard against null passwordHash
       if (!user.passwordHash) {
-        await this.logAuditEvent({
+        await this.safeLogAudit({
           eventType: 'CLIENT_LOGIN_FAILED',
           eventCategory: 'auth',
           actorId: user.id,
@@ -71,7 +71,7 @@ export class AuthService {
       const isPasswordValid = await this.verifyPassword(password, user.passwordHash);
       
       if (!isPasswordValid) {
-        await this.logAuditEvent({
+        await this.safeLogAudit({
           eventType: 'CLIENT_LOGIN_FAILED',
           eventCategory: 'auth',
           actorId: user.id,
@@ -88,7 +88,7 @@ export class AuthService {
       // Update last login
       const updatedUser = await storage.updateClientUserLastLogin(user.id);
       
-      await this.logAuditEvent({
+      await this.safeLogAudit({
         eventType: 'CLIENT_LOGIN_SUCCESS',
         eventCategory: 'auth',
         actorId: user.id,
@@ -113,7 +113,7 @@ export class AuthService {
       const user = await storage.getAdminUserByEmail(email);
       
       if (!user || user.isArchived) {
-        await this.logAuditEvent({
+        await this.safeLogAudit({
           eventType: 'ADMIN_LOGIN_FAILED',
           eventCategory: 'auth',
           actorId: 'anonymous',
@@ -129,7 +129,7 @@ export class AuthService {
 
       // Guard against null passwordHash
       if (!user.passwordHash) {
-        await this.logAuditEvent({
+        await this.safeLogAudit({
           eventType: 'ADMIN_LOGIN_FAILED',
           eventCategory: 'auth',
           actorId: user.id,
@@ -146,7 +146,7 @@ export class AuthService {
       const isPasswordValid = await this.verifyPassword(password, user.passwordHash);
       
       if (!isPasswordValid) {
-        await this.logAuditEvent({
+        await this.safeLogAudit({
           eventType: 'ADMIN_LOGIN_FAILED',
           eventCategory: 'auth',
           actorId: user.id,
@@ -163,7 +163,7 @@ export class AuthService {
       // Update last login
       const updatedUser = await storage.updateAdminUserLastLogin(user.id);
       
-      await this.logAuditEvent({
+      await this.safeLogAudit({
         eventType: 'ADMIN_LOGIN_SUCCESS',
         eventCategory: 'auth',
         actorId: user.id,
@@ -217,7 +217,7 @@ export class AuthService {
 
       const user = await storage.createClientUser(newUser);
       
-      await this.logAuditEvent({
+      await this.safeLogAudit({
         eventType: 'CLIENT_USER_CREATED',
         eventCategory: 'admin',
         actorId: user.id,
@@ -265,7 +265,7 @@ export class AuthService {
 
       const admin = await storage.createAdminUser(newAdmin);
       
-      await this.logAuditEvent({
+      await this.safeLogAudit({
         eventType: 'ADMIN_USER_CREATED',
         eventCategory: 'admin',
         actorId: createdBy,
@@ -327,7 +327,7 @@ export class AuthService {
 
       const updatedAdmin = await storage.setAdminImpersonation(adminId, targetOrgId);
       
-      await this.logAuditEvent({
+      await this.safeLogAudit({
         eventType: 'ADMIN_IMPERSONATION_STARTED',
         eventCategory: 'admin',
         actorId: adminId,
@@ -362,7 +362,7 @@ export class AuthService {
       const targetOrgId = admin.currentImpersonationTarget;
       const updatedAdmin = await storage.setAdminImpersonation(adminId, null);
       
-      await this.logAuditEvent({
+      await this.safeLogAudit({
         eventType: 'ADMIN_IMPERSONATION_STOPPED',
         eventCategory: 'admin',
         actorId: adminId,
@@ -381,6 +381,15 @@ export class AuthService {
     } catch (error) {
       console.error('Impersonation stop error:', error);
       return null;
+    }
+  }
+
+  // Audit logging - safe wrapper to prevent auth failures
+  private async safeLogAudit(event: Omit<InsertAuditEvent, 'id'>): Promise<void> {
+    try {
+      await this.logAuditEvent(event);
+    } catch (error) {
+      console.warn('Audit log failed (non-blocking):', error);
     }
   }
 
@@ -429,7 +438,7 @@ export class AuthService {
         await storage.updateClientUser(userId, { passwordHash: hashedNewPassword });
       }
 
-      await this.logAuditEvent({
+      await this.safeLogAudit({
         eventType: 'PASSWORD_CHANGED',
         eventCategory: 'auth',
         actorId: userId,
