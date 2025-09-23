@@ -61,6 +61,51 @@ export const requireAuth = (req: Request, res: Response, next: any) => {
   next();
 };
 
+// Bootstrap endpoint for creating first admin when no admins exist
+router.post('/bootstrap/admin', async (req: Request, res: Response) => {
+  try {
+    // Check if any admin users exist
+    const existingAdmins = await storage.getAllAdminUsers();
+    if (existingAdmins.length > 0) {
+      return res.status(403).json({ 
+        error: 'Bootstrap not allowed', 
+        message: 'Admin users already exist in the system' 
+      });
+    }
+
+    const { email, password, firstName, lastName } = adminRegisterSchema.parse(req.body);
+
+    // Create first admin with superuser privileges
+    const user = await authService.registerAdmin({
+      email,
+      password,
+      firstName,
+      lastName,
+      isSuperuser: true,
+      permissions: ['superuser', 'admin', 'user_management', 'system_settings']
+    }, 'system-bootstrap');
+    
+    if (!user) {
+      return res.status(400).json({ error: 'Admin creation failed' });
+    }
+
+    res.status(201).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        isSuperuser: true,
+        permissions: user.permissions
+      },
+      message: 'Bootstrap admin created successfully'
+    });
+  } catch (error) {
+    console.error('Bootstrap admin creation error:', error);
+    res.status(400).json({ error: 'Invalid request data' });
+  }
+});
+
 
 // Client authentication routes
 router.post('/login/client', async (req: Request, res: Response) => {
