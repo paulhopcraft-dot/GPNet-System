@@ -396,11 +396,207 @@ export default function PreEmploymentForm({
     </div>
   );
 
+  const renderMusculoskeletalAssessment = () => (
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <h4 className="text-base font-medium">Previous Musculoskeletal Issues</h4>
+        <p className="text-sm text-muted-foreground">
+          Please indicate any current or previous issues with the following body areas:
+        </p>
+        
+        {[
+          { name: "mskBack", label: "Back" },
+          { name: "mskNeck", label: "Neck" },
+          { name: "mskShoulders", label: "Shoulders" },
+          { name: "mskElbows", label: "Elbows" },
+          { name: "mskWrists", label: "Wrists/Hands" },
+          { name: "mskHips", label: "Hips" },
+          { name: "mskKnees", label: "Knees" },
+          { name: "mskAnkles", label: "Ankles/Feet" },
+        ].map((bodyPart) => (
+          <FormField
+            key={bodyPart.name}
+            control={form.control}
+            name={bodyPart.name as "mskBack" | "mskNeck" | "mskShoulders" | "mskElbows" | "mskWrists" | "mskHips" | "mskKnees" | "mskAnkles"}
+            render={({ field }) => (
+              <FormItem className="space-y-3">
+                <FormLabel>{bodyPart.label}</FormLabel>
+                <FormControl>
+                  <RadioGroup
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                    className="flex space-x-6"
+                    data-testid={`radio-${bodyPart.name}`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="none" id={`${bodyPart.name}-none`} />
+                      <Label htmlFor={`${bodyPart.name}-none`}>No issues</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="mild" id={`${bodyPart.name}-mild`} />
+                      <Label htmlFor={`${bodyPart.name}-mild`}>Mild discomfort</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="moderate" id={`${bodyPart.name}-moderate`} />
+                      <Label htmlFor={`${bodyPart.name}-moderate`}>Moderate pain</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="severe" id={`${bodyPart.name}-severe`} />
+                      <Label htmlFor={`${bodyPart.name}-severe`}>Severe pain</Label>
+                    </div>
+                  </RadioGroup>
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ))}
+      </div>
+
+      <Separator />
+
+      <div className="space-y-4">
+        <h4 className="text-base font-medium">Physical Capacity Assessment</h4>
+        
+        <FormField
+          control={form.control}
+          name="liftingKg"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Maximum Lifting Capacity (kg) *</FormLabel>
+              <FormControl>
+                <div className="space-y-2">
+                  <Slider
+                    min={0}
+                    max={50}
+                    step={5}
+                    value={[field.value]}
+                    onValueChange={(value) => field.onChange(value[0])}
+                    className="w-full"
+                    data-testid="slider-lifting-kg"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>0 kg</span>
+                    <span className="font-medium">{field.value} kg</span>
+                    <span>50+ kg</span>
+                  </div>
+                </div>
+              </FormControl>
+              <FormDescription>
+                What is the maximum weight you can comfortably lift from floor to waist height?
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="standingMins"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Standing Duration (minutes) *</FormLabel>
+              <FormControl>
+                <div className="space-y-2">
+                  <Slider
+                    min={0}
+                    max={240}
+                    step={15}
+                    value={[field.value]}
+                    onValueChange={(value) => field.onChange(value[0])}
+                    className="w-full"
+                    data-testid="slider-standing-mins"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>0 min</span>
+                    <span className="font-medium">{field.value} minutes</span>
+                    <span>4+ hours</span>
+                  </div>
+                </div>
+              </FormControl>
+              <FormDescription>
+                How long can you stand continuously without discomfort?
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="walkingMins"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Walking Duration (minutes) *</FormLabel>
+              <FormControl>
+                <div className="space-y-2">
+                  <Slider
+                    min={0}
+                    max={120}
+                    step={10}
+                    value={[field.value]}
+                    onValueChange={(value) => field.onChange(value[0])}
+                    className="w-full"
+                    data-testid="slider-walking-mins"
+                  />
+                  <div className="flex justify-between text-sm text-muted-foreground">
+                    <span>0 min</span>
+                    <span className="font-medium">{field.value} minutes</span>
+                    <span>2+ hours</span>
+                  </div>
+                </div>
+              </FormControl>
+              <FormDescription>
+                How long can you walk continuously without fatigue?
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="repetitiveTasks"
+          render={({ field }) => (
+            <FormItem className="space-y-3">
+              <FormLabel>Can you perform repetitive tasks? *</FormLabel>
+              <FormControl>
+                <RadioGroup
+                  onValueChange={field.onChange}
+                  defaultValue={field.value}
+                  className="flex space-x-6"
+                  data-testid="radio-repetitive-tasks"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="yes" id="repetitive-yes" />
+                    <Label htmlFor="repetitive-yes">Yes, without limitation</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="limited" id="repetitive-limited" />
+                    <Label htmlFor="repetitive-limited">Yes, with limitations</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="no" id="repetitive-no" />
+                    <Label htmlFor="repetitive-no">No</Label>
+                  </div>
+                </RadioGroup>
+              </FormControl>
+              <FormDescription>
+                Tasks like typing, assembly work, or operating machinery
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    </div>
+  );
+
   const renderCurrentSection = () => {
     switch (currentSection) {
       case 0: return renderPersonalDetails();
       case 1: return <div className="text-center py-8 text-muted-foreground">Medical History section - simplified for demo</div>;
-      case 2: return <div className="text-center py-8 text-muted-foreground">Musculoskeletal Assessment section - simplified for demo</div>;
+      case 2: return renderMusculoskeletalAssessment();
       case 3: return <div className="text-center py-8 text-muted-foreground">Functional Capacity section - simplified for demo</div>;
       case 4: return renderPsychosocialScreening();
       case 5: return renderConsentSection();
