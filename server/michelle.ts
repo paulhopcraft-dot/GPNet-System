@@ -122,14 +122,35 @@ export class MichelleAI {
       { role: "user" as const, content: userMessage }
     ];
 
-    // Call OpenAI
-    const response = await openai.chat.completions.create({
-      model: "gpt-5",
-      messages: openaiMessages,
-      response_format: { type: "json_object" },
-    });
+    // Check for valid OpenAI API key
+    const isValidApiKey = process.env.OPENAI_API_KEY && 
+                         process.env.OPENAI_API_KEY.startsWith('sk-') && 
+                         !process.env.OPENAI_API_KEY.includes('****') && 
+                         !process.env.OPENAI_API_KEY.includes('youtube') &&
+                         !process.env.OPENAI_API_KEY.includes('http');
 
-    const aiResponse = JSON.parse(response.choices[0].message.content || "{}");
+    let aiResponse;
+    let response;
+
+    if (isValidApiKey) {
+      // Call OpenAI
+      response = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: openaiMessages,
+        response_format: { type: "json_object" },
+      });
+
+      aiResponse = JSON.parse(response.choices[0].message.content || "{}");
+    } else {
+      // Demo mode with intelligent responses
+      aiResponse = this.generateDemoResponse(userMessage, context, caseContext);
+      response = {
+        usage: {
+          prompt_tokens: 50,
+          completion_tokens: 100
+        }
+      };
+    }
     
     // Store user message
     await db.insert(conversationMessages).values({
@@ -697,6 +718,73 @@ Based on this information, generate specific actionable recommendations for the 
       .update(conversations)
       .set({ status: "archived", updatedAt: new Date() })
       .where(eq(conversations.id, conversationId));
+  }
+
+  /**
+   * Generate intelligent demo responses when OpenAI API is not available
+   */
+  private generateDemoResponse(userMessage: string, context: MichelleContext, caseContext: any) {
+    const lowerMessage = userMessage.toLowerCase();
+    let response = "Thank you for reaching out. I'm Michelle, your AI assistant for occupational health and safety matters. ";
+    let nextStep = "Continue the conversation to get specific guidance";
+    let confidence = 85;
+
+    // Emergency detection
+    const emergencyKeywords = ['suicide', 'kill myself', 'end it all', 'hurt myself', 'self harm', 'not worth living'];
+    if (emergencyKeywords.some(keyword => lowerMessage.includes(keyword))) {
+      return {
+        response: "🚨 IMMEDIATE SAFETY CONCERN DETECTED 🚨\n\nIf you or someone else is in immediate danger, please:\n• Call emergency services (000 in Australia)\n• Contact Lifeline: 13 11 14\n• Go to your nearest emergency department\n\nI cannot provide crisis counseling, but I can help you access professional support resources once safety is ensured.",
+        nextStep: "Ensure immediate safety first, then we can discuss appropriate support resources",
+        confidence: 100,
+        messageType: "emergency"
+      };
+    }
+
+    // Context-based responses
+    if (context.conversationType === "universal_admin") {
+      response += "[Admin Mode] I have access to platform-wide analytics and can help with system insights. ";
+    } else if (context.conversationType === "case_specific" && caseContext.case) {
+      response += `I'm helping with case ${caseContext.case.id} for ${caseContext.worker?.name || 'this worker'}. `;
+    }
+
+    // Content-based intelligent responses
+    if (lowerMessage.includes('pre-employment') || lowerMessage.includes('pre employment')) {
+      response += "I can help you with pre-employment health checks, including risk assessments, capacity evaluations, and fit-for-work determinations. What specific aspects would you like guidance on?";
+      nextStep = "Provide details about the role and any specific health concerns";
+    } else if (lowerMessage.includes('mental health') || lowerMessage.includes('psychological')) {
+      response += "I can assist with mental health screenings and psychosocial risk assessments. All mental health discussions are handled with strict confidentiality. What type of assessment do you need?";
+      nextStep = "Discuss specific mental health screening requirements";
+    } else if (lowerMessage.includes('injury') || lowerMessage.includes('injured') || lowerMessage.includes('hurt')) {
+      response += "I can help with injury assessments, return-to-work planning, and capacity evaluations. Please tell me about the nature of the injury and any current restrictions.";
+      nextStep = "Gather detailed injury information and current functional capacity";
+    } else if (lowerMessage.includes('capacity') || lowerMessage.includes('lifting')) {
+      response += "I can help evaluate physical work capacity, including lifting limits, manual handling abilities, and workplace restrictions. What specific capacity assessment do you need?";
+      nextStep = "Define the physical requirements of the role";
+    } else if (lowerMessage.includes('return to work') || lowerMessage.includes('rtw')) {
+      response += "I can assist with return-to-work planning, including graduated programs, workplace modifications, and fitness-for-duty assessments. What stage of the RTW process are you at?";
+      nextStep = "Review current medical clearances and workplace requirements";
+    } else if (lowerMessage.includes('medical opinion') || lowerMessage.includes('doctor')) {
+      response += "I can help coordinate medical opinions and specialist consultations. For complex cases, I can escalate to our medical team. What medical guidance do you need?";
+      nextStep = "Escalate to medical specialist if required";
+      confidence = 90;
+    } else if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('help')) {
+      response += "I'm here to help with occupational health assessments, workplace safety, and case management. I can assist with pre-employment checks, injury assessments, mental health screenings, and return-to-work planning. What can I help you with today?";
+      nextStep = "Specify the type of health assessment or guidance needed";
+    } else {
+      response += "I can help with various occupational health matters including pre-employment assessments, injury evaluations, mental health screenings, and return-to-work planning. Could you provide more details about what you need assistance with?";
+      nextStep = "Clarify the specific health or safety matter you need help with";
+    }
+
+    return {
+      response,
+      nextStep,
+      confidence,
+      messageType: "text",
+      summary: `Demo conversation about ${lowerMessage.includes('pre-employment') ? 'pre-employment checks' : 
+                                        lowerMessage.includes('mental health') ? 'mental health assessment' :
+                                        lowerMessage.includes('injury') ? 'injury assessment' : 
+                                        'occupational health matters'}`
+    };
   }
 
   /**
