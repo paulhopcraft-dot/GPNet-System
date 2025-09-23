@@ -40,234 +40,46 @@ import { externalEmails, aiRecommendations, emailAttachments } from "@shared/sch
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
 
-// Analysis engine for RAG scoring and fit classification
-class AnalysisEngine {
-  analyzeSubmission(formData: PreEmploymentFormData) {
-    const risks: string[] = [];
-    let ragScore: "green" | "amber" | "red" = "green";
-    let fitClassification = "fit";
-    const recommendations: string[] = [];
+// Using centralized risk assessment service for all analysis (duplicate engines removed)
+// All analysis logic moved to riskAssessmentService.ts for consistency
 
-    // Lifting capacity assessment
-    if (formData.liftingKg < 15) {
-      risks.push("Low lifting capacity");
-      ragScore = "amber";
-      recommendations.push("Consider ergonomic assessment for lifting tasks");
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Session configuration for authentication
+  const PgSession = connectPgSimple(session);
+  
+  app.use(session({
+    store: new PgSession({
+      // Use the same DATABASE_URL environment variable
+      conString: process.env.DATABASE_URL,
+      tableName: 'user_sessions', // Session table name  
+      createTableIfMissing: true
+    }),
+    name: 'gpnet.sid',
+    secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
     }
+  }));
 
-    // Repetitive tasks assessment
-    if (formData.repetitiveTasks === "yes") {
-      risks.push("Repetitive task concerns");
-      if (ragScore === "green") ragScore = "amber";
-      recommendations.push("Provide training on repetitive strain injury prevention");
-    }
-
-    // Musculoskeletal assessments
-    const mskFields = [
-      { field: formData.mskBack, name: "back", details: formData.mskBackDetails },
-      { field: formData.mskNeck, name: "neck", details: formData.mskNeckDetails },
-      { field: formData.mskShoulders, name: "shoulders", details: formData.mskShouldersDetails },
-      { field: formData.mskElbows, name: "elbows", details: formData.mskElbowsDetails },
-      { field: formData.mskWrists, name: "wrists", details: formData.mskWristsDetails },
-      { field: formData.mskHips, name: "hips", details: formData.mskHipsDetails },
-      { field: formData.mskKnees, name: "knees", details: formData.mskKneesDetails },
-      { field: formData.mskAnkles, name: "ankles", details: formData.mskAnklesDetails },
-    ];
-
-    let currentIssues = 0;
-    let pastIssues = 0;
-
-    mskFields.forEach(({ field, name, details }) => {
-      if (field === "current") {
-        currentIssues++;
-        risks.push(`Current ${name} issue: ${details || "Not specified"}`);
-        recommendations.push(`Seek medical clearance for ${name} condition`);
-      } else if (field === "past") {
-        pastIssues++;
-        recommendations.push(`Monitor ${name} for any recurring symptoms`);
-      }
-    });
-
-    // Determine RAG score based on issues
-    if (currentIssues >= 2) {
-      ragScore = "red";
-      fitClassification = "not_fit";
-      recommendations.push("Comprehensive medical assessment required before employment");
-    } else if (currentIssues === 1 || pastIssues >= 2) {
-      ragScore = "amber";
-      fitClassification = "fit_with_restrictions";
-      recommendations.push("Regular monitoring and ergonomic support recommended");
-    }
-
-    // Psychosocial screening
-    if (formData.stressRating >= 4 || formData.sleepRating <= 2 || formData.supportRating <= 2) {
-      if (ragScore === "green") ragScore = "amber";
-      recommendations.push("Consider workplace wellness program referral");
-    }
-
-    // Set final fit classification
-    if (ragScore === "red") {
-      fitClassification = "not_fit";
-    } else if (ragScore === "amber") {
-      fitClassification = "fit_with_restrictions";
-    } else {
-      fitClassification = "fit";
-    }
-
-    // Default recommendations if none identified
-    if (recommendations.length === 0) {
-      recommendations.push("No specific restrictions identified - standard workplace safety protocols apply");
-    }
-
-    return {
-      ragScore,
-      fitClassification,
-      recommendations,
-      notes: risks.length > 0 ? `Identified risks: ${risks.join(", ")}` : "No significant health risks identified",
-    };
-  }
-}
-
-// Enhanced Injury Analysis Engine for comprehensive workplace injury assessments
-class InjuryAnalysisEngine {
-  analyzeInjury(formData: InjuryFormData) {
-    const risks: string[] = [];
-    const riskFactors: string[] = [];
-    let ragScore: "green" | "amber" | "red" = "green";
-    let fitClassification = "fit";
-    const recommendations: string[] = [];
-    const workCapacityAssessment: string[] = [];
-    const medicalRecommendations: string[] = [];
-    const workplaceModifications: string[] = [];
-
-    // Severity assessment
-    if (formData.severity === "major" || formData.severity === "serious") {
-      ragScore = "red";
-      fitClassification = "not_fit";
-      risks.push(`${formData.severity} injury requiring comprehensive assessment`);
-      recommendations.push("Immediate medical assessment required before return to work");
-      recommendations.push("Development of comprehensive return-to-work plan necessary");
-    } else if (formData.severity === "moderate") {
-      ragScore = "amber";
-      fitClassification = "fit_with_restrictions";
-      risks.push("Moderate injury requiring monitoring");
-      recommendations.push("Modified duties may be required during recovery");
-    }
-
-    // Time off work assessment
-    if (formData.timeOffWork) {
-      if (ragScore === "green") ragScore = "amber";
-      recommendations.push("Return-to-work planning and medical clearance required");
-      risks.push("Time off work required for recovery");
-    }
-
-    // Work capacity assessment
-    if (formData.canReturnToWork === "no") {
-      ragScore = "red";
-      fitClassification = "not_fit";
-      risks.push("Unable to return to work at this time");
-      recommendations.push("Medical treatment and recovery period required");
-      recommendations.push("Regular medical review to assess fitness for work");
-    } else if (formData.canReturnToWork === "with_restrictions") {
-      if (ragScore === "green") ragScore = "amber";
-      fitClassification = "fit_with_restrictions";
-      recommendations.push("Return to work with medical restrictions and modified duties");
+  // Mount authentication routes
+  app.use('/api/auth', authRoutes);
+  
+  // ===========================================
+  // EXTERNAL EMAIL PROCESSING ENDPOINTS
+  // ===========================================
+  
+  // Process external email forwarded by manager
+  app.post("/api/external-emails/process", async (req, res) => {
+    try {
+      console.log("Processing external email from manager");
       
-      // Add specific restrictions
-      if (formData.workRestrictions && formData.workRestrictions.length > 0) {
-        risks.push(`Work restrictions required: ${formData.workRestrictions.join(", ")}`);
-      }
-    }
-
-    // Body parts affected analysis
-    if (formData.bodyPartsAffected && formData.bodyPartsAffected.length > 0) {
-      const criticalAreas = ["Back", "Neck", "Head", "Chest"];
-      const affectedCritical = formData.bodyPartsAffected.filter(part => 
-        criticalAreas.some(critical => part.toLowerCase().includes(critical.toLowerCase()))
-      );
-      
-      if (affectedCritical.length > 0) {
-        if (ragScore === "green") ragScore = "amber";
-        risks.push(`Critical body areas affected: ${affectedCritical.join(", ")}`);
-        recommendations.push("Specialist medical assessment recommended for critical body areas");
-      }
-
-      if (formData.bodyPartsAffected.length >= 3) {
-        ragScore = "red";
-        risks.push("Multiple body parts affected indicating complex injury");
-        recommendations.push("Comprehensive medical evaluation for multi-site injury");
-      }
-    }
-
-    // Injury type assessment
-    const highRiskInjuries = ["Fracture/Break", "Burn", "Chemical Exposure", "Crush"];
-    if (highRiskInjuries.includes(formData.injuryType)) {
-      ragScore = "red";
-      fitClassification = "not_fit";
-      risks.push(`High-risk injury type: ${formData.injuryType}`);
-      recommendations.push("Specialist medical treatment and extended recovery period required");
-    }
-
-    // WorkCover claim assessment
-    if (formData.claimType === "workcover") {
-      recommendations.push("WorkCover claim processing required");
-      recommendations.push("Case manager assignment and claim documentation necessary");
-      risks.push("WorkCover claim - formal injury management process required");
-    }
-
-    // Recovery time assessment
-    if (formData.estimatedRecovery) {
-      const recoveryLower = formData.estimatedRecovery.toLowerCase();
-      if (recoveryLower.includes("month") || recoveryLower.includes("week")) {
-        if (ragScore === "green") ragScore = "amber";
-        medicalRecommendations.push("Extended recovery period - regular medical review required");
-        workCapacityAssessment.push("Extended recovery may affect return-to-work timeline");
-      }
-      if (recoveryLower.includes("unknown") || recoveryLower.includes("unclear")) {
-        if (ragScore === "green") ragScore = "amber";
-        medicalRecommendations.push("Uncertain recovery timeline - close medical monitoring required");
-        riskFactors.push("Unpredictable recovery timeline increases case complexity");
-      }
-    }
-
-    // Enhanced injury type-specific assessments
-    this.analyzeInjuryTypeSpecific(formData, riskFactors, workCapacityAssessment, medicalRecommendations, workplaceModifications);
-    
-    // Position and department-specific risk assessment
-    this.analyzeWorkplaceFactors(formData, workplaceModifications, workCapacityAssessment);
-    
-    // Recovery timeline and RTW planning
-    this.generateRTWRecommendations(formData, medicalRecommendations, workCapacityAssessment);
-
-    // Set final fit classification based on RAG score
-    if (ragScore === "red") {
-      fitClassification = "not_fit";
-    } else if (ragScore === "amber") {
-      fitClassification = "fit_with_restrictions";
-    } else {
-      fitClassification = "fit";
-    }
-
-    // Default recommendations if none identified
-    if (recommendations.length === 0) {
-      recommendations.push("Monitor for symptom changes and ensure proper workplace safety protocols");
-    }
-
-    return {
-      ragScore,
-      fitClassification,
-      recommendations: [...recommendations, ...medicalRecommendations, ...workCapacityAssessment, ...workplaceModifications],
-      notes: risks.length > 0 ? `Identified risks: ${risks.join("; ")}` : "Minor injury with standard recovery expected",
-      riskFactors,
-      workCapacityAssessment,
-      medicalRecommendations,
-      workplaceModifications,
-    };
-  }
-
-  // Analyze injury type-specific factors and implications
-  analyzeInjuryTypeSpecific(formData: InjuryFormData, riskFactors: string[], workCapacity: string[], medical: string[], workplace: string[]) {
-    const injuryTypeAssessments = {
+      // Validate required fields
+      const { email, organizationId, forwardedBy } = req.body;
       "Strain/Sprain": {
         risks: ["Potential for re-injury", "Recurring pain patterns"],
         capacity: ["May require lifting restrictions", "Gradual return to full duties"],
@@ -401,10 +213,7 @@ class InjuryAnalysisEngine {
   }
 }
 
-const analysisEngine = new AnalysisEngine();
-const injuryAnalysisEngine = new InjuryAnalysisEngine();
-
-export async function registerRoutes(app: Express): Promise<Server> {
+// Duplicate analysis engines removed - using centralized riskAssessmentService
   // Session configuration for authentication
   const PgSession = connectPgSimple(session);
   
@@ -795,15 +604,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rawData: formData,
       });
 
-      // Perform automated analysis
-      const analysisResult = analysisEngine.analyzeSubmission(formData);
+      // Perform automated analysis using centralized risk assessment service
+      const riskInput: RiskInput = {
+        type: 'form',
+        content: formData,
+        timestamp: new Date(),
+        source: 'pre_employment_submission'
+      };
+      const analysisResult = await riskAssessmentService.assessRisk([riskInput]);
       
       await storage.createAnalysis({
         ticketId: ticket.id,
         fitClassification: analysisResult.fitClassification,
         ragScore: analysisResult.ragScore,
         recommendations: analysisResult.recommendations,
-        notes: analysisResult.notes,
+        notes: `Automated analysis: ${analysisResult.triggerReasons.join('; ')}. Risk factors: ${analysisResult.riskFactors.join(', ')}. Confidence: ${analysisResult.confidence}%`,
       });
 
       // Update ticket status to AWAITING_REVIEW
@@ -1000,8 +815,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Perform automated injury analysis
-      const analysisResult = injuryAnalysisEngine.analyzeInjury(formData);
+      // Perform automated injury analysis using centralized risk assessment service
+      const riskInput: RiskInput = {
+        type: 'form',
+        content: formData,
+        timestamp: new Date(),
+        source: 'injury_form_submission'
+      };
+      const analysisResult = await riskAssessmentService.assessRisk([riskInput]);
       
       await storage.createAnalysis({
         ticketId: ticket.id,
@@ -2326,9 +2147,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Analysis regeneration only available for injury cases" });
       }
 
-      // Re-run injury analysis with enhanced engine
+      // Re-run injury analysis using centralized risk assessment service
       const formData = submission.rawData as any;
-      const analysisResult = injuryAnalysisEngine.analyzeInjury(formData);
+      const riskInput: RiskInput = {
+        type: 'form',
+        content: formData,
+        timestamp: new Date(),
+        source: 'analysis_regeneration'
+      };
+      const analysisResult = await riskAssessmentService.assessRisk([riskInput]);
 
       // Update the analysis with enhanced results
       await storage.updateAnalysis(ticketId, {
@@ -4919,6 +4746,603 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Pre-employment invitation failed:", error);
       res.status(500).json({
         error: "Failed to send pre-employment check invitation",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Validate Pre-Employment Invitation Token
+  app.get("/api/pre-employment/validate-token", async (req, res) => {
+    try {
+      const { token } = req.query;
+      
+      if (!token || typeof token !== 'string') {
+        return res.status(400).json({ error: "Token is required" });
+      }
+
+      // Find the token in the database
+      const [tokenRecord] = await db
+        .select({
+          id: invitationTokens.id,
+          ticketId: invitationTokens.ticketId,
+          workerId: invitationTokens.workerId,
+          expiresAt: invitationTokens.expiresAt,
+          used: invitationTokens.used,
+        })
+        .from(invitationTokens)
+        .where(eq(invitationTokens.token, token))
+        .limit(1);
+
+      if (!tokenRecord) {
+        return res.status(404).json({ error: "Invalid invitation token" });
+      }
+
+      // Check if token is expired
+      if (new Date() > tokenRecord.expiresAt) {
+        return res.status(410).json({ error: "This invitation has expired. Please contact your manager for a new invitation." });
+      }
+
+      // Check if token has already been used
+      if (tokenRecord.used) {
+        return res.status(409).json({ error: "This invitation has already been completed." });
+      }
+
+      // Get additional context for the worker
+      const worker = await storage.getWorker(tokenRecord.workerId);
+      const ticket = await storage.getTicket(tokenRecord.ticketId);
+      
+      let organizationName = "Your Organization";
+      if (ticket?.organizationId) {
+        try {
+          const organization = await storage.getOrganization(ticket.organizationId);
+          organizationName = organization?.name || organizationName;
+        } catch (error) {
+          console.warn("Could not fetch organization name:", error);
+        }
+      }
+
+      res.json({
+        valid: true,
+        tokenId: tokenRecord.id,
+        ticketId: tokenRecord.ticketId,
+        workerId: tokenRecord.workerId,
+        workerName: worker ? `${worker.firstName} ${worker.lastName}` : 'Worker',
+        organizationName,
+        expiresAt: tokenRecord.expiresAt.toISOString(),
+      });
+
+    } catch (error) {
+      console.error("Token validation failed:", error);
+      res.status(500).json({
+        error: "Failed to validate invitation token",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Submit Pre-Employment Health Assessment
+  app.post("/api/pre-employment/submit", async (req, res) => {
+    try {
+      console.log("Processing pre-employment form submission");
+      
+      // Validate the invitation token first
+      const { invitationToken, ...formData } = req.body;
+      
+      if (!invitationToken) {
+        return res.status(400).json({ error: "Invitation token is required" });
+      }
+
+      // Find and validate the token
+      const [tokenRecord] = await db
+        .select()
+        .from(invitationTokens)
+        .where(eq(invitationTokens.token, invitationToken))
+        .limit(1);
+
+      if (!tokenRecord) {
+        return res.status(404).json({ error: "Invalid invitation token" });
+      }
+
+      if (new Date() > tokenRecord.expiresAt) {
+        return res.status(410).json({ error: "This invitation has expired" });
+      }
+
+      if (tokenRecord.used) {
+        return res.status(409).json({ error: "This invitation has already been completed" });
+      }
+
+      // Validate form data with the pre-employment schema
+      const { preEmploymentFormSchema } = await import('@shared/schema');
+      const validationResult = preEmploymentFormSchema.safeParse(formData);
+      
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid form data", details: errorMessage });
+      }
+
+      const validatedFormData = validationResult.data;
+
+      // Get the ticket and worker information
+      const ticket = await storage.getTicket(tokenRecord.ticketId);
+      const worker = await storage.getWorker(tokenRecord.workerId);
+
+      if (!ticket || !worker) {
+        return res.status(404).json({ error: "Associated ticket or worker not found" });
+      }
+
+      // Update worker information with form data
+      const { workers } = await import('@shared/schema');
+      await db.update(workers)
+        .set({
+          firstName: validatedFormData.firstName,
+          lastName: validatedFormData.lastName,
+          dateOfBirth: validatedFormData.dateOfBirth,
+          phone: validatedFormData.phone,
+          email: validatedFormData.email,
+          roleApplied: validatedFormData.roleApplied,
+          site: validatedFormData.site || '',
+        })
+        .where(eq(workers.id, worker.id));
+
+      // Create form submission record
+      const formSubmission = await storage.createFormSubmission({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        rawData: validatedFormData,
+        receivedAt: new Date(),
+      });
+
+      // Mark the invitation token as used
+      await db.update(invitationTokens)
+        .set({ used: true })
+        .where(eq(invitationTokens.id, tokenRecord.id));
+
+      // AUTOMATED ANALYSIS: Run risk assessment on the submitted form
+      const { riskAssessmentService } = await import('../riskAssessmentService');
+      
+      console.log("Running automated risk assessment analysis...");
+      const riskInput = {
+        type: 'form' as const,
+        content: validatedFormData,
+        timestamp: new Date(),
+        source: 'pre_employment_submission'
+      };
+
+      const analysisResult = await riskAssessmentService.assessRisk([riskInput]);
+      console.log("Automated analysis completed:", { 
+        ragScore: analysisResult.ragScore, 
+        fitClassification: analysisResult.fitClassification,
+        confidence: analysisResult.confidence
+      });
+
+      // Create detailed analysis record
+      const analysis = await storage.createAnalysis({
+        ticketId: ticket.id,
+        fitClassification: analysisResult.fitClassification,
+        ragScore: analysisResult.ragScore,
+        recommendations: analysisResult.recommendations,
+        notes: `Automated analysis: ${analysisResult.triggerReasons.join('; ')}. Risk factors: ${analysisResult.riskFactors.join(', ')}. Confidence: ${analysisResult.confidence}%`,
+        lastAssessedAt: new Date(),
+        // Set next review based on RAG score
+        nextReviewAt: analysisResult.ragScore === 'red' ? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) :
+                     analysisResult.ragScore === 'amber' ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) :
+                     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      });
+
+      // Update ticket status based on automated analysis
+      let newStatus = "AWAITING_REVIEW";
+      let nextStep = "Review worker health assessment and perform analysis";
+      
+      // If analysis shows clear fit or clear not fit with high confidence, can potentially auto-approve/reject
+      if (analysisResult.confidence >= 95) {
+        if (analysisResult.ragScore === 'green' && analysisResult.fitClassification === 'fit') {
+          // High confidence GREEN - could auto-approve for low-risk roles
+          nextStep = "High confidence assessment: Worker appears fit for role. Manager review recommended for final approval.";
+        } else if (analysisResult.ragScore === 'red') {
+          // High confidence RED - needs immediate attention
+          newStatus = "REQUIRES_ATTENTION";
+          nextStep = "URGENT: High-risk factors identified. Immediate manager review required before proceeding.";
+        }
+      }
+
+      await storage.updateTicketStatus(ticket.id, newStatus);
+      await storage.updateTicketStep(
+        ticket.id, 
+        nextStep,
+        "Automated Analysis System"
+      );
+
+      // Create audit event for form submission
+      const { events } = await import('@shared/schema');
+      const caseRecord = await storage.getCaseByTicketId(ticket.id);
+      
+      await db.insert(events).values({
+        caseId: caseRecord?.id,
+        source: "worker_submission",
+        kind: "form_submitted",
+        occurredAt: new Date(),
+        performedBy: worker.id,
+        payloadJson: {
+          action: "pre_employment_form_submitted",
+          workerName: `${validatedFormData.firstName} ${validatedFormData.lastName}`,
+          submissionId: formSubmission.id,
+          analysisId: analysis.id,
+          automaticAnalysis: {
+            ragScore: analysisResult.ragScore,
+            fitClassification: analysisResult.fitClassification,
+            confidence: analysisResult.confidence,
+            riskFactors: analysisResult.riskFactors,
+            recommendations: analysisResult.recommendations,
+          },
+          formSections: [
+            "personal_details",
+            "medical_history", 
+            "musculoskeletal_assessment",
+            "functional_capacity",
+            "psychosocial_screening",
+            "consent"
+          ],
+        },
+      });
+
+      res.json({
+        success: true,
+        message: "Pre-employment health assessment submitted successfully",
+        ticketId: ticket.id,
+        submissionId: formSubmission.id,
+        status: "AWAITING_REVIEW",
+      });
+
+    } catch (error) {
+      console.error("Pre-employment form submission failed:", error);
+      res.status(500).json({
+        error: "Failed to submit pre-employment assessment",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Get Pre-Employment Assessment for Review
+  app.get("/api/pre-employment/review/:ticketId", requireAuth, async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      if (!ticketId) {
+        return res.status(400).json({ error: "Ticket ID is required" });
+      }
+
+      // Get ticket details
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Security: Ensure user can only review tickets from their organization
+      if (ticket.organizationId !== req.session.user!.organizationId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Ensure this is a pre-employment case awaiting review
+      if (ticket.caseType !== 'pre_employment' || ticket.status !== 'AWAITING_REVIEW') {
+        return res.status(400).json({ 
+          error: "This ticket is not a pre-employment assessment awaiting review" 
+        });
+      }
+
+      // Get worker details
+      const worker = await storage.getWorker(ticket.workerId!);
+      if (!worker) {
+        return res.status(404).json({ error: "Worker not found" });
+      }
+
+      // Get form submission details
+      const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+      if (!formSubmission) {
+        return res.status(404).json({ error: "Form submission not found" });
+      }
+
+      // Get organization details
+      let organization = null;
+      if (ticket.organizationId) {
+        try {
+          organization = await storage.getOrganization(ticket.organizationId);
+        } catch (error) {
+          console.warn("Could not fetch organization:", error);
+        }
+      }
+
+      res.json({
+        ticket: {
+          id: ticket.id,
+          status: ticket.status,
+          priority: ticket.priority,
+          createdAt: ticket.createdAt,
+          nextStep: ticket.nextStep,
+          assignedTo: ticket.assignedTo,
+        },
+        worker: {
+          id: worker.id,
+          firstName: worker.firstName,
+          lastName: worker.lastName,
+          email: worker.email,
+          phone: worker.phone,
+          roleApplied: worker.roleApplied,
+          site: worker.site,
+        },
+        formSubmission: {
+          id: formSubmission.id,
+          rawData: formSubmission.rawData,
+          receivedAt: formSubmission.receivedAt,
+        },
+        organization: organization ? {
+          id: organization.id,
+          name: organization.name,
+        } : null,
+      });
+
+    } catch (error) {
+      console.error("Review data fetch failed:", error);
+      res.status(500).json({
+        error: "Failed to fetch review data",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Submit Pre-Employment Review Decision
+  app.post("/api/pre-employment/review/:ticketId", requireAuth, async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const { decision, notes } = req.body;
+      
+      if (!ticketId || !decision || !notes?.trim()) {
+        return res.status(400).json({ 
+          error: "Ticket ID, decision (approve/reject), and notes are required" 
+        });
+      }
+
+      if (!['approve', 'reject'].includes(decision)) {
+        return res.status(400).json({ error: "Decision must be 'approve' or 'reject'" });
+      }
+
+      // Get ticket details
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Security: Ensure user can only review tickets from their organization
+      if (ticket.organizationId !== req.session.user!.organizationId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Ensure this is a pre-employment case awaiting review
+      if (ticket.caseType !== 'pre_employment' || ticket.status !== 'AWAITING_REVIEW') {
+        return res.status(400).json({ 
+          error: "This ticket is not awaiting review or is not a pre-employment assessment" 
+        });
+      }
+
+      // Get reviewer information
+      const reviewerId = req.session.user!.id;
+      const reviewerName = `${req.session.user!.firstName || ''} ${req.session.user!.lastName || ''}`.trim() || 'Reviewer';
+
+      // Update ticket status based on decision
+      const newStatus = decision === 'approve' ? 'READY_TO_SEND' : 'REJECTED';
+      await storage.updateTicketStatus(ticketId, newStatus);
+
+      // Update next step based on decision
+      const nextStep = decision === 'approve' 
+        ? "Generate fit-for-work certificate and send to employer"
+        : "Assessment rejected - worker may need to reapply or provide additional information";
+      
+      await storage.updateTicketStep(
+        ticketId, 
+        nextStep,
+        decision === 'approve' ? "Administrative Team" : reviewerName
+      );
+
+      // Create analysis record with the review decision
+      const analysisData = {
+        ticketId: ticketId,
+        fitClassification: decision === 'approve' ? 'fit' : 'not_fit',
+        ragScore: decision === 'approve' ? 'green' : 'red',
+        recommendations: [notes.trim()],
+        notes: `Manual review by ${reviewerName}: ${decision === 'approve' ? 'APPROVED' : 'REJECTED'} - ${notes.trim()}`,
+        lastAssessedAt: new Date(),
+      };
+
+      // Check if analysis already exists
+      const existingAnalysis = await storage.getAnalysisByTicket(ticketId);
+      if (existingAnalysis) {
+        // Update existing analysis
+        await storage.updateAnalysis(ticketId, analysisData, {
+          changeSource: "manual_review",
+          changeReason: `Manager review: ${decision}`,
+          triggeredBy: reviewerId,
+          confidence: 100, // Manual review is 100% confident
+        });
+      } else {
+        // Create new analysis
+        await storage.createAnalysis(analysisData);
+      }
+
+      // Create audit event for the review
+      const { events } = await import('@shared/schema');
+      const caseRecord = await storage.getCaseByTicketId(ticketId);
+      
+      await db.insert(events).values({
+        caseId: caseRecord?.id,
+        source: "manager_review",
+        kind: "review_completed",
+        occurredAt: new Date(),
+        performedBy: reviewerId,
+        payloadJson: {
+          action: "pre_employment_review_completed",
+          reviewDecision: decision,
+          reviewNotes: notes.trim(),
+          reviewerName,
+          previousStatus: "AWAITING_REVIEW",
+          newStatus,
+          fitClassification: decision === 'approve' ? 'fit' : 'not_fit',
+        },
+      });
+
+      res.json({
+        success: true,
+        message: `Pre-employment assessment ${decision === 'approve' ? 'approved' : 'rejected'} successfully`,
+        ticketId: ticketId,
+        decision,
+        newStatus,
+        reviewedBy: reviewerName,
+        reviewedAt: new Date().toISOString(),
+      });
+
+    } catch (error) {
+      console.error("Review submission failed:", error);
+      res.status(500).json({
+        error: "Failed to submit review",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Generate Automated Analysis Report
+  app.get("/api/analysis/report/:ticketId", requireAuth, async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      
+      if (!ticketId) {
+        return res.status(400).json({ error: "Ticket ID is required" });
+      }
+
+      // Get ticket details
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+
+      // Security: Ensure user can only access tickets from their organization
+      if (ticket.organizationId !== req.session.user!.organizationId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Get analysis results
+      const analysis = await storage.getAnalysisByTicket(ticketId);
+      if (!analysis) {
+        return res.status(404).json({ error: "Analysis not found for this ticket" });
+      }
+
+      // Get worker details
+      const worker = await storage.getWorker(ticket.workerId!);
+      if (!worker) {
+        return res.status(404).json({ error: "Worker not found" });
+      }
+
+      // Get form submission details
+      const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+
+      // Get risk history
+      const { riskHistory } = await import('@shared/schema');
+      const riskHistoryRecords = await db.select()
+        .from(riskHistory)
+        .where(eq(riskHistory.ticketId, ticketId))
+        .orderBy(desc(riskHistory.timestamp));
+
+      // Generate comprehensive analysis report
+      const report = {
+        reportGenerated: new Date().toISOString(),
+        ticket: {
+          id: ticket.id,
+          status: ticket.status,
+          caseType: ticket.caseType,
+          priority: ticket.priority,
+          createdAt: ticket.createdAt,
+          nextStep: ticket.nextStep,
+          assignedTo: ticket.assignedTo,
+        },
+        worker: {
+          firstName: worker.firstName,
+          lastName: worker.lastName,
+          email: worker.email,
+          roleApplied: worker.roleApplied,
+          site: worker.site,
+        },
+        currentAnalysis: {
+          fitClassification: analysis.fitClassification,
+          ragScore: analysis.ragScore,
+          confidence: riskHistoryRecords[0]?.confidence || 95,
+          recommendations: analysis.recommendations,
+          notes: analysis.notes,
+          lastAssessedAt: analysis.lastAssessedAt,
+          nextReviewAt: analysis.nextReviewAt,
+        },
+        riskAssessmentSummary: {
+          overallRisk: analysis.ragScore,
+          keyRiskFactors: riskHistoryRecords[0]?.riskFactors || [],
+          confidenceLevel: riskHistoryRecords[0]?.confidence || 95,
+          assessmentBasis: formSubmission ? "Comprehensive health assessment form" : "Manual assessment",
+          lastUpdated: analysis.lastAssessedAt,
+        },
+        recommendations: {
+          immediate: analysis.recommendations?.filter((r: string) => 
+            r.toLowerCase().includes('immediate') || r.toLowerCase().includes('urgent')
+          ) || [],
+          shortTerm: analysis.recommendations?.filter((r: string) => 
+            r.toLowerCase().includes('follow') || r.toLowerCase().includes('monitor')
+          ) || [],
+          longTerm: analysis.recommendations?.filter((r: string) => 
+            !r.toLowerCase().includes('immediate') && 
+            !r.toLowerCase().includes('urgent') &&
+            !r.toLowerCase().includes('follow') && 
+            !r.toLowerCase().includes('monitor')
+          ) || [],
+        },
+        riskHistory: riskHistoryRecords.map(record => ({
+          timestamp: record.timestamp,
+          previousRisk: record.previousRagScore,
+          newRisk: record.newRagScore,
+          changeSource: record.changeSource,
+          changeReason: record.changeReason,
+          confidence: record.confidence,
+          triggeredBy: record.triggeredBy,
+        })),
+        formAnalysis: formSubmission ? {
+          submissionDate: formSubmission.receivedAt,
+          sectionsCompleted: [
+            "Personal Details",
+            "Medical History", 
+            "Musculoskeletal Assessment",
+            "Functional Capacity",
+            "Psychosocial Screening",
+            "Consent & Declaration"
+          ],
+          keyFindings: analysis.notes,
+        } : null,
+        nextSteps: {
+          required: ticket.nextStep,
+          assignedTo: ticket.assignedTo,
+          dueDate: analysis.nextReviewAt,
+          priority: analysis.ragScore === 'red' ? 'URGENT' : 
+                   analysis.ragScore === 'amber' ? 'HIGH' : 'STANDARD',
+        },
+        compliance: {
+          preEmploymentComplete: formSubmission !== null,
+          riskAssessmentComplete: true,
+          reviewRequired: ticket.status === 'AWAITING_REVIEW',
+          documentsRequired: analysis.ragScore === 'red' || analysis.ragScore === 'amber',
+        }
+      };
+
+      res.json({
+        success: true,
+        report,
+      });
+
+    } catch (error) {
+      console.error("Analysis report generation failed:", error);
+      res.status(500).json({
+        error: "Failed to generate analysis report",
         details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
