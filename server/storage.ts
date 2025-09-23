@@ -8,6 +8,7 @@ import {
   specialists, escalations, specialistAssignments,
   medicalDocuments, documentProcessingJobs, documentProcessingLogs,
   checks, companyAliases, emailDrafts, checkRequests,
+  medicalOpinionRequests, organizationSettings, reminderSchedule,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
   type Injury, type Stakeholder, type RtwPlan, type RiskHistory,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
@@ -16,6 +17,7 @@ import {
   type Specialist, type Escalation, type SpecialistAssignment,
   type MedicalDocument, type DocumentProcessingJob, type DocumentProcessingLog,
   type Check, type CompanyAlias, type EmailDraft, type CheckRequest,
+  type MedicalOpinionRequest, type OrganizationSettings, type ReminderSchedule,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
   type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
@@ -24,7 +26,8 @@ import {
   type InsertOrganization, type InsertClientUser, type InsertAdminUser, type InsertAuditEvent, type InsertArchiveIndex,
   type InsertSpecialist, type InsertEscalation, type InsertSpecialistAssignment,
   type InsertMedicalDocument, type InsertDocumentProcessingJob, type InsertDocumentProcessingLog,
-  type InsertCheck, type InsertCompanyAlias, type InsertEmailDraft, type InsertCheckRequest
+  type InsertCheck, type InsertCompanyAlias, type InsertEmailDraft, type InsertCheckRequest,
+  type InsertMedicalOpinionRequest, type InsertOrganizationSettings, type InsertReminderSchedule
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, asc } from "drizzle-orm";
@@ -327,6 +330,33 @@ export interface IStorage {
   getCompanyAliasesForOrganization(organizationId: string): Promise<CompanyAlias[]>;
   findCompanyByAlias(normalizedName: string): Promise<CompanyAlias[]>;
   deleteCompanyAlias(id: string): Promise<void>;
+
+  // ===============================================
+  // MEDICAL OPINION REQUEST WORKFLOW
+  // ===============================================
+  
+  // Medical Opinion Requests
+  createMedicalOpinionRequest(data: InsertMedicalOpinionRequest): Promise<MedicalOpinionRequest>;
+  getMedicalOpinionRequest(id: string): Promise<MedicalOpinionRequest | undefined>;
+  getMedicalOpinionRequestsByTicket(ticketId: string): Promise<MedicalOpinionRequest[]>;
+  updateMedicalOpinionRequest(id: string, data: Partial<InsertMedicalOpinionRequest>): Promise<MedicalOpinionRequest>;
+  assignMedicalOpinionRequest(id: string, doctorId: string): Promise<MedicalOpinionRequest>;
+  completeMedicalOpinionRequest(id: string, opinion: string, recommendations: any, decision: string): Promise<MedicalOpinionRequest>;
+  getPendingMedicalOpinionRequests(): Promise<MedicalOpinionRequest[]>;
+  getOverdueMedicalOpinionRequests(): Promise<MedicalOpinionRequest[]>;
+  
+  // Organization Settings
+  createOrganizationSettings(data: InsertOrganizationSettings): Promise<OrganizationSettings>;
+  getOrganizationSettings(organizationId: string): Promise<OrganizationSettings | undefined>;
+  updateOrganizationSettings(organizationId: string, data: Partial<InsertOrganizationSettings>): Promise<OrganizationSettings>;
+  
+  // Reminder Schedule
+  createReminderSchedule(data: InsertReminderSchedule): Promise<ReminderSchedule>;
+  getReminderSchedule(id: string): Promise<ReminderSchedule | undefined>;
+  getRemindersByTicket(ticketId: string): Promise<ReminderSchedule[]>;
+  updateReminderStatus(id: string, status: string, sentAt?: Date): Promise<ReminderSchedule>;
+  getPendingReminders(): Promise<ReminderSchedule[]>;
+  getOverdueReminders(): Promise<ReminderSchedule[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2339,6 +2369,195 @@ export class DatabaseStorage implements IStorage {
       .from(checkRequests)
       .where(sql`${checkRequests.status} IN ('initiated', 'draft_sent')`)
       .orderBy(desc(checkRequests.createdAt));
+  }
+
+  // ===============================================
+  // MEDICAL OPINION REQUEST WORKFLOW IMPLEMENTATIONS
+  // ===============================================
+  
+  // Medical Opinion Requests
+  async createMedicalOpinionRequest(data: InsertMedicalOpinionRequest): Promise<MedicalOpinionRequest> {
+    // Calculate SLA deadline (30 minutes from now by default)
+    const slaMinutes = 30; // TODO: Get from organization settings
+    const slaDeadline = new Date(Date.now() + (slaMinutes * 60 * 1000));
+    
+    const [request] = await db
+      .insert(medicalOpinionRequests)
+      .values({ 
+        ...data, 
+        slaDeadline,
+        requestedAt: new Date()
+      })
+      .returning();
+    return request;
+  }
+
+  async getMedicalOpinionRequest(id: string): Promise<MedicalOpinionRequest | undefined> {
+    const [request] = await db
+      .select()
+      .from(medicalOpinionRequests)
+      .where(eq(medicalOpinionRequests.id, id));
+    return request || undefined;
+  }
+
+  async getMedicalOpinionRequestsByTicket(ticketId: string): Promise<MedicalOpinionRequest[]> {
+    return await db
+      .select()
+      .from(medicalOpinionRequests)
+      .where(eq(medicalOpinionRequests.ticketId, ticketId))
+      .orderBy(desc(medicalOpinionRequests.requestedAt));
+  }
+
+  async updateMedicalOpinionRequest(id: string, data: Partial<InsertMedicalOpinionRequest>): Promise<MedicalOpinionRequest> {
+    const [request] = await db
+      .update(medicalOpinionRequests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(medicalOpinionRequests.id, id))
+      .returning();
+    return request;
+  }
+
+  async assignMedicalOpinionRequest(id: string, doctorId: string): Promise<MedicalOpinionRequest> {
+    const [request] = await db
+      .update(medicalOpinionRequests)
+      .set({ 
+        doctorId,
+        status: 'assigned',
+        updatedAt: new Date()
+      })
+      .where(eq(medicalOpinionRequests.id, id))
+      .returning();
+    return request;
+  }
+
+  async completeMedicalOpinionRequest(id: string, opinion: string, recommendations: any, decision: string): Promise<MedicalOpinionRequest> {
+    const [request] = await db
+      .update(medicalOpinionRequests)
+      .set({
+        medicalOpinion: opinion,
+        recommendations,
+        preEmploymentDecision: decision,
+        status: 'responded',
+        respondedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(medicalOpinionRequests.id, id))
+      .returning();
+    return request;
+  }
+
+  async getPendingMedicalOpinionRequests(): Promise<MedicalOpinionRequest[]> {
+    return await db
+      .select()
+      .from(medicalOpinionRequests)
+      .where(sql`${medicalOpinionRequests.status} IN ('pending', 'assigned')`)
+      .orderBy(asc(medicalOpinionRequests.requestedAt));
+  }
+
+  async getOverdueMedicalOpinionRequests(): Promise<MedicalOpinionRequest[]> {
+    const now = new Date();
+    return await db
+      .select()
+      .from(medicalOpinionRequests)
+      .where(
+        and(
+          sql`${medicalOpinionRequests.status} IN ('pending', 'assigned')`,
+          sql`${medicalOpinionRequests.slaDeadline} < ${now}`
+        )
+      )
+      .orderBy(asc(medicalOpinionRequests.slaDeadline));
+  }
+  
+  // Organization Settings
+  async createOrganizationSettings(data: InsertOrganizationSettings): Promise<OrganizationSettings> {
+    const [settings] = await db
+      .insert(organizationSettings)
+      .values(data)
+      .returning();
+    return settings;
+  }
+
+  async getOrganizationSettings(organizationId: string): Promise<OrganizationSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, organizationId));
+    return settings || undefined;
+  }
+
+  async updateOrganizationSettings(organizationId: string, data: Partial<InsertOrganizationSettings>): Promise<OrganizationSettings> {
+    const [settings] = await db
+      .update(organizationSettings)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(organizationSettings.organizationId, organizationId))
+      .returning();
+    return settings;
+  }
+  
+  // Reminder Schedule
+  async createReminderSchedule(data: InsertReminderSchedule): Promise<ReminderSchedule> {
+    const [reminder] = await db
+      .insert(reminderSchedule)
+      .values(data)
+      .returning();
+    return reminder;
+  }
+
+  async getReminderSchedule(id: string): Promise<ReminderSchedule | undefined> {
+    const [reminder] = await db
+      .select()
+      .from(reminderSchedule)
+      .where(eq(reminderSchedule.id, id));
+    return reminder || undefined;
+  }
+
+  async getRemindersByTicket(ticketId: string): Promise<ReminderSchedule[]> {
+    return await db
+      .select()
+      .from(reminderSchedule)
+      .where(eq(reminderSchedule.ticketId, ticketId))
+      .orderBy(asc(reminderSchedule.scheduledFor));
+  }
+
+  async updateReminderStatus(id: string, status: string, sentAt?: Date): Promise<ReminderSchedule> {
+    const [reminder] = await db
+      .update(reminderSchedule)
+      .set({ 
+        status,
+        sentAt: sentAt || new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(reminderSchedule.id, id))
+      .returning();
+    return reminder;
+  }
+
+  async getPendingReminders(): Promise<ReminderSchedule[]> {
+    const now = new Date();
+    return await db
+      .select()
+      .from(reminderSchedule)
+      .where(
+        and(
+          eq(reminderSchedule.status, 'pending'),
+          sql`${reminderSchedule.scheduledFor} <= ${now}`
+        )
+      )
+      .orderBy(asc(reminderSchedule.scheduledFor));
+  }
+
+  async getOverdueReminders(): Promise<ReminderSchedule[]> {
+    const oneDayAgo = new Date(Date.now() - (24 * 60 * 60 * 1000));
+    return await db
+      .select()
+      .from(reminderSchedule)
+      .where(
+        and(
+          eq(reminderSchedule.status, 'pending'),
+          sql`${reminderSchedule.scheduledFor} < ${oneDayAgo}`
+        )
+      )
+      .orderBy(asc(reminderSchedule.scheduledFor));
   }
 }
 

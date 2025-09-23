@@ -1988,3 +1988,60 @@ export const EmailDraftStatus = {
 } as const;
 
 export type EmailDraftStatus = typeof EmailDraftStatus[keyof typeof EmailDraftStatus];
+
+// ===============================================
+// DOCTOR ESCALATION & MEDICAL OPINION SCHEMAS
+// ===============================================
+
+// Medical Opinion Request schemas
+export const insertMedicalOpinionRequestSchema = createInsertSchema(medicalOpinionRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  requestedAt: true,
+  slaDeadline: true
+});
+
+export type InsertMedicalOpinionRequest = z.infer<typeof insertMedicalOpinionRequestSchema>;
+export type MedicalOpinionRequest = typeof medicalOpinionRequests.$inferSelect;
+
+// Organization Settings schemas
+export const insertOrganizationSettingsSchema = createInsertSchema(organizationSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export type InsertOrganizationSettings = z.infer<typeof insertOrganizationSettingsSchema>;
+export type OrganizationSettings = typeof organizationSettings.$inferSelect;
+
+// Reminder Schedule schemas
+export const insertReminderScheduleSchema = createInsertSchema(reminderSchedule).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export type InsertReminderSchedule = z.infer<typeof insertReminderScheduleSchema>;
+export type ReminderSchedule = typeof reminderSchedule.$inferSelect;
+
+// Medical Opinion Request status enums
+export const MedicalOpinionStatus = {
+  PENDING: "pending",
+  ASSIGNED: "assigned", 
+  RESPONDED: "responded",
+  DELIVERED: "delivered",
+  ACKNOWLEDGED: "acknowledged"
+} as const;
+
+export type MedicalOpinionStatus = typeof MedicalOpinionStatus[keyof typeof MedicalOpinionStatus];
+
+// Reminder Schedule status enums
+export const ReminderStatus = {
+  PENDING: "pending",
+  SENT: "sent",
+  FAILED: "failed", 
+  CANCELLED: "cancelled"
+} as const;
+
+export type ReminderStatus = typeof ReminderStatus[keyof typeof ReminderStatus];
