@@ -430,8 +430,6 @@ export default function Dashboard() {
       {showInvitationForm && (
         <PreEmploymentInvitationForm
           onClose={() => setShowInvitationForm(false)}
-          managerName={user?.name || "Manager"}
-          organizationName="Your Organization"
         />
       )}
     </div>

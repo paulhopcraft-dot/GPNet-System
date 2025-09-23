@@ -4779,6 +4779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Import invitation schema from shared
   const { preEmploymentInvitationSchema, invitationTokens } = await import('@shared/schema');
+  const { db } = await import('./db');
 
   // Send Pre-Employment Check Invitation
   app.post("/api/pre-employment/invitations", requireAuth, async (req, res) => {
@@ -4803,13 +4804,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Derive secure context from authenticated session
       const userId = req.session.user!.id;
       const userOrgId = req.session.user!.organizationId;
-      const managerName = req.session.user!.name;
+      const managerName = `${req.session.user!.firstName || ''} ${req.session.user!.lastName || ''}`.trim() || 'Manager';
       
       // Get organization details for proper branding
       let organizationName = "Your Organization";
       if (userOrgId) {
         try {
-          const organization = await storage.getOrganizationById(userOrgId);
+          const organization = await storage.getOrganization(userOrgId);
           organizationName = organization?.name || organizationName;
         } catch (error) {
           console.warn("Could not fetch organization name:", error);
@@ -4838,19 +4839,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         companyName: organizationName,
         nextStep: "Send pre-employment check invitation to worker",
         lastStep: "Invitation created by manager",
-        lastStepCompletedAt: new Date().toISOString(),
+        lastStepCompletedAt: new Date(),
         assignedTo: managerName,
       });
 
       // Create case record linking to the ticket
-      const caseRecord = await storage.createCase({
+      const { cases } = await import('@shared/schema');
+      const [caseRecord] = await db.insert(cases).values({
         ticketId: ticket.id,
         workerId: worker.id,
         nextStepText: "Worker to complete pre-employment health assessment",
         nextStepDueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
         nextStepSetBy: userId,
-        nextStepSetAt: new Date().toISOString(),
-      });
+        nextStepSetAt: new Date(),
+      }).returning();
 
       // Generate secure, expiring token for the worker link
       const crypto = await import('crypto');
@@ -4882,12 +4884,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`Content:\n${emailContent}`);
       console.log('====================================');
 
-      // Create audit trail entry
-      const auditEvent = {
-        ticketId: ticket.id,
+      // Create audit trail entry using database directly
+      const { events } = await import('@shared/schema');
+      await db.insert(events).values({
+        caseId: caseRecord.id,
         source: "gpnet",
         kind: "invitation_sent",
-        occurredAt: new Date().toISOString(),
+        occurredAt: new Date(),
         performedBy: userId,
         payloadJson: {
           action: "pre_employment_invitation_sent",
@@ -4895,11 +4898,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           workerName,
           managerName,
           organizationName,
-          secureLink,
+          tokenId: invitationToken[0].id,
         },
-      };
-
-      await storage.createEvent(auditEvent);
+      });
 
       res.json({
         success: true,
@@ -4909,7 +4910,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           workerId: worker.id,
           caseId: caseRecord.id,
           workerEmail,
-          secureLink, // In production, this would not be returned for security
+          expiresAt: tokenExpiresAt.toISOString(),
+          // Note: secureLink not returned for security reasons
         },
       });
 
