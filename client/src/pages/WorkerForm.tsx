@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle } from "lucide-react";
 import { type PreEmploymentFormData } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function WorkerForm() {
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -14,29 +15,69 @@ export default function WorkerForm() {
     ticketId: string;
     status: string;
     message: string;
+    isDuplicate?: boolean;
   } | null>(null);
+  const { toast } = useToast();
 
   const submitFormMutation = useMutation({
     mutationFn: async (formData: PreEmploymentFormData) => {
-      const response = await apiRequest("POST", "/api/webhook/jotform", formData);
-      return await response.json() as {
-        success: boolean;
-        ticketId: string;
-        status: string;
-        message: string;
-      };
+      try {
+        const response = await apiRequest("POST", "/api/webhook/jotform", formData);
+        return await response.json() as {
+          success: boolean;
+          ticketId: string;
+          status: string;
+          message: string;
+        };
+      } catch (error: any) {
+        // Handle 409 Duplicate as success - submission already exists
+        if (error.message && error.message.includes('409:')) {
+          console.log("Duplicate submission detected, treating as success");
+          
+          // Extract submission ID from error message if available
+          const duplicateMatch = error.message.match(/submissionId\s+([a-f0-9]+)/);
+          const submissionId = duplicateMatch ? duplicateMatch[1] : 'existing';
+          
+          return {
+            success: true,
+            ticketId: submissionId,
+            status: 'DUPLICATE',
+            message: 'Assessment already submitted',
+            isDuplicate: true
+          };
+        }
+        // Re-throw other errors
+        throw error;
+      }
     },
     onSuccess: (result) => {
       console.log("Form submitted successfully:", result);
+      
       setSubmissionResult({
         ticketId: result.ticketId,
         status: result.status,
         message: result.message,
+        isDuplicate: result.isDuplicate || false,
       });
       setIsSubmitted(true);
+      
+      // Show success toast
+      toast({
+        title: result.isDuplicate ? "Already Submitted" : "Assessment Submitted",
+        description: result.isDuplicate 
+          ? "Your assessment was already submitted and is being processed."
+          : "Your pre-employment health assessment has been received and is now being processed.",
+        variant: "default",
+      });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       console.error("Form submission failed:", error);
+      
+      toast({
+        title: "Submission Failed", 
+        description: "There was an error submitting your assessment. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
