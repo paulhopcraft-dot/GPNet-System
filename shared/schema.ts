@@ -289,6 +289,33 @@ export const userSessions = pgTable("user_sessions", {
   expire: timestamp("expire").notNull(), // Session expiration
 });
 
+// Invitation tokens table for secure worker links
+export const invitationTokens = pgTable("invitation_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  workerId: varchar("worker_id").references(() => workers.id).notNull(),
+  token: varchar("token").notNull().unique(), // Secure random token
+  expiresAt: timestamp("expires_at").notNull(), // Token expiration
+  used: boolean("used").default(false), // Whether token has been used
+  usedAt: timestamp("used_at"), // When token was used
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type InsertInvitationToken = typeof invitationTokens.$inferInsert;
+export type InvitationToken = typeof invitationTokens.$inferSelect;
+
+// Pre-employment invitation schema for API validation
+export const preEmploymentInvitationSchema = createInsertSchema(invitationTokens).pick({
+  ticketId: true,
+  workerId: true,
+}).extend({
+  workerName: z.string().min(2, "Worker name must be at least 2 characters"),
+  workerEmail: z.string().email("Please enter a valid email address"),
+  customMessage: z.string().min(10, "Message must be at least 10 characters"),
+});
+
+export type PreEmploymentInvitationData = z.infer<typeof preEmploymentInvitationSchema>;
+
 // Audit events table for immutable audit log
 export const auditEvents = pgTable("audit_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

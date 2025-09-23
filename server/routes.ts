@@ -4773,6 +4773,159 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ===========================================
+  // PRE-EMPLOYMENT CHECK INVITATION ENDPOINTS
+  // ===========================================
+  
+  // Import invitation schema from shared
+  const { preEmploymentInvitationSchema, invitationTokens } = await import('@shared/schema');
+
+  // Send Pre-Employment Check Invitation
+  app.post("/api/pre-employment/invitations", requireAuth, async (req, res) => {
+    try {
+      console.log("Processing pre-employment check invitation request");
+      
+      // Only accept worker details from client - derive manager/org from session
+      const clientSchema = z.object({
+        workerName: z.string().min(2, "Worker name must be at least 2 characters"),
+        workerEmail: z.string().email("Please enter a valid email address"),
+        customMessage: z.string().min(10, "Message must be at least 10 characters"),
+      });
+      
+      const validationResult = clientSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        const errorMessage = fromZodError(validationResult.error).toString();
+        return res.status(400).json({ error: "Invalid invitation data", details: errorMessage });
+      }
+
+      const { workerName, workerEmail, customMessage } = validationResult.data;
+      
+      // Derive secure context from authenticated session
+      const userId = req.session.user!.id;
+      const userOrgId = req.session.user!.organizationId;
+      const managerName = req.session.user!.name;
+      
+      // Get organization details for proper branding
+      let organizationName = "Your Organization";
+      if (userOrgId) {
+        try {
+          const organization = await storage.getOrganizationById(userOrgId);
+          organizationName = organization?.name || organizationName;
+        } catch (error) {
+          console.warn("Could not fetch organization name:", error);
+        }
+      }
+
+      // Create worker record
+      const worker = await storage.createWorker({
+        organizationId: userOrgId || undefined,
+        firstName: workerName.split(' ')[0] || workerName,
+        lastName: workerName.split(' ').slice(1).join(' ') || '',
+        dateOfBirth: '', // Will be filled when worker completes form
+        phone: '', // Will be filled when worker completes form
+        email: workerEmail,
+        roleApplied: '', // Will be filled when worker completes form
+        site: '',
+      });
+
+      // Create ticket for the pre-employment check
+      const ticket = await storage.createTicket({
+        organizationId: userOrgId || undefined,
+        workerId: worker.id,
+        caseType: "pre_employment",
+        status: "NEW",
+        priority: "medium",
+        companyName: organizationName,
+        nextStep: "Send pre-employment check invitation to worker",
+        lastStep: "Invitation created by manager",
+        lastStepCompletedAt: new Date().toISOString(),
+        assignedTo: managerName,
+      });
+
+      // Create case record linking to the ticket
+      const caseRecord = await storage.createCase({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        nextStepText: "Worker to complete pre-employment health assessment",
+        nextStepDueAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+        nextStepSetBy: userId,
+        nextStepSetAt: new Date().toISOString(),
+      });
+
+      // Generate secure, expiring token for the worker link
+      const crypto = await import('crypto');
+      const secureToken = crypto.randomBytes(32).toString('hex');
+      const tokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days expiry
+
+      // Store the secure token in the database
+      const invitationToken = await db.insert(invitationTokens).values({
+        ticketId: ticket.id,
+        workerId: worker.id,
+        token: secureToken,
+        expiresAt: tokenExpiresAt,
+        used: false,
+      }).returning();
+
+      // Generate secure link with token
+      const secureLink = `${req.protocol}://${req.get('host')}/worker/pre-employment-check?token=${secureToken}`;
+
+      // Prepare personalized email content
+      const personalizedMessage = customMessage.replace(/\[Worker Name\]/g, workerName);
+      const emailContent = `${personalizedMessage}\n\nPlease click the following secure link to complete your pre-employment health check:\n${secureLink}\n\nThis link will expire on ${tokenExpiresAt.toLocaleDateString()}.`;
+
+      // TODO: Send actual email via email service
+      // For now, log the email that would be sent
+      console.log('=== PRE-EMPLOYMENT INVITATION EMAIL ===');
+      console.log(`To: ${workerEmail}`);
+      console.log(`From: ${managerName} <${organizationName}>`);
+      console.log(`Subject: Pre-Employment Health Check - ${organizationName}`);
+      console.log(`Content:\n${emailContent}`);
+      console.log('====================================');
+
+      // Create audit trail entry
+      const auditEvent = {
+        ticketId: ticket.id,
+        source: "gpnet",
+        kind: "invitation_sent",
+        occurredAt: new Date().toISOString(),
+        performedBy: userId,
+        payloadJson: {
+          action: "pre_employment_invitation_sent",
+          workerEmail,
+          workerName,
+          managerName,
+          organizationName,
+          secureLink,
+        },
+      };
+
+      await storage.createEvent(auditEvent);
+
+      res.json({
+        success: true,
+        message: "Pre-employment check invitation sent successfully",
+        data: {
+          ticketId: ticket.id,
+          workerId: worker.id,
+          caseId: caseRecord.id,
+          workerEmail,
+          secureLink, // In production, this would not be returned for security
+        },
+      });
+
+    } catch (error) {
+      console.error("Pre-employment invitation failed:", error);
+      res.status(500).json({
+        error: "Failed to send pre-employment check invitation",
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // ===========================================
+  // END PRE-EMPLOYMENT CHECK INVITATION ENDPOINTS
+  // ===========================================
+
   // Michelle AI Chat Endpoints with dual mode support
   app.post("/api/michelle/chat", requireAuth, async (req, res) => {
     try {

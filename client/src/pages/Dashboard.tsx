@@ -6,6 +6,7 @@ import CaseCard from "@/components/CaseCard";
 import CaseDetailsModal from "@/components/CaseDetailsModal";
 import AdvancedCaseFilters from "@/components/AdvancedCaseFilters";
 import MichelleDashboardPanel from "@/components/MichelleDashboardPanel";
+import PreEmploymentInvitationForm from "@/components/PreEmploymentInvitationForm";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useUser } from "@/components/UserContext";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,7 @@ export default function Dashboard() {
   const { user } = useUser(); // Get user context
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showInvitationForm, setShowInvitationForm] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
   
   // Advanced filter state
@@ -311,9 +313,12 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Button data-testid="button-new-case">
+            <Button 
+              onClick={() => setShowInvitationForm(true)}
+              data-testid="button-new-case"
+            >
               <Plus className="h-4 w-4 mr-2" />
-              New Case
+              Pre-Employment Check
             </Button>
           </div>
         </div>
@@ -420,6 +425,15 @@ export default function Dashboard() {
         onStatusUpdate={handleStatusUpdate}
         onRecommendationsUpdate={handleRecommendationsUpdate}
       />
+
+      {/* Pre-Employment Invitation Form */}
+      {showInvitationForm && (
+        <PreEmploymentInvitationForm
+          onClose={() => setShowInvitationForm(false)}
+          managerName={user?.name || "Manager"}
+          organizationName="Your Organization"
+        />
+      )}
     </div>
   );
 }
