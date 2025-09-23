@@ -80,51 +80,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Validate required fields
       const { email, organizationId, forwardedBy } = req.body;
-      "Strain/Sprain": {
-        risks: ["Potential for re-injury", "Recurring pain patterns"],
-        capacity: ["May require lifting restrictions", "Gradual return to full duties"],
-        medical: ["Physiotherapy assessment recommended", "Pain management strategies"],
-        workplace: ["Ergonomic workstation assessment", "Manual handling training"]
-      },
-      "Cut/Laceration": {
-        risks: ["Infection risk", "Scarring affecting function"],
-        capacity: ["Hand/finger dexterity may be affected", "Possible tool restrictions"],
-        medical: ["Wound care management", "Tetanus status verification"],
-        workplace: ["Safety equipment review", "Sharp object handling protocols"]
-      },
-      "Fracture/Break": {
-        risks: ["Long recovery period", "Potential permanent impairment"],
-        capacity: ["Extended reduced capacity", "Significant work modifications required"],
-        medical: ["Orthopedic specialist referral", "X-ray monitoring schedule"],
-        workplace: ["Major duty modifications", "Temporary alternative roles"]
-      },
-      "Burn": {
-        risks: ["Scarring and contractures", "Psychological impact"],
-        capacity: ["Skin sensitivity to temperature", "Possible mobility restrictions"],
-        medical: ["Burn specialist assessment", "Scar management therapy"],
-        workplace: ["Heat source exposure elimination", "Personal protective equipment review"]
-      },
-      "Chemical Exposure": {
-        risks: ["Systemic health effects", "Respiratory complications"],
-        capacity: ["Chemical sensitivity development", "Breathing restrictions"],
-        medical: ["Toxicology consultation", "Ongoing health monitoring"],
-        workplace: ["Chemical safety protocols review", "Ventilation system assessment"]
-      },
-      "Crush": {
-        risks: ["Permanent tissue damage", "Complex recovery"],
-        capacity: ["Severe functional limitations", "Long-term disability risk"],
-        medical: ["Immediate specialist care", "Reconstructive surgery consideration"],
-        workplace: ["Machinery safety audit", "Comprehensive training review"]
+      
+      if (!email || !organizationId || !forwardedBy) {
+        return res.status(400).json({ 
+          error: 'Missing required fields: email, organizationId, forwardedBy' 
+        });
       }
-    };
 
-    const assessment = injuryTypeAssessments[formData.injuryType as keyof typeof injuryTypeAssessments];
-    if (assessment) {
-      riskFactors.push(...assessment.risks);
-      workCapacity.push(...assessment.capacity);
-      medical.push(...assessment.medical);
-      workplace.push(...assessment.workplace);
+      // Process the email and create external email record
+      const externalEmail = await storage.createExternalEmail({
+        organizationId,
+        fromEmail: email.from,
+        subject: email.subject || 'External Email',
+        content: email.content || email.body || '',
+        forwardedBy,
+        processedAt: null
+      });
+
+      res.json({ 
+        success: true, 
+        message: 'External email processed successfully',
+        emailId: externalEmail.id
+      });
+    } catch (error) {
+      console.error('Error processing external email:', error);
+      res.status(500).json({ 
+        error: 'Failed to process external email' 
+      });
     }
+  });
+  
+  // ===========================================
+  // MANAGER DASHBOARD ENDPOINTS  
+  // ===========================================
   }
 
   // Analyze workplace factors based on position and department
