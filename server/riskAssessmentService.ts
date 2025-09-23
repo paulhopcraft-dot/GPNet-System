@@ -15,6 +15,13 @@ export interface RiskAssessmentResult {
   recommendations: string[];
   triggerReasons: string[];
   assessmentHistory?: RiskAssessmentResult[];
+  
+  // FLAGGING RULES (Traffic Light System) - Manager-facing outputs
+  managerFlag: {
+    color: "green" | "yellow" | "red";
+    actionStatement: string;
+    requiresReport: boolean;
+  };
 }
 
 export interface EmailRiskAnalysis {
@@ -69,13 +76,17 @@ export class EnhancedRiskAssessmentService {
     // Determine fit classification based on final RAG score
     fitClassification = this.determineFitClassification(ragScore, risks);
 
+    // Generate manager flag based on traffic light system
+    const managerFlag = this.generateManagerFlag(ragScore, inputs);
+
     return {
       ragScore,
       fitClassification,
       confidence,
       riskFactors: Array.from(new Set(risks)), // Remove duplicates
       recommendations: Array.from(new Set(recommendations)),
-      triggerReasons
+      triggerReasons,
+      managerFlag
     };
   }
 
@@ -325,6 +336,61 @@ export class EnhancedRiskAssessmentService {
     }
   }
 
+  /**
+   * FLAGGING RULES (Traffic Light System)
+   * 
+   * Implements privacy-protected manager communication system:
+   * - Sensitive answers are NEVER shared with managers
+   * - Managers only see traffic light result and action statement
+   * - Worker responses remain confidential
+   * 
+   * SPECIAL NOTE: Mental health check responses are never shared, 
+   * only flag + inference shown to maintain patient confidentiality
+   */
+  private generateManagerFlag(ragScore: "green" | "amber" | "red", inputs: RiskInput[]): {
+    color: "green" | "yellow" | "red";
+    actionStatement: string;
+    requiresReport: boolean;
+  } {
+    // Check if this is a mental health check
+    const isMentalHealthCheck = inputs.some(input => 
+      input.type === 'form' && 
+      (input.source?.includes('mental') || input.content?.checkType === 'mental_health')
+    );
+
+    switch (ragScore) {
+      case "green":
+        return {
+          color: "green",
+          actionStatement: "Check completed — no action required.",
+          requiresReport: false
+        };
+      
+      case "amber":
+        return {
+          color: "yellow", 
+          actionStatement: "Check completed — monitor worker, supportive strategies may help.",
+          requiresReport: false
+        };
+      
+      case "red":
+        return {
+          color: "red",
+          actionStatement: isMentalHealthCheck 
+            ? "Check completed — urgent attention recommended. Refer to confidential GPNet report."
+            : "Check completed — urgent attention recommended. Refer to GPNet report.",
+          requiresReport: true
+        };
+      
+      default:
+        return {
+          color: "green",
+          actionStatement: "Check completed — no action required.",
+          requiresReport: false
+        };
+    }
+  }
+
   private getDefaultAssessment(): RiskAssessmentResult {
     return {
       ragScore: "green",
@@ -332,7 +398,12 @@ export class EnhancedRiskAssessmentService {
       confidence: 50,
       riskFactors: [],
       recommendations: [],
-      triggerReasons: []
+      triggerReasons: [],
+      managerFlag: {
+        color: "green",
+        actionStatement: "Check completed — no action required.",
+        requiresReport: false
+      }
     };
   }
 
