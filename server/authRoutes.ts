@@ -225,6 +225,7 @@ router.post('/login/admin', async (req: Request, res: Response) => {
           email: user.email,
           firstName: user.firstName,
           lastName: user.lastName,
+          userType: 'admin',
           isSuperuser: (user as any).isSuperuser,
           permissions: user.permissions,
           currentImpersonationTarget: user.currentImpersonationTarget
