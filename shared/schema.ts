@@ -477,6 +477,109 @@ export const checkRequests = pgTable("check_requests", {
 });
 
 // ===============================================
+// DOCTOR ESCALATION & MEDICAL OPINION SYSTEM  
+// ===============================================
+
+// Medical opinion requests table for doctor escalation workflow
+export const medicalOpinionRequests = pgTable("medical_opinion_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Request context
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  checkRequestId: varchar("check_request_id").references(() => checkRequests.id),
+  managerId: varchar("manager_id").notNull(), // Manager who requested escalation
+  
+  // Michelle context
+  dialogueTranscript: jsonb("dialogue_transcript"), // Michelle conversation that led to escalation
+  michelleRecommendation: text("michelle_recommendation"), // Why Michelle recommended escalation
+  
+  // Request details  
+  urgencyLevel: text("urgency_level").default("normal"), // "low", "normal", "high", "urgent"
+  clinicalQuestions: text("clinical_questions").notNull(), // Specific questions for the doctor
+  workerHealthSummary: text("worker_health_summary"), // Health context from form/Michelle
+  
+  // SLA tracking
+  requestedAt: timestamp("requested_at").defaultNow(),
+  slaDeadline: timestamp("sla_deadline").notNull(), // 30-minute SLA from request
+  respondedAt: timestamp("responded_at"),
+  slaBreached: boolean("sla_breached").default(false),
+  
+  // Medical opinion response
+  doctorId: varchar("doctor_id"), // Which doctor responded
+  medicalOpinion: text("medical_opinion"), // Doctor's detailed response
+  recommendations: jsonb("recommendations"), // Structured recommendations
+  preEmploymentDecision: text("preemployment_decision"), // "fit", "fit_with_restrictions", "not_fit"
+  preventionCheckRecommended: boolean("prevention_check_recommended").default(false),
+  
+  // Workflow status
+  status: text("status").default("pending"), // "pending", "assigned", "responded", "delivered", "acknowledged"
+  deliveredToManagerAt: timestamp("delivered_to_manager_at"),
+  managerAcknowledgedAt: timestamp("manager_acknowledged_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Organization settings for probation periods and policies
+export const organizationSettings = pgTable("organization_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id).notNull().unique(),
+  
+  // Probation period settings
+  probationPeriodDays: integer("probation_period_days"), // Required for pre-employment recommendations
+  probationPolicyUrl: text("probation_policy_url"), // Link to probation policy document
+  
+  // Pre-employment settings
+  preEmploymentEnabled: boolean("preemployment_enabled").default(true),
+  preEmploymentRequiresProbation: boolean("preemployment_requires_probation").default(true),
+  
+  // Reminder settings
+  reminderScheduleEnabled: boolean("reminder_schedule_enabled").default(true),
+  preEmploymentReminderDays: jsonb("preemployment_reminder_days").default([1, 2, 3]), // Days 1, 2, 3
+  exitCheckReminderDays: jsonb("exit_check_reminder_days").default([2, 4]), // Days 2, 4
+  mentalHealthReminderDays: jsonb("mental_health_reminder_days").default([3, 5]), // Days 3, 5
+  managerAlertDay: integer("manager_alert_day").default(5), // Default manager alert day
+  
+  // Michelle settings
+  michelleEnabled: boolean("michelle_enabled").default(true),
+  doctorEscalationEnabled: boolean("doctor_escalation_enabled").default(true),
+  medicalOpinionSlaMins: integer("medical_opinion_sla_mins").default(30), // 30-minute SLA
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Reminder schedule tracking for automated reminders
+export const reminderSchedule = pgTable("reminder_schedule", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Context
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  checkType: text("check_type").notNull(), // "pre_employment", "exit", "mental_health", "injury"
+  recipientEmail: text("recipient_email").notNull(),
+  recipientName: text("recipient_name").notNull(),
+  
+  // Reminder tracking
+  reminderNumber: integer("reminder_number").notNull(), // 1, 2, 3
+  scheduledFor: timestamp("scheduled_for").notNull(), // When this reminder should be sent
+  sentAt: timestamp("sent_at"), // When it was actually sent
+  status: text("status").default("pending"), // "pending", "sent", "failed", "cancelled"
+  
+  // Manager alert tracking
+  managerAlertRequired: boolean("manager_alert_required").default(false),
+  managerAlertSentAt: timestamp("manager_alert_sent_at"),
+  managerAlertStatus: text("manager_alert_status").default("pending"), // "pending", "sent", "failed"
+  
+  // Template information
+  emailSubject: text("email_subject").notNull(),
+  emailBody: text("email_body").notNull(),
+  isManagerAlert: boolean("is_manager_alert").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ===============================================
 // EXTERNAL EMAIL INTEGRATION SYSTEM
 // ===============================================
 

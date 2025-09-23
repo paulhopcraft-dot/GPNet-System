@@ -9,6 +9,10 @@ export interface MichelleResponse {
   conversationId: string;
   mode: 'client-scoped' | 'universal';
   accessLevel: 'client' | 'admin';
+  dialogueMode?: 'standard' | 'doctor' | 'triage_nurse' | 'mental_health_intake' | 'exit_guidance';
+  escalationAvailable?: boolean;
+  requiresEscalation?: boolean;
+  emergencyAlert?: boolean;
 }
 
 export interface ChatMessage {
@@ -37,6 +41,10 @@ export async function chatWithMichelle(
     currentPage?: string;
     caseId?: string;
     workerName?: string;
+    checkType?: string;
+    dialogueMode?: 'standard' | 'doctor' | 'triage_nurse' | 'mental_health_intake' | 'exit_guidance';
+    healthConcerns?: string;
+    preEmploymentData?: any;
   }
 ): Promise<MichelleResponse> {
   try {
@@ -63,6 +71,18 @@ export async function chatWithMichelle(
       ? 'universal' : 'client-scoped';
     const accessLevel = userContext.userType;
     
+    // Determine dialogue mode based on context
+    const dialogueMode = context?.dialogueMode || 'standard';
+    const checkType = context?.checkType || 'pre_employment';
+    
+    // Emergency detection for mental health scenarios
+    const emergencyKeywords = ['suicide', 'kill myself', 'end it all', 'hurt myself', 'self harm', 'not worth living'];
+    const hasEmergencyFlag = emergencyKeywords.some(keyword => message.toLowerCase().includes(keyword));
+    
+    // Escalation detection for complex medical scenarios  
+    const escalationKeywords = ['complex', 'unclear', 'multiple conditions', 'requires medical opinion', 'doctor needed'];
+    const requiresEscalation = escalationKeywords.some(keyword => message.toLowerCase().includes(keyword)) || dialogueMode === 'doctor';
+    
     if (!isValidApiKey) {
       console.log('Running in demo mode - using simulated responses');
       
@@ -76,6 +96,63 @@ export async function chatWithMichelle(
         reply = "[Universal Mode] " + reply + "I have access to platform-wide data and can assist with multi-tenant insights. ";
       } else {
         reply = "[Client-Scoped Mode] " + reply + "I'm focusing on your organization's data and cases. ";
+      }
+      
+      // Handle emergency situations first
+      if (hasEmergencyFlag) {
+        reply = "🚨 IMMEDIATE SAFETY CONCERN DETECTED 🚨\n\nIf you or someone else is in immediate danger, please:\n• Call emergency services (000 in Australia)\n• Contact Lifeline: 13 11 14\n• Go to your nearest emergency department\n\nI cannot provide crisis counseling, but I can help you access professional support resources once safety is ensured.";
+        nextQuestions = ["Are you or someone else in immediate physical danger?", "Do you need help contacting emergency services?", "Would you like me to provide other mental health support resources?"];
+        return {
+          reply,
+          nextQuestions,
+          conversationId,
+          mode,
+          accessLevel,
+          dialogueMode,
+          emergencyAlert: true,
+          escalationAvailable: false
+        };
+      }
+      
+      // Handle different dialogue modes
+      if (dialogueMode === 'doctor') {
+        reply += "[Doctor Mode] I'm providing structured clinical guidance without making final diagnostic determinations. ";
+        if (lowerMessage.includes('concern') || lowerMessage.includes('medical')) {
+          reply += "I can help you analyze health information and identify when medical opinion is needed. Based on what you've described, this may require escalation to a qualified medical practitioner.";
+          nextQuestions = [
+            "What specific clinical questions need medical opinion?",
+            "What health factors are causing concern?",
+            "Should I create a Medical Opinion Request for this case?"
+          ];
+        }
+      } else if (dialogueMode === 'triage_nurse') {
+        reply += "[Triage Nurse Mode] I'm helping assess accident urgency and next steps. ";
+        if (lowerMessage.includes('accident') || lowerMessage.includes('injury')) {
+          reply += "Let me help you assess this workplace incident and determine the appropriate response level.";
+          nextQuestions = [
+            "Is the worker conscious and responsive?",
+            "Is there visible bleeding or deformity?",
+            "Can the worker move the affected area?"
+          ];
+        }
+      } else if (dialogueMode === 'mental_health_intake') {
+        reply += "[Mental Health Intake] I'm using best-practice intake questions while maintaining appropriate boundaries. ";
+        reply += "I'll ask about observable behaviors and workplace factors while avoiding clinical diagnosis.";
+        nextQuestions = [
+          "What specific behaviors or changes have you observed?",
+          "How is this affecting their work attendance or performance?",
+          "Are there any immediate safety concerns?"
+        ];
+      } else if (dialogueMode === 'exit_guidance') {
+        reply += "[Exit Guidance] I'm helping you understand resignation circumstances and capture valuable feedback. ";
+        if (lowerMessage.includes('exit') || lowerMessage.includes('leaving')) {
+          reply += "Let me help you explore the factors behind this departure and plan appropriate follow-up.";
+          nextQuestions = [
+            "Were there performance issues before the resignation?",
+            "Do you know the main reason they're leaving?",
+            "Did they have any workplace injuries or health concerns?"
+          ];
+        }
       }
       
       if (lowerMessage.includes('health') || lowerMessage.includes('concern') || lowerMessage.includes('pain')) {
@@ -123,7 +200,11 @@ export async function chatWithMichelle(
         nextQuestions,
         conversationId,
         mode,
-        accessLevel
+        accessLevel,
+        dialogueMode,
+        escalationAvailable: dialogueMode === 'doctor' || requiresEscalation,
+        requiresEscalation: requiresEscalation && dialogueMode === 'doctor',
+        emergencyAlert: hasEmergencyFlag
       };
     }
 
@@ -132,19 +213,56 @@ export async function chatWithMichelle(
 
 Current Mode: ${mode}
 Access Level: ${accessLevel}
+Dialogue Mode: ${dialogueMode}
+Check Type: ${checkType}
 
 ${mode === 'universal' 
   ? 'UNIVERSAL MODE: You have access to platform-wide data across all clients and can provide insights about system-wide trends, comparative analytics, and multi-tenant patterns. You can access PHI (Protected Health Information) when appropriate for analysis. Focus on administrative oversight and system optimization.'
   : `CLIENT-SCOPED MODE: You are limited to data from ${userContext.organizationId ? 'this specific organization' : 'the current client context'} only. Focus on their specific cases, workers, and organizational needs. You cannot access or reference data from other organizations.`}
 
+DIALOGUE MODE SPECIFIC INSTRUCTIONS:
+${dialogueMode === 'doctor' ? `
+DOCTOR MODE: You provide structured clinical guidance WITHOUT making final diagnostic determinations.
+- Analyze health information systematically
+- Identify when medical opinion is required
+- Ask targeted clinical questions
+- Flag complex cases for escalation
+- NEVER provide final medical diagnoses
+- Focus on risk assessment and guidance preparation
+` : dialogueMode === 'triage_nurse' ? `
+TRIAGE NURSE MODE: You assess accident urgency and determine appropriate response levels.
+- Evaluate immediate danger and response needs
+- Ask direct questions about injury severity
+- Prioritize based on clinical urgency
+- Guide appropriate medical response
+- Focus on immediate safety and next steps
+` : dialogueMode === 'mental_health_intake' ? `
+MENTAL HEALTH INTAKE MODE: Use best-practice intake questions while maintaining boundaries.
+- Focus on observable behaviors, not diagnoses
+- Ask about workplace impact and safety
+- Avoid clinical labeling or diagnostic language
+- Prioritize immediate safety concerns
+- Gather context for appropriate referrals
+` : dialogueMode === 'exit_guidance' ? `
+EXIT GUIDANCE MODE: Help understand resignation circumstances and capture feedback.
+- Explore underlying factors for departure
+- Identify potential workplace improvements
+- Assess health/safety factors in leaving decision
+- Guide appropriate follow-up actions
+- Focus on organizational learning opportunities
+` : `
+STANDARD MODE: General occupational health assistance and guidance.
+`}
+
 Key guidelines:
 - Be supportive and professional
-- Ask one focused question at a time
+- Ask one focused question at a time  
 - Extract relevant health information from conversations
-- Flag any serious health concerns
+- Flag any serious health concerns immediately
 - Keep responses concise and helpful
 - Always suggest 1-3 follow-up questions
-- Respect data privacy boundaries based on your current mode`;
+- Respect data privacy boundaries based on your current mode
+- If you detect emergency keywords (suicide, self-harm, immediate danger), respond with emergency protocols immediately`;
 
     // Add organization context for client-scoped mode
     if (mode === 'client-scoped' && userContext.organizationId) {
@@ -206,7 +324,11 @@ Key guidelines:
       ],
       conversationId,
       mode,
-      accessLevel
+      accessLevel,
+      dialogueMode,
+      escalationAvailable: dialogueMode === 'doctor' || requiresEscalation,
+      requiresEscalation: requiresEscalation && dialogueMode === 'doctor',
+      emergencyAlert: hasEmergencyFlag
     };
 
   } catch (error) {

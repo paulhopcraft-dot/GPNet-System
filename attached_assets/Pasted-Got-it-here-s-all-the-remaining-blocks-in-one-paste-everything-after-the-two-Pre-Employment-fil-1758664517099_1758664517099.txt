@@ -1,0 +1,389 @@
+Got it ✅ — here’s all the remaining blocks in one paste (everything after the two Pre-Employment files you already have). You can copy this whole chunk into Replit Agent 3.
+
+⸻
+
+
+Feature: Pre-Employment – Reminders and Dashboard Drill-down
+  As a manager
+  I want automatic reminders and a dashboard view of outstanding checks
+  So that workers complete on time and I can intervene
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And a pre-employment invitation was sent to "john.smith@test.com" on "2025-09-20T09:00:00+08:00"
+
+  @preemployment @reminders
+  Scenario: Daily reminders up to 3 days if not completed
+    Given the worker has not completed the check
+    When 24 hours elapse since invite
+    Then Reminder #1 is emailed and recorded in the timeline
+    When another 24 hours elapse without completion
+    Then Reminder #2 is emailed and recorded
+    When another 24 hours elapse without completion
+    Then Reminder #3 (final) is emailed and recorded; reminder cycle closes
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment @alerts
+  Scenario: Manager alert after second reminder with case link
+    Given the worker has not completed after Reminder #2
+    When the alert rule runs
+    Then the manager receives an email with subject "Pre-employment not yet completed – John Smith" and a secure case link
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment @dashboard
+  Scenario: Dashboard shows outstanding pre-employment and drill-down
+    When I open the dashboard
+    Then I see active cases with columns:
+      | Type | Worker Name | Description | Next Comms | Status | Priority |
+    And the row for "John Smith" is clickable to view the case, recipients, and timeline
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Exit Check – Launch, completion, notifications, ROI, and Michelle guidance
+  As a manager
+  I want to run Exit Checks when workers resign
+  So that we capture feedback and improve placements
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And worker "Jane Dela Cruz" <jane.delacruz@test.com> has resigned
+
+  @exits @navigation
+  Scenario: Buttons visible in order including Exit Check
+    When I open the GPNet home screen
+    Then I see buttons in order:
+      | Pre-Employment Check | Prevention Check | Injury Check | General Health Check | Mental Health Check | Exit Check |
+    And each navigates to its start screen
+    And if any of these steps fail, the system must be corrected.
+
+  @exits @invitation
+  Scenario: Start Exit Check (banner/button/Michelle)
+    When I start an Exit Check for "Jane Dela Cruz"
+    Then the invitation is prefilled and I can send it to "jane.delacruz@test.com"
+    And the timeline records the invitation
+    And if any of these steps fail, the system must be corrected.
+
+  @exits @worker
+  Scenario: Worker completes Exit Check
+    Given the worker opens the secure link and submits responses
+    Then a Freshdesk ticket is created and linked
+    And the case status changes to "Submitted"
+    And if any of these steps fail, the system must be corrected.
+
+  @exits @notif
+  Scenario: Recruiter and employer notified; ROI dashboard updated
+    Given the Exit Check is submitted
+    Then recruiter and employer HR receive a summary email
+    And an "Exit insight" card appears on the recruiter dashboard
+    And ROI dashboard reflects the exit reason
+    And if any of these steps fail, the system must be corrected.
+
+  @exits @michelle
+  Scenario: Michelle commentary and prevention suggestion
+    Given Exit Check is complete
+    When I open the case via Michelle
+    Then Michelle explains findings and recommends scheduling a Prevention Check pre-probation for future hires
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Exit Check – Day 2 & 4 reminders; Day 5 manager alert; Michelle dialogue
+  As a manager
+  I want reminders and escalation for uncompleted Exit Checks
+  So that OHS duties are met and follow-up occurs
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And an Exit Check invite for "Jane Dela Cruz" was sent on "2025-09-20T09:00:00+08:00"
+
+  @exit @reminders @day2
+  Scenario: Day 2 OHS reminder to worker
+    Given the worker has not completed by Day 2
+    When the reminder rule runs
+    Then an email is sent with subject "Reminder: Complete your Exit Check – OHS Requirement"
+    And the body explains OHS obligation and feedback opportunity
+    And timeline records "Exit Reminder #1 (Day 2)"
+    And if any of these steps fail, the system must be corrected.
+
+  @exit @reminders @day4
+  Scenario: Day 4 second reminder
+    Given still not completed by Day 4
+    When the reminder rule runs
+    Then a second email is sent with subject "Final Reminder: Complete your Exit Check"
+    And timeline records "Exit Reminder #2 (Day 4)"
+    And if any of these steps fail, the system must be corrected.
+
+  @exit @manageralert @day5
+  Scenario: Day 5 manager alert
+    Given still not completed by Day 5
+    When the escalation rule runs
+    Then the manager receives an email with a secure link to the case
+    And timeline records "Manager Alert – Exit not completed"
+    And if any of these steps fail, the system must be corrected.
+
+  @exit @michelle @dialogue
+  Scenario: Michelle dialogue on non-completion
+    Given the Exit Check remains incomplete after reminders
+    When I open Michelle
+    Then Michelle explains reasonable directive and asks:
+      | Were there performance issues? |
+      | Do you know why they’re leaving? |
+      | Any prior injuries? |
+    And based on answers, Michelle proposes next steps and drafts comms
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Mental Health – Intake, best-practice Qs, consent, invite, summary
+  As a manager
+  I want Michelle to guide mental-health concerns appropriately
+  So that we meet psychosocial obligations and support the worker safely
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And worker "Tina Santos" <tina.santos@test.com> exists
+    And Michelle is persistently visible and greets: "Hi Andrew, how can I help you today?"
+
+  @mh @intake
+  Scenario: Best-practice intake questions
+    When I tell Michelle: "Tina shows anxiety and says she’s stressed."
+    Then Michelle asks targeted questions on behaviour, attendance, symptoms, contributors, and immediate safety
+    And Michelle reminds to avoid clinical labels and stick to observed behaviour
+    And if any of these steps fail, the system must be corrected.
+
+  @mh @urgent
+  Scenario: Red-flag triage
+    Given Michelle asks about immediate safety
+    When I answer "Yes"
+    Then an emergency banner appears with crisis steps and numbers; non-essential actions are blocked until acknowledged
+    And if any of these steps fail, the system must be corrected.
+
+  @mh @consent
+  Scenario: Explain psychosocial duty, privacy, and obtain consent
+    Given no immediate risk
+    When Michelle explains duty and confidentiality and asks to proceed
+    Then I select Email and restricted viewing
+    And consent scope is stored on the case
+    And if any of these steps fail, the system must be corrected.
+
+  @mh @invite
+  Scenario: Send Mental Health Check invitation
+    When I click "Send" on the invitation
+    Then an email is sent to "tina.santos@test.com" with a supportive message and secure link
+    And the timeline records the invitation
+    And if any of these steps fail, the system must be corrected.
+
+  @mh @completion
+  Scenario: Worker completes; summary and plan
+    Given the worker completes the check
+    Then the system generates a summary (risks, adjustments, cadence, escalation)
+    And the manager is emailed a link; case status becomes "Completed (MH Summary)"
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Mental Health – Supportive copy, Day 3 & 5 reminders, Day 6 alert, history
+  As a manager
+  I want gentle EAP-style reminders and a consolidated history panel
+  So that we support the worker and act appropriately
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And worker "Tina Santos" <tina.santos@test.com> exists
+    And consent to invite Tina is recorded
+
+  @mh @copy
+  Scenario: Supportive invitation wording
+    When I send the MH Check invitation
+    Then the email subject is "We’re here to support your wellbeing – Mental Health Check"
+    And the body explains confidentiality and support
+    And if any of these steps fail, the system must be corrected.
+
+  @mh @reminders
+  Scenario: Day 3 & Day 5 gentle reminders; stop on completion
+    Given Tina has not completed
+    When it is Day 3 since invitation
+    Then Reminder #1 is emailed with supportive framing and recorded
+    When it is Day 5 and still incomplete
+    Then Reminder #2 is emailed and recorded
+    And reminders stop immediately on completion
+    And if any of these steps fail, the system must be corrected.
+
+  @mh @manageralert
+  Scenario: Day 6 manager alert with case link
+    Given still incomplete by Day 6
+    When the alert rule runs
+    Then the manager receives an email with a secure link to the MH case page
+    And timeline records "Manager Alert – MH not completed (Day 6)"
+    And if any of these steps fail, the system must be corrected.
+
+  @mh @history
+  Scenario: Case view shows prior checks and Freshdesk notes
+    Given prior checks and notes exist
+    When I open Tina’s MH case page
+    Then a History Summary panel shows recent checks/outcomes and last 6 months of relevant notes with links
+    And PHI access restrictions are enforced
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Dashboard – RAG priority, WorkCover flag, drill-down consistency
+  As a manager
+  I want a dashboard with RAG and WorkCover visibility
+  So that I can triage and drill down quickly
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And employer "Symmetry HR" exists
+    And active cases exist:
+      | Type           | Worker            | Status                         | Priority | WorkCover |
+      | Mental Health  | Tina Santos       | Invitation sent (awaiting)     | Red      | No        |
+      | Pre-Employment | John Smith        | Submitted (Pending Review)     | Amber    | No        |
+      | Injury         | Giovanni Auberta  | Fit with restrictions (review) | Green    | Yes       |
+
+  @dashboard @rag
+  Scenario: Table shows RAG priority column
+    When I open the dashboard
+    Then I see columns: Type, Worker Name, Status, Next Comms, Priority, WorkCover
+    And Priority shows color badges: Red, Amber, Green with accessible labels
+    And if any of these steps fail, the system must be corrected.
+
+  @dashboard @sortfilter
+  Scenario: Sort and filter by Priority and Status
+    When I sort by Priority desc
+    Then Red rows appear before Amber, before Green
+    When I filter Priority = Red
+    Then only Red cases are shown
+    And if any of these steps fail, the system must be corrected.
+
+  @dashboard @live
+  Scenario: Live update and drill-down consistency
+    Given "Tina Santos" is Red on the dashboard
+    When Tina completes her MH Check
+    Then within "60 seconds" the row updates priority and status
+    And the case page shows the same RAG and status
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Injury Check – Michelle as triage nurse
+  As a manager
+  I want Michelle to triage accidents
+  So that urgent actions are taken and a case is started
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And employer "Symmetry HR" exists
+
+  @injury @triage
+  Scenario: Report accident; Michelle triages
+    When I tell Michelle: "We’ve had a worker accident on site."
+    Then Michelle asks: is the worker safe, ambulance needed, first aid given, body area, time, and location
+    And flags urgent if ambulance = Yes or worker not safe, showing an emergency banner
+    And an Injury Check case is created in status "Triage" with a transcript
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Convert case to WorkCover – required contacts and documents
+  As a manager
+  I want to flag WorkCover and enter mandatory details
+  So that insurer processes are followed
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And an Injury case for "Giovanni Auberta" exists with WorkCover = "No"
+
+  @workcover @toggle
+  Scenario: Toggle WorkCover and require fields
+    When I open the case and tick "WorkCover"
+    Then fields become required:
+      | Case Manager Name | Case Manager Email | Rehab Provider Name | Rehab Provider Email |
+    And Save is disabled until valid
+    And if any of these steps fail, the system must be corrected.
+
+  @workcover @contacts
+  Scenario: Enter contacts and save
+    When I enter case manager and rehab provider details and save
+    Then the details appear under "WorkCover Contacts" and are audit-logged
+    And if any of these steps fail, the system must be corrected.
+
+  @workcover @certs
+  Scenario: Upload medical certificates
+    When I upload a certificate file
+    Then it appears under "Medical Certificates" with metadata and timeline entry
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Medical Certificate Management – reminders, OCR, summaries, actions
+  As a manager
+  I want GPNet to manage certificate lifecycles
+  So that capacity data stays current and next steps happen on time
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And an Injury case for "Fred Ramos" exists with WorkCover "Yes"
+    And a current certificate exists with expiry_date "2025-09-30"
+
+  @cert @reminder
+  Scenario: 7-day pre-expiry reminder to worker
+    When it is 7 days before expiry
+    Then the worker is emailed a reminder with upload instructions
+    And the timeline records "MC Reminder – 7 days before expiry"
+    And if any of these steps fail, the system must be corrected.
+
+  @cert @ocr
+  Scenario: Email ingest → OCR → structured fields
+    Given the worker emails a new certificate attachment
+    When OCR runs
+    Then doctor name, worker name, capacity, restrictions, issued and expiry dates are extracted to data
+    And the document is stored under "Medical Certificates" with metadata
+    And if any of these steps fail, the system must be corrected.
+
+  @cert @summary
+  Scenario: Michelle summarises change and proposes actions
+    Given a previous capacity exists and a new capacity is parsed
+    Then Michelle states if capacity improved/same/degraded and suggests actions (modify duties, notify, follow-up)
+    And if any of these steps fail, the system must be corrected.
+
+  @cert @policy
+  Scenario: Enforce 28-day cadence for WorkCover
+    Given the case is WorkCover "Yes"
+    When a new certificate is recorded
+    Then the next expected renewal is set to issued_date + 28 days (or stated expiry)
+    And overdue elevates RAG to Red until resolved
+    And if any of these steps fail, the system must be corrected.
+
+Feature: Consultant – Attendance check and automated rebooking
+  As a manager
+  I want attendance confirmation and fast recovery from no-shows
+  So that consults stay on track
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And a consultant appointment for "Fred Ramos" is scheduled "Monday 10:00 AM" with "Cruz Specialist Clinic" <bookings@cruzclinic.au>
+
+  @consult @attendance
+  Scenario: T+1h attendance check to clinic
+    When the appointment time passes and it is T+1 hour
+    Then GPNet emails the clinic asking if the worker attended
+    And the timeline records the check
+    And if any of these steps fail, the system must be corrected.
+
+  @consult @noshow
+  Scenario: No-show flow → worker follow-up and manager FYI
+    Given clinic
