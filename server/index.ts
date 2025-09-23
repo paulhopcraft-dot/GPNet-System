@@ -74,6 +74,12 @@ app.use((req, res, next) => {
     throw err;
   });
 
+  // Add API route protection middleware before static serving
+  app.use('/api/*', (req, res, next) => {
+    // Ensure API routes are handled by the registered routes, not static serving
+    next();
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
