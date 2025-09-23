@@ -1,0 +1,47 @@
+Great — here’s the next block (preemployment_followup.feature):
+
+⸻
+
+
+Feature: Pre-Employment Follow-up – Michelle Doctor Mode & Probation rule
+  As a manager
+  I want to consult Michelle and escalate to a doctor on concerns
+  So that I receive timely medical guidance and policy-aligned recommendations
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And a pre-employment report for "John Smith" exists with outcome "Concerns present"
+
+  @preemployment @michelle @dialogue
+  Scenario: Manager consults Michelle; escalate to real doctor if stuck
+    When I open the pre-employment review and ask Michelle for guidance
+    Then Michelle enters "Doctor Mode" and provides structured guidance (no final opinion)
+    When I provide questions for a doctor
+    Then an escalation task "Medical Opinion Request" is created and linked with transcript
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment @sla @opinion
+  Scenario: 30-minute medical opinion SLA and email delivery
+    Given a "Medical Opinion Request" escalation exists
+    When the medical opinion is prepared
+    Then the opinion is emailed to the manager within "30 minutes"
+    And the link opens the recommendation view with a decision disclaimer and a suggestion to schedule a Prevention Check before probation
+    And the case status updates to "Reviewed (Medical Opinion)"
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment @policy
+  Scenario: Organisation must define a probation period
+    When I open Employer Settings and attempt to enable pre-employment recommendations without a probation period
+    Then I am blocked with a validation: "Set a probation period to proceed."
+    When I set "Probation Period" to "90 days" and save
+    Then the setting is stored and referenced by pre-employment flows
+    And if any of these steps fail, the system must be corrected.
+
+
+⸻
+
+👉 That’s the second feature.
+Do you want me to keep moving in sequence and send you the reminders & dashboard block next?
