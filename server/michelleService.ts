@@ -79,9 +79,23 @@ export async function chatWithMichelle(
     const emergencyKeywords = ['suicide', 'kill myself', 'end it all', 'hurt myself', 'self harm', 'not worth living'];
     const hasEmergencyFlag = emergencyKeywords.some(keyword => message.toLowerCase().includes(keyword));
     
-    // Escalation detection for complex medical scenarios  
-    const escalationKeywords = ['complex', 'unclear', 'multiple conditions', 'requires medical opinion', 'doctor needed'];
-    const requiresEscalation = escalationKeywords.some(keyword => message.toLowerCase().includes(keyword)) || dialogueMode === 'doctor';
+    // Escalation detection for complex medical scenarios based on content
+    const escalationKeywords = [
+      'complex', 'unclear', 'multiple conditions', 'requires medical opinion', 'doctor needed',
+      'medical complexity', 'contradictory', 'conflicting symptoms', 'unusual presentation',
+      'specialist required', 'beyond scope', 'needs physician', 'medical uncertainty'
+    ];
+    const complexityIndicators = [
+      'multiple medications', 'chronic conditions', 'previous surgeries', 
+      'disability', 'compensation claim', 'work restrictions'
+    ];
+    
+    const hasEscalationKeywords = escalationKeywords.some(keyword => message.toLowerCase().includes(keyword));
+    const hasComplexityIndicators = complexityIndicators.some(indicator => message.toLowerCase().includes(indicator));
+    const requiresEscalation = hasEscalationKeywords || hasComplexityIndicators;
+    
+    // Doctor mode enables escalation capability but doesn't force it
+    const escalationAvailable = dialogueMode === 'doctor' || requiresEscalation;
     
     if (!isValidApiKey) {
       console.log('Running in demo mode - using simulated responses');
@@ -203,7 +217,7 @@ export async function chatWithMichelle(
         accessLevel,
         dialogueMode,
         escalationAvailable: dialogueMode === 'doctor' || requiresEscalation,
-        requiresEscalation: requiresEscalation && dialogueMode === 'doctor',
+        requiresEscalation: requiresEscalation, // Content-based escalation regardless of mode
         emergencyAlert: hasEmergencyFlag
       };
     }
@@ -263,6 +277,30 @@ Key guidelines:
 - Always suggest 1-3 follow-up questions
 - Respect data privacy boundaries based on your current mode
 - If you detect emergency keywords (suicide, self-harm, immediate danger), respond with emergency protocols immediately`;
+
+    // CRITICAL SAFETY CHECK: Handle emergency situations BEFORE OpenAI call
+    if (hasEmergencyFlag) {
+      const emergencyResponse = "🚨 IMMEDIATE SAFETY CONCERN DETECTED 🚨\n\nIf you or someone else is in immediate danger, please:\n• Call emergency services (000 in Australia)\n• Contact Lifeline: 13 11 14\n• Go to your nearest emergency department\n\nI cannot provide crisis counseling, but I can help you access professional support resources once safety is ensured.";
+      
+      // Store emergency interaction
+      history.push(
+        { role: 'user', content: message, timestamp: new Date() },
+        { role: 'assistant', content: emergencyResponse, timestamp: new Date() }
+      );
+      conversations.set(conversationId, history);
+      
+      return {
+        reply: emergencyResponse,
+        nextQuestions: ["Are you or someone else in immediate physical danger?", "Do you need help contacting emergency services?", "Would you like me to provide other mental health support resources?"],
+        conversationId,
+        mode,
+        accessLevel,
+        dialogueMode,
+        emergencyAlert: true,
+        escalationAvailable: false,
+        requiresEscalation: false
+      };
+    }
 
     // Add organization context for client-scoped mode
     if (mode === 'client-scoped' && userContext.organizationId) {
