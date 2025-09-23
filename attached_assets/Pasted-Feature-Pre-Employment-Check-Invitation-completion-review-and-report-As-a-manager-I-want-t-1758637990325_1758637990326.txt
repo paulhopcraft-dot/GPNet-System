@@ -1,0 +1,64 @@
+Feature: Pre-Employment Check – Invitation, completion, review, and report
+  As a manager
+  I want to send and track a Pre-Employment Check
+  So that GPNet collects info, generates a report, and guides hiring decisions
+  Note: If any step does not behave as described, the application must be corrected to comply.
+
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+
+  @preemployment @happy
+  Scenario: Manager sends a pre-employment check invitation
+    When I click the "Pre-Employment Check" button
+    Then I am prompted to enter worker details:
+      | field | value                  |
+      | name  | "John Smith"           |
+      | email | "john.smith@test.com"  |
+    And a message builder is displayed with template:
+      """
+      Dear John,
+
+      Please find attached a pre-employment check from GPNet, who are looking after our pre-employment checks.
+
+      Regards,
+      Andrew Bailey
+      """
+    When I press "Send"
+    Then an email with a secure link to the pre-employment check is sent to "john.smith@test.com"
+    And an audit trail entry is created for this invitation
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment @worker
+  Scenario: Worker receives and completes the check
+    Given the invitation was sent to "john.smith@test.com"
+    When the worker opens the secure link, completes, and submits the check
+    Then a Freshdesk ticket is created and its Ticket ID is permanently associated with the check
+    And the case status changes to "Submitted"
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment @review
+  Scenario: Manager notified on submission; status moves to Review
+    Given a pre-employment submission for "John Smith" exists
+    When the system processes the submission
+    Then the manager receives an email notification
+    And the case status changes from "Submitted" to "Review"
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment @report
+  Scenario: Automated review generates medical report with recommendations
+    Given a pre-employment check is in "Review"
+    When the automated review process runs
+    Then a pre-employment medical report with recommendations is generated
+    And the manager is emailed a link to the report
+    And the case status changes to "Completed"
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment @assistant
+  Scenario: Manager views final report with Michelle commentary
+    Given a completed pre-employment report exists for "John Smith"
+    When the manager opens the link from the notification email
+    Then a page shows the worker’s completed check, the report PDF, and a recommendations section
+    And the Michelle widget displays commentary such as suitability guidance and an offer to discuss further
+    And if any of these steps fail, the system must be corrected.
