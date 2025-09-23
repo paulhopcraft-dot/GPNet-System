@@ -30,25 +30,21 @@ type InvitationFormData = z.infer<typeof invitationSchema>;
 
 interface PreEmploymentInvitationFormProps {
   onClose: () => void;
-  managerName?: string;
-  organizationName?: string;
 }
 
 export default function PreEmploymentInvitationForm({ 
-  onClose, 
-  managerName = "Manager",
-  organizationName = "Your Organization" 
+  onClose
 }: PreEmploymentInvitationFormProps) {
   const { toast } = useToast();
   const [isPreview, setIsPreview] = useState(false);
 
-  // Default email template from the specification
+  // Default email template from the specification - manager name will be filled server-side
   const defaultTemplate = `Dear [Worker Name],
 
 Please find attached a pre-employment check from GPNet, who are looking after our pre-employment checks.
 
 Regards,
-${managerName}`;
+[Manager Name]`;
 
   const form = useForm<InvitationFormData>({
     resolver: zodResolver(invitationSchema),
@@ -65,9 +61,7 @@ ${managerName}`;
       const payload = {
         workerName: data.workerName,
         workerEmail: data.workerEmail,
-        customMessage: data.customMessage.replace('[Worker Name]', data.workerName),
-        managerName,
-        organizationName,
+        customMessage: data.customMessage,
       };
       
       const response = await apiRequest("POST", "/api/pre-employment/invitations", payload);
@@ -78,7 +72,10 @@ ${managerName}`;
         title: "Invitation Sent Successfully",
         description: `Pre-employment check invitation sent to ${form.getValues('workerEmail')}`,
       });
+      // Invalidate relevant queries to refresh the dashboard
       queryClient.invalidateQueries({ queryKey: ['/api/tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/cases'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/dashboard/stats'] });
       onClose();
     },
     onError: (error: any) => {
@@ -94,7 +91,9 @@ ${managerName}`;
     sendInvitationMutation.mutate(data);
   };
 
-  const previewMessage = form.watch('customMessage').replace('[Worker Name]', form.watch('workerName') || '[Worker Name]');
+  const previewMessage = form.watch('customMessage')
+    .replace(/\[Worker Name\]/g, form.watch('workerName') || '[Worker Name]')
+    .replace(/\[Manager Name\]/g, 'Manager Name'); // Server will fill actual manager name
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
