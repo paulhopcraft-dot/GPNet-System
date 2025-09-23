@@ -1,3 +1,4 @@
+import React from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -7,6 +8,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { UserProvider } from "@/components/UserContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Dashboard from "@/pages/Dashboard";
+import WorkerPreEmploymentCheck from "@/pages/WorkerPreEmploymentCheck";
 import AdminConsole from "@/pages/AdminConsole";
 import ClientLogin from "@/pages/ClientLogin";
 import AdminLogin from "@/pages/AdminLogin";
@@ -102,6 +104,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
+      <Route path="/worker/pre-employment-check" component={WorkerPreEmploymentCheck} />
       <Route component={NotFound} />
     </Switch>
   );

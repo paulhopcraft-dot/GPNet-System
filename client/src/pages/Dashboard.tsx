@@ -7,6 +7,7 @@ import CaseDetailsModal from "@/components/CaseDetailsModal";
 import AdvancedCaseFilters from "@/components/AdvancedCaseFilters";
 import MichelleDashboardPanel from "@/components/MichelleDashboardPanel";
 import PreEmploymentInvitationForm from "@/components/PreEmploymentInvitationForm";
+import PreEmploymentReviewModal from "@/components/PreEmploymentReviewModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useUser } from "@/components/UserContext";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,8 @@ export default function Dashboard() {
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showInvitationForm, setShowInvitationForm] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewTicketId, setReviewTicketId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   
   // Advanced filter state
@@ -182,6 +185,22 @@ export default function Dashboard() {
     if (filters.dateFrom) count++;
     if (filters.dateTo) count++;
     return count;
+  };
+
+  // Handle case interactions
+  const handleCaseClick = (caseData: DashboardCase) => {
+    setSelectedCase(caseData);
+    setIsModalOpen(true);
+  };
+
+  const handleReviewClick = (ticketId: string) => {
+    setReviewTicketId(ticketId);
+    setShowReviewModal(true);
+  };
+
+  const handleCloseReviewModal = () => {
+    setShowReviewModal(false);
+    setReviewTicketId(null);
   };
 
   const handleViewCase = (caseData: DashboardCase) => {
@@ -401,6 +420,10 @@ export default function Dashboard() {
                       lastStepCompletedAt={caseItem.lastStepCompletedAt}
                       assignedTo={caseItem.assignedTo}
                       onViewCase={() => handleViewCase(caseItem)}
+                      onReviewCase={caseItem.status === 'AWAITING_REVIEW' && caseItem.caseType === 'pre_employment' 
+                        ? () => handleReviewClick(caseItem.ticketId) 
+                        : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -430,6 +453,14 @@ export default function Dashboard() {
       {showInvitationForm && (
         <PreEmploymentInvitationForm
           onClose={() => setShowInvitationForm(false)}
+        />
+      )}
+
+      {/* Pre-Employment Review Modal */}
+      {showReviewModal && reviewTicketId && (
+        <PreEmploymentReviewModal
+          ticketId={reviewTicketId}
+          onClose={handleCloseReviewModal}
         />
       )}
     </div>
