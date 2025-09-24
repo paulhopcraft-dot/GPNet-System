@@ -390,15 +390,142 @@ router.post('/chat', async (req, res) => {
     // Initialize conversation context if needed
     const sessionConversationId = conversationId || `conv_${Date.now()}`;
     
-    // Worker case lookup logic
-    const workerNameMatch = message.match(/(?:tell me about|lookup|find|show me)\s+(.+?)(?:\s|$)/i);
-    const nameMatch = message.match(/\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b/);
-    
     let reply = '';
     let nextQuestions = [];
     
-    // Check for worker lookup request
-    if (message.toLowerCase().includes('lookup') || message.toLowerCase().includes('find worker') || message.toLowerCase().includes('tell me about') || nameMatch) {
+    // Check for greetings FIRST
+    const greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon'];
+    const isGreeting = greetings.some(g => message.toLowerCase().includes(g));
+    
+    if (isGreeting) {
+      reply = `Hello! I'm Michelle, your occupational health assistant. I can help you with:
+
+🔍 **Worker Case Lookups** - Search by name, email, or ticket number
+🩺 **Medical Consultations** - Switch to doctor mode for clinical advice  
+📋 **Case Management** - Administrative tasks and follow-up processes
+🏢 **Workplace Planning** - Return-to-work and accommodation planning
+
+What would you like me to help with today?`;
+
+      nextQuestions = [
+        'Switch to doctor mode',
+        'Look up a worker case', 
+        'Switch to case manager mode',
+        'Switch to employer mode'
+      ];
+    }
+    // Conversation mode switching
+    else if (message.toLowerCase().includes('doctor mode') || message.toLowerCase().includes('medical')) {
+      reply = `**🩺 DOCTOR MODE ACTIVATED**
+
+I'm now providing medical perspectives and recommendations. I can help with:
+
+• Clinical assessments and interpretations
+• Medical fitness recommendations  
+• Treatment plan reviews
+• Occupational health guidance
+• Return-to-work medical clearance
+
+What medical question can I help you with?`;
+      
+      nextQuestions = [
+        'Review fitness for duties',
+        'Interpret medical certificates',
+        'Assess injury severity',
+        'Recommend treatment options'
+      ];
+    }
+    else if (message.toLowerCase().includes('case manager') || message.toLowerCase().includes('admin')) {
+      reply = `**📋 CASE MANAGER MODE ACTIVATED**
+
+I'm now focused on case administration and follow-up processes. I can help with:
+
+• Case status tracking and updates
+• Follow-up scheduling and reminders
+• Documentation requirements
+• Escalation protocols
+• Compliance monitoring
+
+What case management task can I assist with?`;
+      
+      nextQuestions = [
+        'Update case status',
+        'Schedule follow-up',
+        'Review documentation',
+        'Escalate to supervisor'
+      ];
+    }
+    else if (message.toLowerCase().includes('employer mode') || message.toLowerCase().includes('work duties')) {
+      reply = `**🏢 EMPLOYER MODE ACTIVATED**
+
+I'm now focusing on workplace considerations and return-to-work planning. I can help with:
+
+• Job duty modifications and restrictions
+• Workplace accommodation planning
+• Return-to-work timelines
+• Risk management strategies
+• Productivity and safety considerations
+
+What workplace question can I help you with?`;
+      
+      nextQuestions = [
+        'Plan return to work',
+        'Assess job modifications',
+        'Review workplace risks',
+        'Calculate productivity impact'
+      ];
+    }
+    // Health and injury concerns
+    else if (message.toLowerCase().includes('pain') || message.toLowerCase().includes('hurt') || message.toLowerCase().includes('injury')) {
+      reply = `🚨 **HEALTH CONCERN FLAGGED**
+
+I understand you're experiencing pain or injury. This is important and may require immediate attention.
+
+**Immediate Actions:**
+• Seek medical attention if severe
+• Document the incident properly  
+• Report to your supervisor
+• Contact your case manager
+
+Can you provide more details about:
+• When did this occur?
+• What type of pain/injury?
+• Current severity level?`;
+
+      nextQuestions = [
+        'I need immediate medical help',
+        'Report a workplace injury',
+        'Update my existing case',
+        'Speak to case manager'
+      ];
+    }
+    // Mental health and coping
+    else if (message.toLowerCase().includes('not coping') || message.toLowerCase().includes('stress') || message.toLowerCase().includes('mental')) {
+      reply = `🧠 **MENTAL HEALTH SUPPORT**
+
+Thank you for sharing this with me. Mental health is just as important as physical health.
+
+**Immediate Support Available:**
+• Employee Assistance Program (EAP)
+• Mental health professionals
+• Workplace counseling services
+• Stress management resources
+
+**I'm flagging this for priority follow-up.**
+
+Would you like me to:`;
+
+      nextQuestions = [
+        'Connect me with EAP services',
+        'Schedule mental health assessment',
+        'Provide stress management resources',
+        'Contact my case manager urgently'
+      ];
+    }
+    // Worker case lookup - now moved after other checks
+    else if (message.toLowerCase().includes('lookup') || message.toLowerCase().includes('find worker') || message.toLowerCase().includes('tell me about') || message.toLowerCase().includes('look up')) {
+      const workerNameMatch = message.match(/(?:tell me about|lookup|find|show me|look up)\s+(.+?)(?:\s|$)/i);
+      const nameMatch = message.match(/\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b/);
       const searchName = workerNameMatch?.[1] || nameMatch?.[1] || '';
       
       if (searchName) {
