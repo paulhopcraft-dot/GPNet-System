@@ -13,7 +13,8 @@ import { useUser } from "@/components/UserContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Download, Loader2, BarChart3, Grid3X3 } from "lucide-react";
+import { Plus, Download, Loader2, BarChart3, Grid3X3, Settings, Briefcase } from "lucide-react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -73,6 +74,27 @@ interface FilterState {
 export default function Dashboard() {
   const { user } = useUser(); // Get user context
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
+  
+  // Show navigation buttons at the top
+  const NavigationPanel = () => (
+    <div className="mb-8 p-6 bg-card rounded-lg border">
+      <h2 className="text-xl font-semibold mb-4">Quick Access</h2>
+      <div className="flex gap-4">
+        <Link href="/admin">
+          <Button size="lg" className="flex items-center gap-2" data-testid="button-admin-access">
+            <Settings className="h-5 w-5" />
+            Admin Console
+          </Button>
+        </Link>
+        <Link href="/manager">
+          <Button size="lg" variant="outline" className="flex items-center gap-2" data-testid="button-company-access">
+            <Briefcase className="h-5 w-5" />
+            Manager Dashboard
+          </Button>
+        </Link>
+      </div>
+    </div>
+  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showInvitationForm, setShowInvitationForm] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -350,6 +372,9 @@ export default function Dashboard() {
             userName={user?.name || "there"}
           />
         </div>
+
+        {/* Navigation Panel */}
+        <NavigationPanel />
 
         {/* Status Board */}
         <div className="mb-8">
