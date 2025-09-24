@@ -1,6 +1,6 @@
 import type { IStorage } from './storage.js';
 import type { MedicalDocument, ReminderSchedule } from '@shared/schema';
-import { michelleService } from './michelleService.js';
+import { chatWithMichelle, type UserContext } from './michelleService.js';
 
 /**
  * Medical Certificate Reminder Service
