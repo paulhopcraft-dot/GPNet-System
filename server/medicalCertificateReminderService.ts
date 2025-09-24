@@ -366,7 +366,7 @@ Provide a brief, professional summary of the capacity change and its implication
   }
 }
 
-// Export singleton instance
-export const medicalCertificateReminderService = new MedicalCertificateReminderService(
-  {} as IStorage // Will be injected when used
-);
+// Export factory function for proper initialization
+export const createMedicalCertificateReminderService = (storage: IStorage) => {
+  return new MedicalCertificateReminderService(storage);
+};

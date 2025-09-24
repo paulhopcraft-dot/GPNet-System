@@ -27,7 +27,7 @@ import {
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { pdfService } from "./pdfService";
-import { riskAssessmentService, type RiskInput } from "./riskAssessmentService";
+import { EnhancedRiskAssessmentService, type RiskInput } from "./riskAssessmentService";
 import { michelle, type MichelleContext, type ConversationResponse } from "./michelle";
 import { requireAuth } from "./authRoutes";
 import { requireAdmin } from "./adminRoutes";
@@ -44,7 +44,32 @@ import { db } from "./db";
 // Using centralized risk assessment service for all analysis (duplicate engines removed)
 // All analysis logic moved to riskAssessmentService.ts for consistency
 
+// Import schedulers for startup
+import { createMedicalCertificateScheduler } from "./medicalCertificateScheduler";
+import { createConsultantAppointmentService } from "./consultantAppointmentService";
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  
+  // Initialize services with storage
+  const riskAssessmentService = new EnhancedRiskAssessmentService(storage);
+  
+  // Initialize and start schedulers
+  const medicalCertScheduler = createMedicalCertificateScheduler(storage);
+  const consultantAppointmentService = createConsultantAppointmentService(storage);
+  
+  // Start background schedulers
+  medicalCertScheduler.start();
+  console.log('Medical certificate scheduler started');
+  
+  // Start consultant appointment checking (daily interval like medical certs)
+  setInterval(async () => {
+    try {
+      await consultantAppointmentService.checkAppointmentAttendance();
+    } catch (error) {
+      console.error('Error in consultant appointment attendance check:', error);
+    }
+  }, 24 * 60 * 60 * 1000); // 24 hours
+  console.log('Consultant appointment attendance checking started');
   // ===========================================
   // SESSION CONFIGURATION & AUTHENTICATION
   // ===========================================
@@ -250,7 +275,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date(),
         source: 'pre_employment_submission'
       };
-      const analysisResult = await riskAssessmentService.assessRisk([riskInput]);
+      // Get organizationId for probation validation (critical for BDD compliance)
+      const organizationId = ticket.companyId || worker.companyId || undefined;
+      const analysisResult = await riskAssessmentService.assessRisk([riskInput], undefined, organizationId);
       
       await storage.createAnalysis({
         ticketId: ticket.id,
@@ -396,6 +423,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date(),
         source: 'injury_form_submission'
       };
+      // Note: Injury forms don't need probation validation, only pre-employment checks do
       const analysisResult = await riskAssessmentService.assessRisk([riskInput]);
       
       await storage.createAnalysis({
