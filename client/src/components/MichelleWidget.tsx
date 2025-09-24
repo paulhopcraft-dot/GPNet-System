@@ -15,10 +15,11 @@ interface ChatMessage {
 }
 
 interface MichelleResponse {
-  response: string;
-  nextStepSuggestion: string;
+  reply: string;
+  nextQuestions: string[];
   conversationId: string;
-  confidence: number;
+  mode: string;
+  accessLevel: string;
 }
 
 interface MichelleWidgetProps {
@@ -71,22 +72,35 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
 
   const chatMutation = useMutation({
     mutationFn: async (message: string): Promise<MichelleResponse> => {
+      console.log('API REQUEST:', { conversationId, message, context });
       const response = await apiRequest('POST', '/api/michelle/chat', {
         conversationId,
         message,
         context
       });
+      console.log('API RESPONSE:', response);
       return response as unknown as MichelleResponse;
     },
     onSuccess: (data: MichelleResponse) => {
+      console.log('SUCCESS:', data);
       const assistantMessage: ChatMessage = {
         role: 'assistant',
-        content: data.response,
+        content: data.reply,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, assistantMessage]);
-      setNextQuestions([data.nextStepSuggestion || 'Tell me more about your situation']);
+      setNextQuestions(data.nextQuestions || ['Tell me more about your situation']);
       setConversationId(data.conversationId);
+    },
+    onError: (error) => {
+      console.error('MUTATION ERROR:', error);
+      // Show error in UI
+      const errorMessage: ChatMessage = {
+        role: 'assistant',
+        content: 'Sorry, I\'m having trouble connecting. Please try again.',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
     }
   });
 
