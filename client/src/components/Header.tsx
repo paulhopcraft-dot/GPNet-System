@@ -68,7 +68,7 @@ export default function Header() {
             </div>
           </Link>
           <Badge variant="secondary" className="text-xs">
-            Pre-Employment v1.1
+            GPNet Case Management System
           </Badge>
           
           {/* Impersonation Indicator */}
