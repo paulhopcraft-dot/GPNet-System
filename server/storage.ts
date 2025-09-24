@@ -285,6 +285,8 @@ export interface IStorage {
   // Helper methods for webhook processing
   findTicketByFreshdeskId(freshdeskId: number): Promise<Ticket | undefined>;
   findWorkerByEmail(email: string): Promise<Worker | undefined>;
+  findWorkersByName(name: string): Promise<Worker[]>;
+  findCasesByWorkerId(workerId: string): Promise<Ticket[]>;
   findOpenTicketsForWorker(workerId: string): Promise<Ticket[]>;
   linkTicketToFreshdesk(ticketId: string, freshdeskId: number): Promise<void>;
   getCaseByTicketId(ticketId: string): Promise<any | undefined>;
@@ -2148,6 +2150,27 @@ export class DatabaseStorage implements IStorage {
       .from(workers)
       .where(eq(workers.email, email));
     return worker || undefined;
+  }
+
+  async findWorkersByName(name: string): Promise<Worker[]> {
+    const searchTerms = name.toLowerCase().split(' ');
+    const results = await db
+      .select()
+      .from(workers)
+      .where(
+        sql`(lower(first_name) LIKE ${'%' + searchTerms[0] + '%'} 
+             OR lower(last_name) LIKE ${'%' + searchTerms[0] + '%'} 
+             OR lower(first_name || ' ' || last_name) LIKE ${'%' + name.toLowerCase() + '%'})`
+      );
+    return results;
+  }
+
+  async findCasesByWorkerId(workerId: string): Promise<Ticket[]> {
+    return await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.workerId, workerId))
+      .orderBy(desc(tickets.createdAt));
   }
 
   async findOpenTicketsForWorker(workerId: string): Promise<Ticket[]> {

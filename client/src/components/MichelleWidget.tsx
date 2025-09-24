@@ -73,13 +73,20 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
   const chatMutation = useMutation({
     mutationFn: async (message: string): Promise<MichelleResponse> => {
       console.log('API REQUEST:', { conversationId, message, context });
-      const response = await apiRequest('POST', '/api/michelle/chat', {
-        conversationId,
-        message,
-        context
-      });
-      console.log('API RESPONSE:', response);
-      return response as unknown as MichelleResponse;
+      try {
+        const response = await apiRequest('POST', '/api/michelle/chat', {
+          conversationId,
+          message,
+          context
+        });
+        console.log('RAW API RESPONSE:', response);
+        const data = await response.json();
+        console.log('PARSED API RESPONSE:', data);
+        return data as MichelleResponse;
+      } catch (error) {
+        console.error('API REQUEST FAILED:', error);
+        throw error;
+      }
     },
     onSuccess: (data: MichelleResponse) => {
       console.log('SUCCESS:', data);
