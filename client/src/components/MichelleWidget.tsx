@@ -76,7 +76,7 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
         message,
         context
       });
-      return response as MichelleResponse;
+      return response as unknown as MichelleResponse;
     },
     onSuccess: (data: MichelleResponse) => {
       const assistantMessage: ChatMessage = {
