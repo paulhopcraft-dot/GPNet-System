@@ -93,7 +93,7 @@ export default function MichelleDashboardPanel({
     const newSuggestions: MichelleSuggestion[] = [];
     
     // Use Michelle's context data if available, otherwise fall back to props
-    const currentStats = michelleContext?.data.stats || stats;
+    const currentStats = michelleContext?.data?.stats || stats;
     const isUniversalMode = michelleMode?.mode === 'universal';
 
     if (currentStats) {
