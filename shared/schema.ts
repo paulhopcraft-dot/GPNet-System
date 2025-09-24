@@ -332,7 +332,7 @@ export const auditEvents = pgTable("audit_events", {
   // Target information
   targetType: text("target_type"), // "company", "ticket", "user"
   targetId: varchar("target_id"), // ID of affected entity
-  companyId: varchar("company_id").references(() => organizations.id), // Affected company
+  organizationId: varchar("organization_id").references(() => organizations.id), // Affected company
   
   // Event details
   action: text("action").notNull(), // Human-readable action description
@@ -355,7 +355,7 @@ export const archiveIndex = pgTable("archive_index", {
   // Entity identification
   entityType: text("entity_type").notNull(), // "company", "ticket", "user"
   entityId: varchar("entity_id").notNull(),
-  companyId: varchar("company_id").references(() => organizations.id),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   
   // Archive metadata
   archivedBy: varchar("archived_by").notNull(), // Admin user ID
@@ -589,7 +589,7 @@ export const externalEmails = pgTable("external_emails", {
   
   // Email identification
   ticketId: varchar("ticket_id").references(() => tickets.id), // Linked case (null if unmatched)
-  companyId: varchar("company_id").references(() => organizations.id),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   messageId: text("message_id").notNull(), // Original email message ID for deduplication
   
   // Forwarding context
@@ -629,7 +629,7 @@ export const externalEmails = pgTable("external_emails", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   // Unique constraint for idempotency - prevents duplicate processing
-  uniqueOrgMessage: unique().on(table.companyId, table.messageId),
+  uniqueOrgMessage: unique().on(table.organizationId, table.messageId),
 }));
 
 // Email attachments table for external email attachments
@@ -660,7 +660,7 @@ export const caseProviders = pgTable("case_providers", {
   
   // Relationships
   ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
-  companyId: varchar("company_id").references(() => organizations.id),
+  organizationId: varchar("organization_id").references(() => organizations.id),
   
   // Provider identification
   providerType: text("provider_type").notNull(), // "doctor", "physiotherapist", "insurer", "specialist", "employer_contact"
@@ -734,7 +734,7 @@ export const conversations = pgTable("conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   
   // Conversation identification  
-  companyId: varchar("company_id").references(() => organizations.id), // Null for global/admin conversations
+  organizationId: varchar("organization_id").references(() => organizations.id), // Null for global/admin conversations
   ticketId: varchar("ticket_id").references(() => tickets.id), // Case-specific conversations
   workerId: varchar("worker_id").references(() => workers.id), // Worker conversations
   
@@ -1539,7 +1539,7 @@ export const documentProcessingJobs = pgTable("document_processing_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ticketId: varchar("ticket_id").notNull().references(() => tickets.id),
   attachmentUrl: varchar("attachment_url").notNull(),
-  companyId: varchar("company_id"),
+  organizationId: varchar("organization_id"),
   requesterEmail: varchar("requester_email"),
   
   // Job status
