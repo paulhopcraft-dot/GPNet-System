@@ -1,0 +1,313 @@
+Perfect 👍 Here’s the **condensed version** — a **single `.feature` file** that contains all the scenarios. It keeps the `Feature:` headers (Agent 3 can handle multiple features in one file).
+
+You can paste this whole thing into Replit Agent 3 as one block if you prefer not to load them one by one.
+
+---
+
+```gherkin
+Feature: Pre-Employment Check – Invitation, completion, review, and report
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+
+  @preemployment
+  Scenario: Manager sends a pre-employment check invitation
+    When I click the "Pre-Employment Check" button
+    Then I am prompted to enter worker details:
+      | field | value                  |
+      | name  | "John Smith"           |
+      | email | "john.smith@test.com"  |
+    And a message builder is displayed with template:
+      """
+      Dear John,
+
+      Please find attached a pre-employment check from GPNet, who are looking after our pre-employment checks.
+
+      Regards,
+      Andrew Bailey
+      """
+    When I press "Send"
+    Then an email with a secure link to the pre-employment check is sent to "john.smith@test.com"
+    And an audit trail entry is created for this invitation
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment
+  Scenario: Worker receives and completes the check
+    Given the invitation was sent to "john.smith@test.com"
+    When the worker opens the secure link, completes, and submits the check
+    Then a Freshdesk ticket is created and its Ticket ID is permanently associated with the check
+    And the case status changes to "Submitted"
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment
+  Scenario: Manager notified on submission; status moves to Review
+    Given a pre-employment submission for "John Smith" exists
+    When the system processes the submission
+    Then the manager receives an email notification
+    And the case status changes from "Submitted" to "Review"
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment
+  Scenario: Automated review generates medical report with recommendations
+    Given a pre-employment check is in "Review"
+    When the automated review process runs
+    Then a pre-employment medical report with recommendations is generated
+    And the manager is emailed a link to the report
+    And the case status changes to "Completed"
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment
+  Scenario: Manager views final report with Michelle commentary
+    Given a completed pre-employment report exists for "John Smith"
+    When the manager opens the link from the notification email
+    Then a page shows the worker’s completed check, the report PDF, and a recommendations section
+    And the Michelle widget displays commentary such as suitability guidance and an offer to discuss further
+    And if any of these steps fail, the system must be corrected.
+```
+
+```gherkin
+Feature: Pre-Employment Follow-up – Michelle Doctor Mode & Probation rule
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And a pre-employment report for "John Smith" exists with outcome "Concerns present"
+
+  @preemployment
+  Scenario: Manager consults Michelle; escalate to real doctor if stuck
+    When I open the pre-employment review and ask Michelle for guidance
+    Then Michelle enters "Doctor Mode" and provides structured guidance (no final opinion)
+    When I provide questions for a doctor
+    Then an escalation task "Medical Opinion Request" is created and linked with transcript
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment
+  Scenario: 30-minute medical opinion SLA and email delivery
+    Given a "Medical Opinion Request" escalation exists
+    When the medical opinion is prepared
+    Then the opinion is emailed to the manager within "30 minutes"
+    And the link opens the recommendation view with a decision disclaimer and a suggestion to schedule a Prevention Check before probation
+    And the case status updates to "Reviewed (Medical Opinion)"
+    And if any of these steps fail, the system must be corrected.
+
+  @preemployment
+  Scenario: Organisation must define a probation period
+    When I open Employer Settings and attempt to enable pre-employment recommendations without a probation period
+    Then I am blocked with a validation: "Set a probation period to proceed."
+    When I set "Probation Period" to "90 days" and save
+    Then the setting is stored and referenced by pre-employment flows
+    And if any of these steps fail, the system must be corrected.
+```
+
+```gherkin
+Feature: Exit Check – Launch, reminders, escalation, completion
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+
+  @exit
+  Scenario: Manager starts Exit Check
+    When I start an Exit Check for worker "Jane Dela Cruz" <jane.delacruz@test.com>
+    Then the invitation is sent
+    And the timeline records the invitation
+    And if any of these steps fail, the system must be corrected.
+
+  @exit
+  Scenario: Day 2 reminder to worker
+    Given worker has not completed by Day 2
+    When reminder rule runs
+    Then an OHS-compliance reminder email is sent
+    And timeline records "Exit Reminder #1 (Day 2)"
+    And if any of these steps fail, the system must be corrected.
+
+  @exit
+  Scenario: Day 4 reminder to worker
+    Given worker has not completed by Day 4
+    When reminder rule runs
+    Then a final reminder email is sent
+    And timeline records "Exit Reminder #2 (Day 4)"
+    And if any of these steps fail, the system must be corrected.
+
+  @exit
+  Scenario: Day 5 manager alert
+    Given worker has not completed by Day 5
+    When escalation rule runs
+    Then the manager receives an alert email with secure case link
+    And timeline records "Manager Alert – Exit not completed"
+    And if any of these steps fail, the system must be corrected.
+
+  @exit
+  Scenario: Worker completes Exit Check
+    Given worker completes check
+    Then a Freshdesk ticket is created and linked
+    And recruiter and employer receive summary email
+    And ROI dashboard updates with exit insight
+    And if any of these steps fail, the system must be corrected.
+```
+
+```gherkin
+Feature: Mental Health Check – Supportive process and reminders
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And worker "Tina Santos" <tina.santos@test.com> exists
+
+  @mh
+  Scenario: Manager reports MH concerns to Michelle
+    When I tell Michelle: "Tina shows anxiety and says she’s stressed"
+    Then Michelle asks best-practice questions about behaviour and safety
+    And if any of these steps fail, the system must be corrected.
+
+  @mh
+  Scenario: Send MH Check invitation
+    When I send the invitation
+    Then Tina receives an email with supportive wording and secure link
+    And if any of these steps fail, the system must be corrected.
+
+  @mh
+  Scenario: Day 3 and Day 5 reminders
+    Given Tina has not completed
+    When it is Day 3
+    Then Reminder #1 is sent
+    When it is Day 5
+    Then Reminder #2 is sent
+    And if any of these steps fail, the system must be corrected.
+
+  @mh
+  Scenario: Day 6 manager alert
+    Given still incomplete by Day 6
+    When alert rule runs
+    Then manager receives alert with secure link
+    And if any of these steps fail, the system must be corrected.
+
+  @mh
+  Scenario: Worker completes MH Check
+    Given Tina completes the check
+    Then a summary is generated and manager is emailed link
+    And if any of these steps fail, the system must be corrected.
+```
+
+```gherkin
+Feature: Dashboard – RAG priority and WorkCover flag
+  Background:
+    Given environment "staging"
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+    And employer "Symmetry HR" exists
+
+  @dashboard
+  Scenario: Dashboard shows cases with RAG and WorkCover columns
+    When I open the dashboard
+    Then I see columns: Type, Worker, Status, Priority, WorkCover
+    And rows show correct RAG colour and WorkCover flag
+    And if any of these steps fail, the system must be corrected.
+```
+
+```gherkin
+Feature: Injury Check – Michelle triage and WorkCover conversion
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+
+  @injury
+  Scenario: Manager reports accident; Michelle triages
+    When I tell Michelle: "We’ve had a worker accident on site"
+    Then Michelle asks triage questions (safety, ambulance, first aid, body area)
+    And an Injury Check case is created
+    And if any of these steps fail, the system must be corrected.
+
+  @workcover
+  Scenario: Manager converts case to WorkCover
+    When I tick WorkCover = Yes
+    Then required fields appear for case manager and rehab provider
+    And Save is disabled until valid
+    And if any of these steps fail, the system must be corrected.
+```
+
+```gherkin
+Feature: Medical Certificates – Reminders, OCR, and summaries
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+
+  @cert
+  Scenario: 7-day reminder before expiry
+    When it is 7 days before expiry
+    Then worker is emailed reminder
+    And if any of these steps fail, the system must be corrected.
+
+  @cert
+  Scenario: Worker sends new certificate by email
+    When OCR runs
+    Then doctor, worker, capacity, and expiry are extracted as data
+    And Michelle summarises whether capacity improved, same, or degraded
+    And if any of these steps fail, the system must be corrected.
+```
+
+```gherkin
+Feature: Consultant Appointment – Attendance and reschedule
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+
+  @consult
+  Scenario: Attendance check 1 hour after appointment
+    When 1 hour after appointment time
+    Then clinic is emailed to confirm attendance
+    And if any of these steps fail, the system must be corrected.
+
+  @consult
+  Scenario: No-show triggers reschedule loop
+    Given clinic says "No-show"
+    Then worker is emailed to explain
+    And GPNet rebooks with clinic until confirmed
+    And if any of these steps fail, the system must be corrected.
+```
+
+```gherkin
+Feature: Prevention & Wellbeing Checks – Reports and editable plans
+  Background:
+    Given environment "staging"
+    And employer "Symmetry HR" exists
+    And I am logged in as manager "Andrew Bailey" with role "Employer"
+
+  @prevention
+  Scenario: Manager sends first Prevention Check
+    When I send Prevention Check to worker "Alex Tan"
+    Then timeline records "Prevention Check invite (manager-sent)"
+    And if any of these steps fail, the system must be corrected.
+
+  @prevention
+  Scenario: Worker completes Prevention Check
+    Given worker completes
+    Then report is generated and editable plan is created using PD requirements
+    And if any of these steps fail, the system must be corrected.
+
+  @wellbeing
+  Scenario: General wellbeing check with reminders
+    When I send wellbeing check to "Sam Lee"
+    Then a supportive invitation is sent
+    When it is Day 2
+    Then Reminder #1 is sent
+    When it is Day 5
+    Then Reminder #2 is sent
+    And if still incomplete, manager is alerted
+    And if any of these steps fail, the system must be corrected.
+
+  @wellbeing
+  Scenario: Worker completes wellbeing check
+    Given worker completes
+    Then a summary and draft RTW plan are generated
+    And manager receives link to edit plan
+    And if any of these steps fail, the system must be corrected.
+```
+
+---
+
+✅ That’s everything merged into **one file**.
+Would you like me to also prepare a **minimal “step definitions skeleton”** (so Agent 3 can start generating the code behind these Given/When/Then steps)?

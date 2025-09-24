@@ -31,6 +31,7 @@ import { formatDistanceToNow } from "date-fns";
 import { MichelleChat } from "./MichelleChat";
 import { ReportGenerator } from "./ReportGenerator";
 import ExternalEmailsSection from "./ExternalEmailsSection";
+import CaseSummary from "./CaseSummary";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +49,13 @@ interface CaseDetails {
   fitClassification?: string;
   recommendations?: string[];
   notes?: string;
+  caseType?: string;
+  claimType?: string;
+  assignedTo?: string;
+  nextStep?: string;
+  lastStep?: string;
+  lastStepCompletedAt?: Date;
+  formData?: any;
 }
 
 interface CaseDetailsModalProps {
@@ -160,8 +168,9 @@ export default function CaseDetailsModal({
           </DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
+        <Tabs defaultValue="summary" className="w-full">
+          <TabsList className="grid w-full grid-cols-7">
+            <TabsTrigger value="summary" data-testid="tab-summary">Summary</TabsTrigger>
             <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
             <TabsTrigger value="analysis" data-testid="tab-analysis">Analysis</TabsTrigger>
             <TabsTrigger value="external-emails" data-testid="tab-external-emails">External Emails</TabsTrigger>
@@ -169,6 +178,10 @@ export default function CaseDetailsModal({
             <TabsTrigger value="michelle" data-testid="tab-michelle">Michelle AI</TabsTrigger>
             <TabsTrigger value="actions" data-testid="tab-actions">Actions</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="summary" className="space-y-4">
+            <CaseSummary caseDetails={caseDetails} />
+          </TabsContent>
 
           <TabsContent value="overview" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
