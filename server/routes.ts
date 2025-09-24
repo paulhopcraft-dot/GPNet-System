@@ -36,6 +36,7 @@ import { type RawEmailData } from "./emailParsingService";
 import { emailDraftRoutes } from "./emailDraftRoutes";
 import { companyMatchingRoutes } from "./companyMatchingRoutes";
 import { autoAllocationRoutes } from "./autoAllocationRoutes";
+import { caseRoutes } from "./caseRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -544,6 +545,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/email-drafts', emailDraftRoutes);
   app.use('/api/company-matching', companyMatchingRoutes);
   app.use('/api/auto-allocation', autoAllocationRoutes);
+  app.use('/api/cases', caseRoutes);
 
   // ===========================================
   // SERVER CREATION
