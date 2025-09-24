@@ -6,10 +6,10 @@ import type {
 } from '@shared/schema';
 
 export interface JobData {
-  type: 'document_processing';
+  type: 'document_processing' | 'medical_certificate_reminder';
   ticketId: string;
   workerId: string;
-  attachmentData: {
+  attachmentData?: {
     url: string;
     filename: string;
     contentType: string;
@@ -53,17 +53,22 @@ export class BackgroundJobQueue {
     try {
       console.log(`Enqueueing ${jobData.type} job for ticket ${jobData.ticketId}`);
 
+      if (jobData.type === 'document_processing' && !jobData.attachmentData) {
+        throw new Error('attachmentData is required for document_processing jobs');
+      }
+
       const job = await this.storage.createDocumentProcessingJob({
         ticketId: jobData.ticketId,
-        attachmentUrl: jobData.attachmentData.url,
+        attachmentUrl: jobData.attachmentData?.url || 'N/A',
         companyId: jobData.companyId,
         requesterEmail: jobData.requesterEmail,
         status: 'queued',
         priority,
         metadata: {
-          filename: jobData.attachmentData.filename,
-          contentType: jobData.attachmentData.contentType,
-          size: jobData.attachmentData.size,
+          jobType: jobData.type,
+          filename: jobData.attachmentData?.filename || 'N/A',
+          contentType: jobData.attachmentData?.contentType || 'N/A',
+          size: jobData.attachmentData?.size || 0,
           workerId: jobData.workerId,
           sourceId: jobData.sourceId,
           retryCount: jobData.retryCount || 0,
@@ -71,9 +76,6 @@ export class BackgroundJobQueue {
           queuedAt: new Date().toISOString()
         }
       });
-
-      // No need to store attachment buffer - download happens during job processing
-      // Store only metadata for download during background processing
 
       console.log(`Job ${job.id} enqueued successfully`);
       return job.id;

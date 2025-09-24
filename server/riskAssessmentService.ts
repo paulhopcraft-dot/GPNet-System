@@ -1,4 +1,5 @@
 import { PreEmploymentFormData, InjuryFormData } from "../shared/schema";
+import type { IStorage } from './storage.js';
 
 export interface RiskInput {
   type: 'form' | 'email' | 'medical_record' | 'manual_update' | 'follow_up';
@@ -33,6 +34,12 @@ export interface EmailRiskAnalysis {
 }
 
 export class EnhancedRiskAssessmentService {
+  private storage: IStorage;
+
+  constructor(storage: IStorage) {
+    this.storage = storage;
+  }
+
   private riskKeywords = {
     high: ['severe', 'critical', 'emergency', 'unable to work', 'permanent disability', 'surgery required', 'hospitalization', 'major injury'],
     medium: ['moderate', 'treatment required', 'work restrictions', 'modified duties', 'physiotherapy', 'specialist referral', 'ongoing pain'],
@@ -48,7 +55,7 @@ export class EnhancedRiskAssessmentService {
   /**
    * Comprehensive risk assessment that combines multiple inputs
    */
-  async assessRisk(inputs: RiskInput[], existingRagScore?: "green" | "amber" | "red"): Promise<RiskAssessmentResult> {
+  async assessRisk(inputs: RiskInput[], existingRagScore?: "green" | "amber" | "red", organizationId?: string): Promise<RiskAssessmentResult> {
     const risks: string[] = [];
     const recommendations: string[] = [];
     const triggerReasons: string[] = [];
@@ -75,6 +82,23 @@ export class EnhancedRiskAssessmentService {
 
     // Determine fit classification based on final RAG score
     fitClassification = this.determineFitClassification(ragScore, risks);
+
+    // CRITICAL: Check probation period validation for pre-employment checks
+    if (organizationId && this.isPreEmploymentAssessment(inputs)) {
+      const probationValidation = await this.validateProbationRequirements(organizationId);
+      
+      if (!probationValidation.isValid) {
+        // Override fit classification to force probation configuration
+        fitClassification = "probation_required";
+        ragScore = "red"; // Force red to block recommendation
+        risks.push("Probation period not configured");
+        recommendations.push("Configure probation period in organization settings before proceeding");
+        triggerReasons.push("BDD Compliance: Probation period validation failed");
+        
+        // Update confidence to reflect validation failure
+        confidence = Math.min(confidence, 50);
+      }
+    }
 
     // Generate manager flag based on traffic light system
     const managerFlag = this.generateManagerFlag(ragScore, inputs);
@@ -326,6 +350,55 @@ export class EnhancedRiskAssessmentService {
     if (ragScore === "red") return "not_fit";
     if (ragScore === "amber") return "fit_with_restrictions";
     return "fit";
+  }
+
+  /**
+   * Check if this is a pre-employment assessment
+   */
+  private isPreEmploymentAssessment(inputs: RiskInput[]): boolean {
+    return inputs.some(input => 
+      input.type === 'form' && 
+      input.source?.includes('pre_employment')
+    );
+  }
+
+  /**
+   * Validate probation period requirements for pre-employment checks
+   */
+  private async validateProbationRequirements(organizationId: string): Promise<{
+    isValid: boolean;
+    reason?: string;
+  }> {
+    try {
+      const orgSettings = await this.storage.getOrganizationSettings(organizationId);
+      
+      if (!orgSettings) {
+        return {
+          isValid: false,
+          reason: "Organization settings not found"
+        };
+      }
+
+      // Check if probation is required
+      if (orgSettings.preEmploymentRequiresProbation) {
+        // If probation is required, check if probation period is configured
+        if (!orgSettings.probationPeriodDays || orgSettings.probationPeriodDays <= 0) {
+          return {
+            isValid: false,
+            reason: "Probation period required but not configured in organization settings"
+          };
+        }
+      }
+
+      return { isValid: true };
+
+    } catch (error) {
+      console.error('Error validating probation requirements:', error);
+      return {
+        isValid: false,
+        reason: "Error checking probation requirements"
+      };
+    }
   }
 
   private getRiskLevel(ragScore: "green" | "amber" | "red"): number {
