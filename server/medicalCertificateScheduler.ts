@@ -1,5 +1,5 @@
 import type { IStorage } from './storage.js';
-import { medicalCertificateReminderService } from './medicalCertificateReminderService.js';
+import { createMedicalCertificateReminderService } from './medicalCertificateReminderService.js';
 
 /**
  * Medical Certificate Scheduler
@@ -7,19 +7,13 @@ import { medicalCertificateReminderService } from './medicalCertificateReminderS
  */
 export class MedicalCertificateScheduler {
   private storage: IStorage;
+  private reminderService: any;
   private schedulerInterval: NodeJS.Timeout | null = null;
   private readonly CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
   constructor(storage: IStorage) {
     this.storage = storage;
-  }
-
-  /**
-   * Initialize the reminder service with storage
-   */
-  private initializeService(): void {
-    // Inject storage into the reminder service
-    (medicalCertificateReminderService as any).storage = this.storage;
+    this.reminderService = createMedicalCertificateReminderService(storage);
   }
 
   /**
@@ -32,9 +26,6 @@ export class MedicalCertificateScheduler {
       return;
     }
 
-    // Initialize the service with storage
-    this.initializeService();
-    
     console.log('Starting medical certificate reminder scheduler (daily checks)');
     
     // Run immediately on startup
@@ -64,7 +55,7 @@ export class MedicalCertificateScheduler {
     try {
       console.log(`[${new Date().toISOString()}] Running daily medical certificate expiry check...`);
       
-      await medicalCertificateReminderService.checkExpiringCertificates();
+      await this.reminderService.checkExpiringCertificates();
       
       console.log('Daily medical certificate check completed successfully');
     } catch (error) {
