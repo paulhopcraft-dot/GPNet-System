@@ -55,7 +55,7 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
       // Start with a greeting message
       const greeting: ChatMessage = {
         role: 'assistant',
-        content: `Hi! I'm Michele, your occupational health assistant. How can I help you today?`,
+        content: `Hi! I'm Michelle, your occupational health assistant. How can I help you today?`,
         timestamp: new Date()
       };
       setMessages([greeting]);
@@ -191,7 +191,7 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
         >
           <CardTitle className="text-lg flex items-center gap-2">
             <MessageCircle className="h-5 w-5" />
-            Michele AI
+            Michelle AI
           </CardTitle>
           <Button
             variant="ghost"
@@ -258,19 +258,19 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
           
           <div className="flex gap-2">
             <Input
-              placeholder="Ask Michele about health matters..."
+              placeholder="Ask Michelle about health matters..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               disabled={chatMutation.isPending}
               className="flex-1"
-              data-testid="input-michele-message"
+              data-testid="input-michelle-message"
             />
             <Button
               onClick={() => handleSendMessage(inputMessage)}
               disabled={!inputMessage.trim() || chatMutation.isPending}
               size="icon"
-              data-testid="button-michele-send"
+              data-testid="button-michelle-send"
             >
               <Send className="h-4 w-4" />
             </Button>
