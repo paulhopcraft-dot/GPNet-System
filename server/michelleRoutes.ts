@@ -389,7 +389,7 @@ router.post('/chat', async (req, res) => {
       ? "I understand you have questions about a work role. What specific position are you applying for, and are there any physical requirements you're concerned about?"
       : message.toLowerCase().includes('case')
       ? "I can help you with case-related questions. Which case or ticket number would you like to discuss?"
-      : "I'm Michele, your occupational health assistant. I can help with health assessments, work role evaluations, and case management. What would you like to know more about?";
+      : "I'm Michelle, your occupational health assistant. I can help with health assessments, work role evaluations, and case management. What would you like to know more about?";
 
     res.json({
       reply,
@@ -401,7 +401,7 @@ router.post('/chat', async (req, res) => {
       conversationId: conversationId || `conv_${Date.now()}`
     });
   } catch (error) {
-    console.error('Michele chat error:', error);
+    console.error('Michelle chat error:', error);
     res.status(500).json({ error: 'Failed to process chat message' });
   }
 });
