@@ -22,11 +22,11 @@ const UpdateRiskLevelSchema = z.object({
  * GET /api/cases
  * Retrieve list of cases for the dashboard
  */
-router.get('/', async (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   try {
     console.log('Fetching cases for dashboard');
     
-    // TEMP: Bypass auth for development - use default organization
+    // Get user organization from session (set by auth middleware)
     const organizationId = req.session.user?.organizationId || 'default-org';
 
     // Fetch all tickets for the organization
@@ -88,7 +88,7 @@ router.get('/', async (req, res) => {
  * GET /api/cases/:ticketId
  * Retrieve specific case details for the modal
  */
-router.get('/:ticketId', async (req, res) => {
+router.get('/:ticketId', requireAuth, async (req, res) => {
   try {
     const { ticketId } = req.params;
     console.log('Fetching case details for:', ticketId);
@@ -99,11 +99,11 @@ router.get('/:ticketId', async (req, res) => {
       return res.status(404).json({ error: 'Case not found' });
     }
 
-    // TEMP: Skip organization access check for development
-    // const userOrgId = req.session.user?.organizationId;
-    // if (ticket.organizationId !== userOrgId && !req.session.user?.permissions?.includes('admin')) {
-    //   return res.status(403).json({ error: 'Access denied' });
-    // }
+    // Check user has access to this ticket's organization (unless admin)
+    const userOrgId = req.session.user?.organizationId;
+    if (process.env.NODE_ENV !== 'development' && ticket.organizationId !== userOrgId && !req.session.user?.permissions?.includes('admin')) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     // Get worker info
     const worker = ticket.workerId ? await storage.getWorker(ticket.workerId) : null;
@@ -163,6 +163,12 @@ router.put('/:ticketId/status', requireAuth, async (req, res) => {
     if (!ticket) {
       return res.status(404).json({ error: 'Case not found' });
     }
+    
+    // Check organization access for security
+    const userOrgId = req.session.user?.organizationId;
+    if (process.env.NODE_ENV !== 'development' && ticket.organizationId !== userOrgId && !req.session.user?.permissions?.includes('admin')) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     // Update ticket status
     await storage.updateTicketStatus(ticketId, status);
@@ -193,6 +199,17 @@ router.put('/:ticketId/recommendations', requireAuth, async (req, res) => {
     const { recommendations } = UpdateRecommendationsSchema.parse(req.body);
 
     console.log('Updating case recommendations:', ticketId, recommendations.length);
+    
+    // Check organization access for security
+    const ticket = await storage.getTicket(ticketId);
+    if (!ticket) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    
+    const userOrgId = req.session.user?.organizationId;
+    if (process.env.NODE_ENV !== 'development' && ticket.organizationId !== userOrgId && !req.session.user?.permissions?.includes('admin')) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     // Get or create analysis
     let analysis = await storage.getAnalysisByTicket(ticketId);
@@ -236,6 +253,17 @@ router.put('/:ticketId/risk-level', requireAuth, async (req, res) => {
     const { ragScore } = UpdateRiskLevelSchema.parse(req.body);
 
     console.log('Updating case risk level:', ticketId, ragScore);
+    
+    // Check organization access for security
+    const ticket = await storage.getTicket(ticketId);
+    if (!ticket) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    
+    const userOrgId = req.session.user?.organizationId;
+    if (process.env.NODE_ENV !== 'development' && ticket.organizationId !== userOrgId && !req.session.user?.permissions?.includes('admin')) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
     // Get or create analysis
     let analysis = await storage.getAnalysisByTicket(ticketId);

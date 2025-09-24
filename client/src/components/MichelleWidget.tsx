@@ -35,6 +35,12 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
   const [conversationId, setConversationId] = useState<string>("");
   const [nextQuestions, setNextQuestions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Drag functionality state
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [position, setPosition] = useState({ x: 20, y: 20 });
+  const dragRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -49,7 +55,7 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
       // Start with a greeting message
       const greeting: ChatMessage = {
         role: 'assistant',
-        content: `Hi! I'm Michelle, your AI assistant for occupational health matters. How can I help you today?`,
+        content: `Hi! I'm Michele, your occupational health assistant. How can I help you today?`,
         timestamp: new Date()
       };
       setMessages([greeting]);
@@ -202,19 +208,19 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
           
           <div className="flex gap-2">
             <Input
-              placeholder="Ask Michelle about health matters..."
+              placeholder="Ask Michele about health matters..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               disabled={chatMutation.isPending}
               className="flex-1"
-              data-testid="input-michelle-message"
+              data-testid="input-michele-message"
             />
             <Button
               onClick={() => handleSendMessage(inputMessage)}
               disabled={!inputMessage.trim() || chatMutation.isPending}
               size="icon"
-              data-testid="button-michelle-send"
+              data-testid="button-michele-send"
             >
               <Send className="h-4 w-4" />
             </Button>

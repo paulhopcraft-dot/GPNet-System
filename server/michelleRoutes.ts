@@ -9,8 +9,22 @@ const router = express.Router();
 // In-memory store for dialogue contexts (in production, use Redis or database)
 const activeDialogues = new Map<string, DialogueContext>();
 
-// Middleware to require authenticated user (consistent with system standards)
+// DEV-only auth bypass for development access
 const requireAuth = (req: any, res: any, next: any) => {
+  if (process.env.NODE_ENV === 'development') {
+    // Set mock session for development
+    req.session.user = req.session.user || {
+      id: 'dev-user',
+      email: 'dev@example.com',
+      role: 'client',
+      firstName: 'Development',
+      lastName: 'User',
+      organizationId: 'default-org'
+    };
+    req.session.isAuthenticated = true;
+    return next();
+  }
+  
   if (!req.session?.user?.id || !req.session?.isAuthenticated) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -362,5 +376,47 @@ This is an automated message from the GPNet pre-employment health check system.
 Reference: ${ticket.id}
   `.trim();
 }
+
+// Simple /chat endpoint for compatibility with frontend MichelleWidget  
+router.post('/chat', async (req, res) => {
+  try {
+    const { conversationId, message, context } = req.body;
+    
+    // Simple response for now - you can enhance this later
+    const reply = message.toLowerCase().includes('health') 
+      ? "Thank you for telling me about your health concerns. Can you provide more details about any specific symptoms or conditions you're experiencing?"
+      : message.toLowerCase().includes('work') || message.toLowerCase().includes('role')
+      ? "I understand you have questions about a work role. What specific position are you applying for, and are there any physical requirements you're concerned about?"
+      : message.toLowerCase().includes('case')
+      ? "I can help you with case-related questions. Which case or ticket number would you like to discuss?"
+      : "I'm Michele, your occupational health assistant. I can help with health assessments, work role evaluations, and case management. What would you like to know more about?";
+
+    res.json({
+      reply,
+      nextQuestions: [
+        'Tell me about any health concerns',
+        'What type of work role is this about?', 
+        'Do you have questions about a specific case?'
+      ],
+      conversationId: conversationId || `conv_${Date.now()}`
+    });
+  } catch (error) {
+    console.error('Michele chat error:', error);
+    res.status(500).json({ error: 'Failed to process chat message' });
+  }
+});
+
+// Add mode and context endpoints for compatibility
+router.get('/mode', async (req, res) => {
+  res.json({ mode: 'client-scoped', accessLevel: 'client' });
+});
+
+router.get('/context', async (req, res) => {
+  res.json({ 
+    currentPage: 'dashboard',
+    dialogueMode: 'standard',
+    escalationAvailable: true 
+  });
+});
 
 export { router as michelleRoutes };
