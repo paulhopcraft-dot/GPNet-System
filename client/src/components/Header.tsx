@@ -13,6 +13,7 @@ import { useUser } from "@/components/UserContext";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
+import gpnetLogo from "@assets/GPNet Logo Design_1758707602382.png";
 
 export default function Header() {
   const { user, setUser } = useUser();
@@ -60,16 +61,13 @@ export default function Header() {
         {/* Logo and Brand */}
         <div className="flex items-center gap-4">
           <Link href="/">
-            <div className="flex items-center gap-2 cursor-pointer">
-              <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">GP</span>
-              </div>
-              <span className="text-xl font-semibold">GPNet</span>
-            </div>
+            <img 
+              src={gpnetLogo} 
+              alt="GPNet" 
+              className="h-10 w-10 cursor-pointer hover-elevate rounded-full"
+              data-testid="logo-home"
+            />
           </Link>
-          <Badge variant="secondary" className="text-xs">
-            GPNet Case Management System
-          </Badge>
           
           {/* Impersonation Indicator */}
           {user?.isImpersonating && (
