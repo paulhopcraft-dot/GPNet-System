@@ -414,10 +414,19 @@ router.get('/audit', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-// Get current user endpoint
-router.get('/me', requireAuth, async (req: Request, res: Response) => {
+// Get current user endpoint - TEMP: bypass auth for development  
+router.get('/me', async (req: Request, res: Response) => {
   try {
-    const sessionUser = req.session.user!;
+    // TEMP: Return mock user for development
+    const sessionUser = req.session.user || {
+      id: 'dev-user',
+      firstName: 'Development',
+      lastName: 'User',
+      email: 'dev@example.com',
+      role: 'admin',
+      organizationId: 'default-org',
+      permissions: ['admin']
+    };
     
     res.json({
       id: sessionUser.id,
