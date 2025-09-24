@@ -377,28 +377,233 @@ Reference: ${ticket.id}
   `.trim();
 }
 
-// Simple /chat endpoint for compatibility with frontend MichelleWidget  
+// Enhanced /chat endpoint with worker lookup and conversation modes
 router.post('/chat', async (req, res) => {
   try {
+    console.log('MICHELLE CHAT REQUEST:', req.body);
     const { conversationId, message, context } = req.body;
     
-    // Simple response for now - you can enhance this later
-    const reply = message.toLowerCase().includes('health') 
-      ? "Thank you for telling me about your health concerns. Can you provide more details about any specific symptoms or conditions you're experiencing?"
-      : message.toLowerCase().includes('work') || message.toLowerCase().includes('role')
-      ? "I understand you have questions about a work role. What specific position are you applying for, and are there any physical requirements you're concerned about?"
-      : message.toLowerCase().includes('case')
-      ? "I can help you with case-related questions. Which case or ticket number would you like to discuss?"
-      : "I'm Michelle, your occupational health assistant. I can help with health assessments, work role evaluations, and case management. What would you like to know more about?";
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+    
+    // Initialize conversation context if needed
+    const sessionConversationId = conversationId || `conv_${Date.now()}`;
+    
+    // Worker case lookup logic
+    const workerNameMatch = message.match(/(?:tell me about|lookup|find|show me)\s+(.+?)(?:\s|$)/i);
+    const nameMatch = message.match(/\b([A-Z][a-z]+\s+[A-Z][a-z]+)\b/);
+    
+    let reply = '';
+    let nextQuestions = [];
+    
+    // Check for worker lookup request
+    if (message.toLowerCase().includes('lookup') || message.toLowerCase().includes('find worker') || message.toLowerCase().includes('tell me about') || nameMatch) {
+      const searchName = workerNameMatch?.[1] || nameMatch?.[1] || '';
+      
+      if (searchName) {
+        try {
+          // Search for workers by name
+          const workers = await storage.findWorkersByName(searchName);
+          
+          if (workers && workers.length > 0) {
+            const worker = workers[0];
+            const cases = await storage.findCasesByWorkerId(worker.id);
+            
+            // Generate worker status report
+            const latestCase = cases[0];
+            const status = latestCase?.status || 'No active cases';
+            
+            reply = `**${worker.firstName} ${worker.lastName}**
+            
+**Current Status:** ${status}
+**Email:** ${worker.email}
+**Active Cases:** ${cases.length}
 
+${latestCase ? `**Latest Case:** ${latestCase.caseType} (Priority: ${latestCase.priority})` : ''}
+
+How can I help you with this worker's case?`;
+
+            nextQuestions = [
+              `Medical recommendations for ${worker.firstName}`,
+              `Return to work plan for ${worker.firstName}`,
+              `Risk assessment details`,
+              `Contact the worker directly`
+            ];
+          } else {
+            reply = `I couldn't find a worker named "${searchName}". Could you check the spelling or try searching by:
+            
+• Full name (first and last)
+• Email address  
+• Ticket number
+
+What would you like to search for?`;
+            nextQuestions = [
+              'Show me all active cases',
+              'List workers by status',
+              'Search by email instead'
+            ];
+          }
+        } catch (error) {
+          reply = `Sorry, I encountered an error searching for "${searchName}". Please try again or contact support.`;
+          nextQuestions = ['Try a different search', 'Show me all cases'];
+        }
+      } else {
+        reply = "I can help you look up worker information. Please provide a worker's full name, email, or ticket number.";
+        nextQuestions = [
+          'Show me all active cases',
+          'List injured workers',
+          'Search by status'
+        ];
+      }
+    }
+    // Conversation mode switching
+    else if (message.toLowerCase().includes('doctor mode') || message.toLowerCase().includes('medical')) {
+      reply = `**🩺 DOCTOR MODE ACTIVATED**
+
+I'm now providing medical perspectives and recommendations. I can help with:
+
+• Clinical assessments and interpretations
+• Medical fitness recommendations  
+• Treatment plan reviews
+• Occupational health guidance
+• Return-to-work medical clearance
+
+What medical question can I help you with?`;
+      
+      nextQuestions = [
+        'Review fitness for duties',
+        'Interpret medical certificates',
+        'Assess injury severity',
+        'Recommend treatment options'
+      ];
+    }
+    else if (message.toLowerCase().includes('case manager') || message.toLowerCase().includes('admin')) {
+      reply = `**📋 CASE MANAGER MODE ACTIVATED**
+
+I'm now focused on case administration and follow-up processes. I can help with:
+
+• Case status tracking and updates
+• Follow-up scheduling and reminders
+• Documentation requirements
+• Escalation protocols
+• Compliance monitoring
+
+What case management task can I assist with?`;
+      
+      nextQuestions = [
+        'Update case status',
+        'Schedule follow-up',
+        'Review documentation',
+        'Escalate to supervisor'
+      ];
+    }
+    else if (message.toLowerCase().includes('employer mode') || message.toLowerCase().includes('work duties')) {
+      reply = `**🏢 EMPLOYER MODE ACTIVATED**
+
+I'm now focusing on workplace considerations and return-to-work planning. I can help with:
+
+• Job duty modifications and restrictions
+• Workplace accommodation planning
+• Return-to-work timelines
+• Risk management strategies
+• Productivity and safety considerations
+
+What workplace question can I help you with?`;
+      
+      nextQuestions = [
+        'Plan return to work',
+        'Assess job modifications',
+        'Review workplace risks',
+        'Calculate productivity impact'
+      ];
+    }
+    // Health and injury concerns
+    else if (message.toLowerCase().includes('pain') || message.toLowerCase().includes('hurt') || message.toLowerCase().includes('injury')) {
+      reply = `🚨 **HEALTH CONCERN FLAGGED**
+
+I understand you're experiencing pain or injury. This is important and may require immediate attention.
+
+**Immediate Actions:**
+• Seek medical attention if severe
+• Document the incident properly  
+• Report to your supervisor
+• Contact your case manager
+
+Can you provide more details about:
+• When did this occur?
+• What type of pain/injury?
+• Current severity level?`;
+
+      nextQuestions = [
+        'I need immediate medical help',
+        'Report a workplace injury',
+        'Update my existing case',
+        'Speak to case manager'
+      ];
+    }
+    // Mental health and coping
+    else if (message.toLowerCase().includes('not coping') || message.toLowerCase().includes('stress') || message.toLowerCase().includes('mental')) {
+      reply = `🧠 **MENTAL HEALTH SUPPORT**
+
+Thank you for sharing this with me. Mental health is just as important as physical health.
+
+**Immediate Support Available:**
+• Employee Assistance Program (EAP)
+• Mental health professionals
+• Workplace counseling services
+• Stress management resources
+
+**I'm flagging this for priority follow-up.**
+
+Would you like me to:`;
+
+      nextQuestions = [
+        'Connect me with EAP services',
+        'Schedule mental health assessment',
+        'Provide stress management resources',
+        'Contact my case manager urgently'
+      ];
+    }
+    // Default helpful responses
+    else {
+      const greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon'];
+      const isGreeting = greetings.some(g => message.toLowerCase().includes(g));
+      
+      if (isGreeting) {
+        reply = `Hello! I'm Michelle, your occupational health assistant. I can help you with:
+
+**🔍 Worker Lookups:** Find cases by name or ID
+**📋 Case Management:** Track status and follow-ups  
+**🩺 Health Advice:** Medical and safety guidance
+**🏢 Workplace Support:** Return-to-work planning
+
+Try saying something like "tell me about John Smith" or "doctor mode" to get started.`;
+      } else {
+        reply = `I'm here to help with occupational health questions. I can:
+
+• Look up worker cases by name
+• Switch to Doctor, Case Manager, or Employer mode
+• Provide health and safety guidance
+• Help with return-to-work planning
+
+What would you like assistance with?`;
+      }
+      
+      nextQuestions = [
+        'Look up a worker by name',
+        'Switch to Doctor mode',
+        'Show me case management options',
+        'Help with workplace concerns'
+      ];
+    }
+    
+    console.log('MICHELLE RESPONSE:', { reply, nextQuestions, conversationId: sessionConversationId });
+    
     res.json({
       reply,
-      nextQuestions: [
-        'Tell me about any health concerns',
-        'What type of work role is this about?', 
-        'Do you have questions about a specific case?'
-      ],
-      conversationId: conversationId || `conv_${Date.now()}`
+      nextQuestions,
+      conversationId: sessionConversationId
     });
   } catch (error) {
     console.error('Michelle chat error:', error);
