@@ -417,16 +417,21 @@ router.get('/audit', requireAdmin, async (req: Request, res: Response) => {
 // Get current user endpoint - TEMP: bypass auth for development  
 router.get('/me', async (req: Request, res: Response) => {
   try {
-    // TEMP: Return mock user for development
-    const sessionUser = req.session.user || {
-      id: 'dev-user',
-      firstName: 'Development',
-      lastName: 'User',
-      email: 'dev@example.com',
-      role: 'admin',
-      organizationId: 'default-org',
-      permissions: ['admin']
-    };
+    // TEMP: Create and set mock user for development if none exists
+    if (!req.session.user || !req.session.isAuthenticated) {
+      req.session.user = {
+        id: 'dev-user',
+        firstName: 'Development',
+        lastName: 'User',
+        email: 'dev@example.com',
+        role: 'admin',
+        organizationId: 'default-org',
+        permissions: ['admin']
+      };
+      req.session.isAuthenticated = true;
+    }
+    
+    const sessionUser = req.session.user;
     
     res.json({
       id: sessionUser.id,
