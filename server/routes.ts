@@ -534,38 +534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // MICHELLE AI ASSISTANT ENDPOINTS
   // ===========================================
 
-  // Chat with Michelle
-  app.post("/api/michelle/chat", async (req, res) => {
-    try {
-      const { message, conversationId, context } = req.body;
-      
-      if (!message) {
-        return res.status(400).json({ error: "Message is required" });
-      }
-
-      const userContext: MichelleContext = {
-        userId: req.session?.user?.id || 'anonymous',
-        userType: req.session?.user?.role || 'client',
-        organizationId: req.session?.user?.organizationId,
-        permissions: req.session?.user?.permissions || [],
-        phiAccess: req.session?.user?.phiAccess || false,
-        isSuperuser: req.session?.user?.role === 'admin' || false
-      };
-
-      const response: ConversationResponse = await michelle.chat(
-        conversationId || `conv-${Date.now()}`,
-        message,
-        userContext,
-        context
-      );
-
-      res.json(response);
-
-    } catch (error) {
-      console.error("Error in Michelle chat:", error);
-      res.status(500).json({ error: "Failed to process chat message" });
-    }
-  });
+  // Michelle chat endpoint removed - handled by michelleRoutes
 
   // ===========================================
   // MOUNT ADDITIONAL ROUTE MODULES
