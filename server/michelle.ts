@@ -122,11 +122,11 @@ export class MichelleAI {
       { role: "user" as const, content: userMessage }
     ];
 
-    // Check for valid OpenAI API key (simplified validation)
+    // Check for valid OpenAI API key (must start with sk-)
     const isValidApiKey = process.env.OPENAI_API_KEY && 
-                         process.env.OPENAI_API_KEY.length > 10 && 
-                         !process.env.OPENAI_API_KEY.includes('****') &&
-                         process.env.OPENAI_API_KEY.startsWith('sk-');
+                         process.env.OPENAI_API_KEY.startsWith('sk-') &&
+                         process.env.OPENAI_API_KEY.length > 20 && 
+                         !process.env.OPENAI_API_KEY.includes('****');
 
     let aiResponse;
     let response;
