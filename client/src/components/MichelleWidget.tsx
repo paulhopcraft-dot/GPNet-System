@@ -70,18 +70,12 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
 
   const chatMutation = useMutation({
     mutationFn: async (message: string) => {
-      const response = await apiRequest('/api/michelle/chat', {
-        method: 'POST',
-        body: JSON.stringify({
-          conversationId,
-          message,
-          context
-        }),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const response = await apiRequest('POST', '/api/michelle/chat', {
+        conversationId,
+        message,
+        context
       });
-      return response as MichelleResponse;
+      return response;
     },
     onSuccess: (data: MichelleResponse) => {
       const assistantMessage: ChatMessage = {
@@ -120,6 +114,50 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
     handleSendMessage(question);
   };
 
+  // Drag handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    const rect = dragRef.current?.getBoundingClientRect();
+    if (rect) {
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      });
+    }
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging) return;
+    
+    const newX = e.clientX - dragOffset.x;
+    const newY = e.clientY - dragOffset.y;
+    
+    // Keep widget on screen
+    const maxX = window.innerWidth - 320; // widget width
+    const maxY = window.innerHeight - 384; // widget height
+    
+    setPosition({
+      x: Math.max(0, Math.min(newX, maxX)),
+      y: Math.max(0, Math.min(newY, maxY))
+    });
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  // Add global mouse listeners for drag
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, dragOffset]);
+
   if (!isOpen) {
     return (
       <div className="fixed bottom-4 right-4 z-50">
@@ -136,12 +174,24 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
+    <div 
+      ref={dragRef}
+      className="fixed z-50"
+      style={{
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        bottom: 'auto',
+        right: 'auto'
+      }}
+    >
       <Card className="w-80 h-96 flex flex-col">
-        <CardHeader className="flex flex-row items-center justify-between py-3">
+        <CardHeader 
+          className="flex flex-row items-center justify-between py-3 cursor-move"
+          onMouseDown={handleMouseDown}
+        >
           <CardTitle className="text-lg flex items-center gap-2">
             <MessageCircle className="h-5 w-5" />
-            Michelle AI
+            Michele AI
           </CardTitle>
           <Button
             variant="ghost"

@@ -544,12 +544,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const userContext: MichelleContext = {
-        userId: req.session?.userId || 'anonymous',
-        userType: req.session?.userType || 'client',
-        organizationId: req.session?.organizationId,
-        permissions: req.session?.permissions || [],
-        phiAccess: req.session?.phiAccess || false,
-        isSuperuser: req.session?.isSuperuser || false
+        userId: req.session?.user?.id || 'anonymous',
+        userType: req.session?.user?.role || 'client',
+        organizationId: req.session?.user?.organizationId,
+        permissions: req.session?.user?.permissions || [],
+        phiAccess: req.session?.user?.phiAccess || false,
+        isSuperuser: req.session?.user?.role === 'admin' || false
       };
 
       const response: ConversationResponse = await michelle.chat(
