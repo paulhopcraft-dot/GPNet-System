@@ -58,13 +58,8 @@ export async function chatWithMichelle(
       timestamp: new Date()
     });
 
-    // Demo mode: Simple keyword-based responses for testing (when API key is missing or invalid)
-    // CHECK THIS BEFORE ATTEMPTING OPENAI API CALL
-    const isValidApiKey = process.env.OPENAI_API_KEY && 
-                         process.env.OPENAI_API_KEY.startsWith('sk-') && 
-                         !process.env.OPENAI_API_KEY.includes('****') && 
-                         !process.env.OPENAI_API_KEY.includes('youtube') &&
-                         !process.env.OPENAI_API_KEY.includes('http');
+    // ALWAYS use OpenAI - user confirms they have working key
+    const isValidApiKey = true;
 
     // Determine Michelle's mode based on user context
     const mode = userContext.userType === 'admin' && userContext.isSuperuser 
