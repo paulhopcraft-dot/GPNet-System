@@ -278,7 +278,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         source: 'pre_employment_submission'
       };
       // Get organizationId for probation validation (critical for BDD compliance)
-      const organizationId = ticket.companyId || worker.companyId || undefined;
+      const organizationId = (ticket as any).organizationId || (worker as any).organizationId || undefined;
       const analysisResult = await riskAssessmentService.assessRisk([riskInput], undefined, organizationId);
       
       await storage.createAnalysis({

@@ -445,10 +445,6 @@ export default function Dashboard() {
                       lastStepCompletedAt={caseItem.lastStepCompletedAt}
                       assignedTo={caseItem.assignedTo}
                       onViewCase={() => handleViewCase(caseItem)}
-                      onReviewCase={caseItem.status === 'AWAITING_REVIEW' && caseItem.caseType === 'pre_employment' 
-                        ? () => handleReviewClick(caseItem.ticketId) 
-                        : undefined
-                      }
                     />
                   ))}
                 </div>
@@ -468,8 +464,9 @@ export default function Dashboard() {
         onClose={() => setIsModalOpen(false)}
         caseDetails={selectedCase ? {
           ...selectedCase,
-          createdAt: new Date(selectedCase.createdAt)
-        } : null}
+          createdAt: new Date(selectedCase.createdAt),
+          claimType: selectedCase.claimType || undefined
+        } as any : null}
         onStatusUpdate={handleStatusUpdate}
         onRecommendationsUpdate={handleRecommendationsUpdate}
       />
