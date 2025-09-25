@@ -43,6 +43,11 @@ export const tickets = pgTable("tickets", {
   nextDeadlineDate: text("next_deadline_date"), // Next critical deadline
   nextDeadlineType: text("next_deadline_type"), // "planning_meeting", "warning_expiry", "suspension_expiry"
   
+  // Follow-up notification tracking
+  followUp24hrSent: boolean("follow_up_24hr_sent").default(false), // Whether 24-hour follow-up has been sent
+  followUpDay3Sent: boolean("follow_up_day3_sent").default(false), // Whether day 3 follow-up has been sent
+  formType: text("form_type"), // Type of health check form for follow-ups
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -672,6 +672,189 @@ If you have received this email in error, please delete it immediately and notif
   }
 
   /**
+   * Send 24-hour follow-up notification for incomplete health checks
+   */
+  async send24HourFollowUp(workerEmail: string, workerName: string, ticketId: string, checkType: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!this.isAvailable()) {
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const subject = `Reminder: Complete Your ${checkType} - 24 Hour Follow-up`;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .header { background-color: #1e3a8a; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; max-width: 600px; margin: 0 auto; }
+              .footer { background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #dee2e6; }
+              .logo { font-size: 24px; font-weight: bold; }
+              .reminder-info { background-color: #fff3cd; padding: 15px; border-radius: 4px; margin: 15px 0; border-left: 4px solid #ffc107; }
+              .cta-button { background-color: #1e3a8a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 15px 0; }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <div class="logo">GPNet Health Assessment Services</div>
+              <p style="margin: 5px 0 0 0; font-size: 14px;">24-Hour Follow-up Reminder</p>
+          </div>
+          
+          <div class="content">
+              <h2>Reminder: Complete Your Health Check</h2>
+              <p>Dear ${workerName},</p>
+              
+              <p>We noticed you started a ${checkType} submission 24 hours ago but haven't completed it yet.</p>
+              
+              <div class="reminder-info">
+                  <strong>Case ID:</strong> ${ticketId}<br>
+                  <strong>Assessment Type:</strong> ${checkType}<br>
+                  <strong>Status:</strong> Incomplete
+              </div>
+              
+              <p>Please complete your health assessment at your earliest convenience. Your employer is waiting for this information to proceed with your application.</p>
+              
+              <p>If you're experiencing any difficulties or have questions, please don't hesitate to contact our support team.</p>
+              
+              <p>Thank you for your cooperation.</p>
+              
+              <p>Best regards,<br>
+              GPNet Health Assessment Team</p>
+          </div>
+          
+          <div class="footer">
+              <p>GPNet Health Assessment Services<br>
+              If you have any questions, please contact our support team.</p>
+          </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+      Reminder: Complete Your ${checkType} - 24 Hour Follow-up
+      
+      Dear ${workerName},
+      
+      We noticed you started a ${checkType} submission 24 hours ago but haven't completed it yet.
+      
+      Case ID: ${ticketId}
+      Assessment Type: ${checkType}
+      Status: Incomplete
+      
+      Please complete your health assessment at your earliest convenience. Your employer is waiting for this information to proceed with your application.
+      
+      If you're experiencing any difficulties or have questions, please don't hesitate to contact our support team.
+      
+      Thank you for your cooperation.
+      
+      Best regards,
+      GPNet Health Assessment Team
+    `;
+
+    return this.sendEmailWithFallback({
+      to: workerEmail,
+      subject,
+      html,
+      text
+    });
+  }
+
+  /**
+   * Send day 3 follow-up notification for incomplete health checks
+   */
+  async sendDay3FollowUp(workerEmail: string, workerName: string, ticketId: string, checkType: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!this.isAvailable()) {
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const subject = `Final Reminder: Complete Your ${checkType} - Day 3 Follow-up`;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .header { background-color: #dc3545; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; max-width: 600px; margin: 0 auto; }
+              .footer { background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #dee2e6; }
+              .logo { font-size: 24px; font-weight: bold; }
+              .urgent-info { background-color: #f8d7da; padding: 15px; border-radius: 4px; margin: 15px 0; border-left: 4px solid #dc3545; }
+              .cta-button { background-color: #dc3545; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block; margin: 15px 0; }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <div class="logo">GPNet Health Assessment Services</div>
+              <p style="margin: 5px 0 0 0; font-size: 14px;">FINAL REMINDER - Day 3 Follow-up</p>
+          </div>
+          
+          <div class="content">
+              <h2>Final Reminder: Complete Your Health Check</h2>
+              <p>Dear ${workerName},</p>
+              
+              <p><strong>This is your final reminder</strong> - your ${checkType} submission has been incomplete for 3 days.</p>
+              
+              <div class="urgent-info">
+                  <strong>⚠️ URGENT ACTION REQUIRED</strong><br><br>
+                  <strong>Case ID:</strong> ${ticketId}<br>
+                  <strong>Assessment Type:</strong> ${checkType}<br>
+                  <strong>Status:</strong> Incomplete for 3 days<br>
+                  <strong>Action Required:</strong> Complete assessment immediately
+              </div>
+              
+              <p><strong>Please complete your health assessment immediately.</strong> Further delays may impact your employment application process.</p>
+              
+              <p>If you're unable to complete the assessment or are experiencing technical difficulties, please contact our support team immediately to avoid any delays with your application.</p>
+              
+              <p>Your employer has been notified of this delay and is waiting for your submission to proceed.</p>
+              
+              <p>Best regards,<br>
+              GPNet Health Assessment Team</p>
+          </div>
+          
+          <div class="footer">
+              <p>GPNet Health Assessment Services<br>
+              <strong>URGENT:</strong> If you have any questions, please contact our support team immediately.</p>
+          </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+      FINAL REMINDER: Complete Your ${checkType} - Day 3 Follow-up
+      
+      Dear ${workerName},
+      
+      This is your final reminder - your ${checkType} submission has been incomplete for 3 days.
+      
+      ⚠️ URGENT ACTION REQUIRED
+      
+      Case ID: ${ticketId}
+      Assessment Type: ${checkType}
+      Status: Incomplete for 3 days
+      Action Required: Complete assessment immediately
+      
+      Please complete your health assessment immediately. Further delays may impact your employment application process.
+      
+      If you're unable to complete the assessment or are experiencing technical difficulties, please contact our support team immediately to avoid any delays with your application.
+      
+      Your employer has been notified of this delay and is waiting for your submission to proceed.
+      
+      Best regards,
+      GPNet Health Assessment Team
+    `;
+
+    return this.sendEmailWithFallback({
+      to: workerEmail,
+      subject,
+      html,
+      text
+    });
+  }
+
+  /**
    * Send email with fallback between SendGrid and nodemailer
    */
   private async sendEmailWithFallback(options: {
