@@ -50,6 +50,8 @@ import { db } from "./db";
 // Import schedulers for startup
 import { createMedicalCertificateScheduler } from "./medicalCertificateScheduler";
 import { createConsultantAppointmentService } from "./consultantAppointmentService";
+import { createFollowUpScheduler } from "./followUpScheduler";
+import { emailService } from "./emailService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -59,10 +61,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize and start schedulers
   const medicalCertScheduler = createMedicalCertificateScheduler(storage);
   const consultantAppointmentService = createConsultantAppointmentService(storage);
+  const followUpScheduler = createFollowUpScheduler(emailService);
   
   // Start background schedulers
   medicalCertScheduler.start();
   console.log('Medical certificate scheduler started');
+  
+  // Start follow-up notification scheduler
+  followUpScheduler.start();
+  console.log('Follow-up notification scheduler started');
   
   // Start consultant appointment checking (daily interval like medical certs)
   setInterval(async () => {
@@ -279,6 +286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         workerId: worker.id,
         caseType: caseTypeMapping[formType] || formType,
         status: "ANALYSING",
+        formType: formType, // Add formType for follow-up notifications
       });
 
       // Create form submission record
@@ -446,6 +454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         claimType: formData.claimType,
         status: "NEW",
         priority: formData.severity === "major" || formData.severity === "serious" ? "high" : "medium",
+        formType: "injury", // Add formType for follow-up notifications
       });
 
       await storage.createInjury({
@@ -541,6 +550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         caseType: "mental_health",
         status: "NEW",
         priority: formData.urgencyLevel === "immediate" || formData.urgencyLevel === "high" ? "high" : "medium",
+        formType: "mental_health", // Add formType for follow-up notifications
       });
 
       await storage.createFormSubmission({
@@ -609,7 +619,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'NEW',
         priority: 'medium',
         workerId: worker.id,
-        organizationId: null
+        organizationId: null,
+        formType: 'pre_employment', // Add formType for follow-up notifications
       });
       
       res.json({ 
