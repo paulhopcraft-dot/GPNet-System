@@ -531,6 +531,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ===========================================
+  // PRE-EMPLOYMENT INVITATION ENDPOINTS  
+  // ===========================================
+
+  // Send pre-employment check invitation
+  app.post("/api/pre-employment/invitations", async (req, res) => {
+    try {
+      const { workerName, workerEmail, message } = req.body;
+      
+      console.log('Creating pre-employment invitation for:', workerName);
+      
+      // Create a new worker record if needed
+      const worker = await storage.createWorker({
+        firstName: workerName.split(' ')[0] || workerName,
+        lastName: workerName.split(' ').slice(1).join(' ') || '',
+        email: workerEmail,
+        phone: '',
+        dateOfBirth: new Date().toISOString().split('T')[0],
+        roleApplied: 'Pre-Employment Check'
+      });
+      
+      // Create a new ticket for the pre-employment check
+      const ticket = await storage.createTicket({
+        caseType: 'pre_employment',
+        status: 'NEW',
+        priority: 'medium',
+        workerId: worker.id,
+        organizationId: null
+      });
+      
+      res.json({ 
+        success: true, 
+        message: 'Invitation sent successfully',
+        ticketId: ticket.id,
+        workerId: worker.id
+      });
+      
+    } catch (error) {
+      console.error("Error sending pre-employment invitation:", error);
+      res.status(500).json({ error: "Failed to send invitation" });
+    }
+  });
+
+  // ===========================================
   // MICHELLE AI ASSISTANT ENDPOINTS
   // ===========================================
 

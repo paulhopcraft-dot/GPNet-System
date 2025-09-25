@@ -86,13 +86,13 @@ export default function CaseCard({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-sm text-muted-foreground">#{ticketId}</span>
               <Badge 
-                className={caseTypeConfig[caseType].className}
+                className={caseTypeConfig[caseType]?.className || "bg-gray-50 text-gray-700 border-gray-200"}
                 data-testid={`badge-case-type-${caseType}`}
               >
-                {caseTypeConfig[caseType].label}
+                {caseTypeConfig[caseType]?.label || caseType || 'Unknown'}
               </Badge>
-              <Badge {...statusConfig[status]} data-testid={`badge-status-${status.toLowerCase()}`}>
-                {statusConfig[status].label}
+              <Badge {...(statusConfig[status] || {})} data-testid={`badge-status-${status.toLowerCase()}`}>
+                {statusConfig[status]?.label || status || 'Unknown'}
               </Badge>
               {priority && priority !== "medium" && (
                 <Badge 
@@ -110,10 +110,10 @@ export default function CaseCard({
           <div className="flex items-center gap-2">
             {ragScore && (
               <Badge 
-                className={ragConfig[ragScore].className}
+                className={ragConfig[ragScore]?.className || "bg-gray-50 text-gray-700 border-gray-200"}
                 data-testid={`badge-rag-${ragScore}`}
               >
-                {ragConfig[ragScore].label}
+                {ragConfig[ragScore]?.label || ragScore || 'Unknown'}
               </Badge>
             )}
             <Button 
