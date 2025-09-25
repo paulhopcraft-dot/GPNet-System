@@ -151,13 +151,7 @@ export default function Dashboard() {
   // Handle health check type selection
   const handleCheckTypeSelect = (checkType: string) => {
     setSelectedCheckType(checkType);
-    if (checkType === "pre_employment") {
-      setShowInvitationForm(true);
-    } else {
-      // For now, show pre-employment form for all types
-      // In future, could route to different forms based on type
-      setShowInvitationForm(true);
-    }
+    setShowInvitationForm(true);
   };
   
   // Advanced filter state

@@ -20,6 +20,16 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
+// JotForm links for each health check type
+const JOTFORM_LINKS = {
+  pre_employment: "https://form.jotform.com/250927279768475",
+  injury: "https://form.jotform.com/240273367274054", 
+  prevention: "https://form.jotform.com/240266476492059",
+  general_health_wellbeing: "https://form.jotform.com/240032989875064",
+  mental_health: "https://form.jotform.com/251677479546070",
+  exit: "https://form.jotform.com/240032827738053",
+} as const;
+
 const invitationSchema = z.object({
   workerName: z.string().min(2, "Worker name must be at least 2 characters"),
   workerEmail: z.string().email("Please enter a valid email address"),
@@ -47,7 +57,13 @@ export default function PreEmploymentInvitationForm({
       description: "Send a secure pre-employment health check invitation to a worker",
       template: `Dear [Worker Name],
 
-Please find attached a pre-employment check from GPNet, who are looking after our pre-employment checks.
+Please complete your pre-employment health check by clicking the link below:
+
+${JOTFORM_LINKS.pre_employment}
+
+This health assessment is being conducted by GPNet as part of our pre-employment checks.
+
+If you have any questions, please don't hesitate to contact us.
 
 Regards,
 [Manager Name]`
@@ -57,7 +73,13 @@ Regards,
       description: "Send an invitation for workplace injury assessment and management",
       template: `Dear [Worker Name],
 
-Please find attached a workplace injury assessment from GPNet to help with your injury management and recovery.
+Please complete your workplace injury assessment by clicking the link below:
+
+${JOTFORM_LINKS.injury}
+
+This assessment will help us provide appropriate support for your injury management and recovery.
+
+If you have any questions, please don't hesitate to contact us.
 
 Regards,
 [Manager Name]`
@@ -67,7 +89,13 @@ Regards,
       description: "Send an invitation for preventive health screening and risk assessment",
       template: `Dear [Worker Name],
 
-Please find attached a preventive health screening from GPNet to assess and manage potential health risks.
+Please complete your preventive health screening by clicking the link below:
+
+${JOTFORM_LINKS.prevention}
+
+This assessment will help us identify and manage potential health risks proactively.
+
+If you have any questions, please don't hesitate to contact us.
 
 Regards,
 [Manager Name]`
@@ -77,7 +105,13 @@ Regards,
       description: "Send an invitation for comprehensive health and wellness evaluation",
       template: `Dear [Worker Name],
 
-Please find attached a comprehensive health and wellness evaluation from GPNet.
+Please complete your health and wellness evaluation by clicking the link below:
+
+${JOTFORM_LINKS.general_health_wellbeing}
+
+This comprehensive assessment will help us understand your overall health and wellbeing.
+
+If you have any questions, please don't hesitate to contact us.
 
 Regards,
 [Manager Name]`
@@ -87,7 +121,13 @@ Regards,
       description: "Send an invitation for mental health assessment and support",
       template: `Dear [Worker Name],
 
-Please find attached a mental health assessment from GPNet to provide appropriate support and resources.
+Please complete your mental health assessment by clicking the link below:
+
+${JOTFORM_LINKS.mental_health}
+
+This confidential assessment will help us provide appropriate mental health support and resources.
+
+If you have any questions, please don't hesitate to contact us.
 
 Regards,
 [Manager Name]`
@@ -97,7 +137,13 @@ Regards,
       description: "Send an invitation for exit medical examination",
       template: `Dear [Worker Name],
 
-Please find attached an exit medical examination from GPNet as part of your departure process.
+Please complete your exit medical examination by clicking the link below:
+
+${JOTFORM_LINKS.exit}
+
+This examination is part of your departure process to ensure proper documentation.
+
+If you have any questions, please don't hesitate to contact us.
 
 Regards,
 [Manager Name]`
@@ -240,6 +286,28 @@ Regards,
                   </div>
                   
                   <div className="pl-6 space-y-4">
+                    {/* JotForm Link Section */}
+                    <div className="p-4 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
+                      <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Direct Form Link</h4>
+                      <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
+                        Workers will complete the health check using this JotForm:
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <code className="flex-1 p-2 bg-white dark:bg-gray-800 border rounded text-xs font-mono break-all">
+                          {JOTFORM_LINKS[checkType as keyof typeof JOTFORM_LINKS] || JOTFORM_LINKS.pre_employment}
+                        </code>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => window.open(JOTFORM_LINKS[checkType as keyof typeof JOTFORM_LINKS] || JOTFORM_LINKS.pre_employment, '_blank')}
+                          data-testid="button-open-form"
+                        >
+                          Open Form
+                        </Button>
+                      </div>
+                    </div>
+
                     {!isPreview ? (
                       <FormField
                         control={form.control}
