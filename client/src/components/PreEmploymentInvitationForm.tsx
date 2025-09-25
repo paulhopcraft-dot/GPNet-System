@@ -201,9 +201,40 @@ Regards,
     .replace(/\[Worker Name\]/g, form.watch('workerName') || '[Worker Name]')
     .replace(/\[Manager Name\]/g, 'Manager Name'); // Server will fill actual manager name
 
+  // Handle escape key
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      console.log('Modal: Escape key pressed, closing modal');
+      onClose();
+    }
+  };
+
+  // Handle backdrop click
+  const handleBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      console.log('Modal: Backdrop clicked, closing modal');
+      onClose();
+    }
+  };
+
+  // Handle close button click
+  const handleCloseClick = () => {
+    console.log('Modal: Close button clicked, closing modal');
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-background max-w-2xl w-full mx-4 rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={handleBackdropClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={-1}
+      data-testid="modal-backdrop"
+    >
+      <div 
+        className="bg-background max-w-2xl w-full mx-4 rounded-lg shadow-lg max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)}>
             <Card className="border-0 shadow-none">
@@ -222,7 +253,7 @@ Regards,
                     type="button" 
                     variant="ghost" 
                     size="icon" 
-                    onClick={onClose}
+                    onClick={handleCloseClick}
                     data-testid="button-close-invitation"
                   >
                     <X className="h-4 w-4" />
