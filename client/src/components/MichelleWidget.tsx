@@ -154,13 +154,17 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
     const newX = e.clientX - dragOffset.x;
     const newY = e.clientY - dragOffset.y;
     
-    // Keep widget on screen
-    const maxX = window.innerWidth - 320; // widget width
-    const maxY = window.innerHeight - 384; // widget height
+    // Keep widget on screen with proper margins
+    const widgetWidth = 320; // w-80 = 20rem = 320px
+    const widgetHeight = 384; // h-96 = 24rem = 384px
+    const margin = 20; // Keep some margin from screen edges
+    
+    const maxX = Math.max(margin, window.innerWidth - widgetWidth - margin);
+    const maxY = Math.max(margin, window.innerHeight - widgetHeight - margin);
     
     setPosition({
-      x: Math.max(0, Math.min(newX, maxX)),
-      y: Math.max(0, Math.min(newY, maxY))
+      x: Math.max(margin, Math.min(newX, maxX)),
+      y: Math.max(margin, Math.min(newY, maxY))
     });
   };
 
@@ -206,9 +210,9 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
         right: 'auto'
       }}
     >
-      <Card className="w-80 h-96 flex flex-col">
+      <Card className="w-80 h-96 flex flex-col shadow-lg">
         <CardHeader 
-          className="flex flex-row items-center justify-between py-3 cursor-move"
+          className="flex flex-row items-center justify-between py-3 cursor-move flex-shrink-0"
           onMouseDown={handleMouseDown}
         >
           <CardTitle className="text-lg flex items-center gap-2">
@@ -226,8 +230,8 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
           </Button>
         </CardHeader>
         
-        <CardContent className="flex-1 flex flex-col gap-2 p-4">
-          <ScrollArea className="flex-1 pr-4">
+        <CardContent className="flex-1 flex flex-col gap-2 p-4 min-h-0">
+          <ScrollArea className="flex-1 pr-2">
             <div className="space-y-3">
               {messages.map((message, index) => (
                 <div
@@ -236,13 +240,13 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
                   data-testid={`message-${message.role}-${index}`}
                 >
                   <div
-                    className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                    className={`max-w-[85%] rounded-lg px-3 py-2 text-sm break-words ${
                       message.role === 'user'
                         ? 'bg-blue-600 text-white'
                         : 'bg-muted text-muted-foreground'
                     }`}
                   >
-                    {message.content}
+                    <div className="whitespace-pre-wrap">{message.content}</div>
                   </div>
                 </div>
               ))}
@@ -264,7 +268,7 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
                       <Badge
                         key={index}
                         variant="outline"
-                        className="cursor-pointer text-xs hover-elevate"
+                        className="cursor-pointer text-xs hover-elevate break-words"
                         onClick={() => handleQuestionClick(question)}
                         data-testid={`suggestion-${index}`}
                       >
@@ -278,14 +282,14 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
             <div ref={messagesEndRef} />
           </ScrollArea>
           
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-shrink-0">
             <Input
               placeholder="Ask Michelle about health matters..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               disabled={chatMutation.isPending}
-              className="flex-1"
+              className="flex-1 text-sm"
               data-testid="input-michelle-message"
             />
             <Button
