@@ -13,7 +13,13 @@ import { useUser } from "@/components/UserContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Download, Loader2, BarChart3, Grid3X3, Settings, Briefcase } from "lucide-react";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
+import { Plus, Download, Loader2, BarChart3, Grid3X3, Settings, Briefcase, ChevronDown, UserCheck, Heart, Stethoscope, ClipboardList, FileText } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -100,6 +106,53 @@ export default function Dashboard() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewTicketId, setReviewTicketId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
+  const [selectedCheckType, setSelectedCheckType] = useState<string>("pre_employment");
+
+  // Health check types configuration
+  const healthCheckTypes = [
+    {
+      id: "pre_employment",
+      label: "Pre-Employment Check", 
+      icon: UserCheck,
+      description: "Medical assessment for job candidates"
+    },
+    {
+      id: "return_to_work",
+      label: "Return to Work Assessment",
+      icon: Heart,
+      description: "Clearance after injury or illness"
+    },
+    {
+      id: "annual_health",
+      label: "Annual Health Review",
+      icon: Stethoscope,
+      description: "Yearly health screening"
+    },
+    {
+      id: "fitness_for_duty",
+      label: "Fitness for Duty",
+      icon: ClipboardList,
+      description: "Ongoing fitness assessment"
+    },
+    {
+      id: "medical_surveillance",
+      label: "Medical Surveillance",
+      icon: FileText,
+      description: "Occupational health monitoring"
+    }
+  ];
+
+  // Handle health check type selection
+  const handleCheckTypeSelect = (checkType: string) => {
+    setSelectedCheckType(checkType);
+    if (checkType === "pre_employment") {
+      setShowInvitationForm(true);
+    } else {
+      // For now, show pre-employment form for all types
+      // In future, could route to different forms based on type
+      setShowInvitationForm(true);
+    }
+  };
   
   // Advanced filter state
   const [filters, setFilters] = useState<FilterState>({
@@ -354,13 +407,36 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <Button 
-              onClick={() => setShowInvitationForm(true)}
-              data-testid="button-new-case"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Pre-Employment Check
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button data-testid="button-new-case">
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Health Check
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-80" align="end">
+                {healthCheckTypes.map((checkType) => {
+                  const IconComponent = checkType.icon;
+                  return (
+                    <DropdownMenuItem
+                      key={checkType.id}
+                      onClick={() => handleCheckTypeSelect(checkType.id)}
+                      className="flex items-start gap-3 p-3 cursor-pointer"
+                      data-testid={`menu-item-${checkType.id}`}
+                    >
+                      <IconComponent className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                      <div className="flex flex-col gap-1">
+                        <span className="font-medium">{checkType.label}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {checkType.description}
+                        </span>
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
