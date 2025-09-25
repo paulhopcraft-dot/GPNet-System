@@ -52,6 +52,7 @@ import { createMedicalCertificateScheduler } from "./medicalCertificateScheduler
 import { createConsultantAppointmentService } from "./consultantAppointmentService";
 import { createFollowUpScheduler } from "./followUpScheduler";
 import { emailService } from "./emailService";
+import { WorkflowSimulator } from "./workflowSimulator";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -641,6 +642,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===========================================
 
   // Michelle chat endpoint removed - handled by michelleRoutes
+
+  // ===========================================
+  // WORKFLOW SIMULATION ENDPOINTS
+  // ===========================================
+
+  // Initialize workflow simulator
+  const workflowSimulator = new WorkflowSimulator(storage, emailService);
+
+  // Simulate complete pre-employment workflow
+  app.post('/api/simulate/pre-employment', async (req, res) => {
+    try {
+      const { workerCount = 1 } = req.body;
+      console.log(`🧪 Starting pre-employment workflow simulation for ${workerCount} workers...`);
+      
+      const result = await workflowSimulator.simulatePreEmploymentWorkflow(workerCount);
+      
+      res.json({
+        success: true,
+        message: 'Pre-employment workflow simulation completed',
+        result
+      });
+    } catch (error) {
+      console.error('Error in pre-employment simulation:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Simulation failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Simulate injury workflow
+  app.post('/api/simulate/injury', async (req, res) => {
+    try {
+      const { workerCount = 1 } = req.body;
+      console.log(`🧪 Starting injury workflow simulation for ${workerCount} workers...`);
+      
+      const result = await workflowSimulator.simulateInjuryWorkflow(workerCount);
+      
+      res.json({
+        success: true,
+        message: 'Injury workflow simulation completed',
+        result
+      });
+    } catch (error) {
+      console.error('Error in injury simulation:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Simulation failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Simulate mixed workflows (all health check types)
+  app.post('/api/simulate/mixed', async (req, res) => {
+    try {
+      const { workerCount = 5 } = req.body;
+      console.log(`🧪 Starting mixed workflow simulation for ${workerCount} workers...`);
+      
+      const result = await workflowSimulator.simulateMixedWorkflows(workerCount);
+      
+      res.json({
+        success: true,
+        message: 'Mixed workflow simulation completed',
+        result
+      });
+    } catch (error) {
+      console.error('Error in mixed simulation:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Simulation failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Custom simulation with full configuration
+  app.post('/api/simulate/custom', async (req, res) => {
+    try {
+      const config = {
+        workerCount: req.body.workerCount || 3,
+        healthCheckTypes: req.body.healthCheckTypes || ['pre_employment', 'injury', 'mental_health'],
+        includeManagerEmails: req.body.includeManagerEmails !== false,
+        includeFreshdeskTickets: req.body.includeFreshdeskTickets !== false,
+        simulateDelays: req.body.simulateDelays !== false
+      };
+      
+      console.log(`🧪 Starting custom workflow simulation:`, config);
+      
+      const result = await workflowSimulator.runCompleteWorkflowSimulation(config);
+      
+      res.json({
+        success: true,
+        message: 'Custom workflow simulation completed',
+        config,
+        result
+      });
+    } catch (error) {
+      console.error('Error in custom simulation:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Simulation failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
 
   // ===========================================
   // MOUNT ADDITIONAL ROUTE MODULES
