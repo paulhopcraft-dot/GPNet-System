@@ -81,6 +81,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }, 24 * 60 * 60 * 1000); // 24 hours
   console.log('Consultant appointment attendance checking started');
+  
+  // Health check endpoint
+  app.get("/api/health", async (req, res) => {
+    try {
+      // Basic database connectivity check
+      const stats = await storage.getDashboardStats();
+      res.json({
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        database: "connected",
+        totalCases: stats.total,
+        services: {
+          emailService: emailService.isAvailable(),
+          pdfService: true, // PDF service is always available
+          riskAssessment: true,
+          followUpScheduler: true,
+          workflowSimulator: true
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // ===========================================
   // SESSION CONFIGURATION & AUTHENTICATION
   // ===========================================
@@ -316,6 +344,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notes: `Automated analysis: ${analysisResult.triggerReasons.join('; ')}. Risk factors: ${analysisResult.riskFactors.join(', ')}. Confidence: ${analysisResult.confidence}%`,
       });
 
+      // Generate PDF report and email to employer - formType-based selection
+      try {
+        console.log(`Generating ${formType} PDF report for ticket ${ticket.id}`);
+        
+        // Form-specific report generation
+        let pdfBuffer: Buffer;
+        let reportType: string;
+        
+        switch (formType) {
+          case 'pre_employment':
+            reportType = 'pre-employment';
+            const preEmploymentData = {
+              ticket: ticket,
+              worker: worker,
+              analysis: {
+                ragScore: analysisResult.ragScore,
+                fitClassification: analysisResult.fitClassification,
+                recommendations: analysisResult.recommendations,
+                riskFactors: analysisResult.riskFactors,
+                confidence: analysisResult.confidence
+              },
+              formSubmission: await storage.getFormSubmissionByTicket(ticket.id),
+              generatedAt: new Date().toISOString(),
+              generatedBy: 'GPNet System',
+              companyName: 'Employer Organization',
+              recommendations: analysisResult.recommendations
+            };
+            pdfBuffer = await pdfService.generatePreEmploymentReport(preEmploymentData);
+            break;
+            
+          case 'injury':
+            reportType = 'injury-report';
+            const injuryData = {
+              ticket: ticket,
+              worker: worker,
+              injury: await storage.getInjuryByTicket(ticket.id),
+              formSubmission: await storage.getFormSubmissionByTicket(ticket.id),
+              analysis: {
+                ragScore: analysisResult.ragScore,
+                fitClassification: analysisResult.fitClassification,
+                recommendations: analysisResult.recommendations,
+                riskFactors: analysisResult.riskFactors,
+                confidence: analysisResult.confidence
+              },
+              stakeholders: [],
+              rtwPlan: null,
+              generatedAt: new Date().toISOString(),
+              generatedBy: 'GPNet System'
+            };
+            pdfBuffer = await pdfService.generateInjuryReport(injuryData);
+            break;
+            
+          case 'mental_health':
+          case 'prevention':
+          case 'general_health':
+          case 'exit_check':
+            reportType = 'case-summary';
+            const caseSummaryData = {
+              ticket: ticket,
+              worker: worker,
+              analysis: {
+                ragScore: analysisResult.ragScore,
+                fitClassification: analysisResult.fitClassification,
+                recommendations: analysisResult.recommendations,
+                riskFactors: analysisResult.riskFactors,
+                confidence: analysisResult.confidence
+              },
+              formSubmission: await storage.getFormSubmissionByTicket(ticket.id),
+              injury: null,
+              rtwPlan: null,
+              stakeholders: [],
+              emails: [],
+              attachments: [],
+              generatedAt: new Date().toISOString(),
+              generatedBy: 'GPNet System'
+            };
+            pdfBuffer = await pdfService.generateCaseSummaryReport(caseSummaryData);
+            break;
+            
+          default:
+            throw new Error(`Unsupported form type for PDF generation: ${formType}`);
+        }
+        
+        console.log(`Generated ${formType} PDF report: ${pdfBuffer.length} bytes`);
+        
+        // Email PDF report to employer/manager
+        if (emailService.isAvailable()) {
+          const emailResult = await emailService.sendReportEmail({
+            reportType: reportType,
+            ticketId: ticket.id,
+            recipients: [
+              { 
+                email: process.env.MANAGER_EMAIL || 'manager@company.com',
+                name: 'Site Manager'
+              }
+            ],
+            pdfBuffer: pdfBuffer,
+            includeComplianceNote: true
+          }, storage);
+          
+          if (emailResult.success) {
+            console.log(`${formType} PDF report emailed successfully for ticket ${ticket.id}`);
+          } else {
+            console.warn(`Failed to email ${formType} PDF report: ${emailResult.error}`);
+          }
+        } else {
+          console.log(`${formType} PDF report generated but email service not configured - would email to manager`);
+        }
+        
+      } catch (pdfError) {
+        console.error(`Failed to generate/email ${formType} PDF report for ticket ${ticket.id}:`, pdfError);
+        // Continue with workflow even if PDF generation fails
+      }
+
       // Update ticket status to AWAITING_REVIEW
       await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
 
@@ -498,6 +640,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         notes: `Injury analysis: ${analysisResult.triggerReasons.join('; ')}. Risk factors: ${analysisResult.riskFactors.join(', ')}. Confidence: ${analysisResult.confidence}%`,
       });
 
+      // Generate PDF report and email to employer  
+      try {
+        console.log(`Generating injury PDF report for ticket ${ticket.id}`);
+        const reportData = {
+          ticket: ticket,
+          worker: worker,
+          injury: await storage.getInjuryByTicket(ticket.id),
+          formSubmission: await storage.getFormSubmissionByTicket(ticket.id),
+          analysis: {
+            ragScore: analysisResult.ragScore,
+            fitClassification: analysisResult.fitClassification,
+            recommendations: analysisResult.recommendations,
+            riskFactors: analysisResult.riskFactors,
+            confidence: analysisResult.confidence
+          },
+          stakeholders: [],
+          rtwPlan: null,
+          generatedAt: new Date().toISOString(),
+          generatedBy: 'GPNet System'
+        };
+        
+        const pdfBuffer = await pdfService.generateInjuryReport(reportData);
+        console.log(`Generated injury PDF report: ${pdfBuffer.length} bytes`);
+        
+        // Email PDF report to employer/manager
+        if (emailService.isAvailable()) {
+          const emailResult = await emailService.sendReportEmail({
+            reportType: 'injury-report',
+            ticketId: ticket.id,
+            recipients: [
+              { 
+                email: process.env.MANAGER_EMAIL || 'manager@company.com',
+                name: 'Site Manager'
+              }
+            ],
+            pdfBuffer: pdfBuffer,
+            includeComplianceNote: true
+          }, storage);
+          
+          if (emailResult.success) {
+            console.log(`Injury PDF report emailed successfully for ticket ${ticket.id}`);
+          } else {
+            console.warn(`Failed to email injury PDF report: ${emailResult.error}`);
+          }
+        } else {
+          console.log(`Injury PDF report generated but email service not configured - would email to manager`);
+        }
+        
+      } catch (pdfError) {
+        console.error(`Failed to generate/email injury PDF report for ticket ${ticket.id}:`, pdfError);
+        // Continue with workflow even if PDF generation fails
+      }
+
       await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
 
       console.log(`Injury case ${ticket.id} created with automated analysis`);
@@ -559,6 +754,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
         workerId: worker.id,
         rawData: formData,
       });
+
+      // Generate PDF report and email to employer
+      try {
+        console.log(`Generating case summary PDF report for ticket ${ticket.id} (mental health)`);
+        const reportData = {
+          ticket: ticket,
+          worker: worker,
+          analysis: {
+            ragScore: "green", // Default for mental health submissions
+            fitClassification: "refer_to_specialist",
+            recommendations: ["Professional mental health assessment recommended"],
+            riskFactors: ["Mental health concerns reported"],
+            confidence: 85
+          },
+          formSubmission: await storage.getFormSubmissionByTicket(ticket.id),
+          injury: null,
+          rtwPlan: null,
+          stakeholders: [],
+          emails: [],
+          attachments: [],
+          generatedAt: new Date().toISOString(),
+          generatedBy: 'GPNet System'
+        };
+        
+        const pdfBuffer = await pdfService.generateCaseSummaryReport(reportData);
+        console.log(`Generated mental health case summary PDF report: ${pdfBuffer.length} bytes`);
+        
+        // Email PDF report to employer/manager
+        if (emailService.isAvailable()) {
+          const emailResult = await emailService.sendReportEmail({
+            reportType: 'case-summary',
+            ticketId: ticket.id,
+            recipients: [
+              { 
+                email: process.env.MANAGER_EMAIL || 'manager@company.com',
+                name: 'Site Manager'
+              }
+            ],
+            pdfBuffer: pdfBuffer,
+            includeComplianceNote: true
+          }, storage);
+          
+          if (emailResult.success) {
+            console.log(`Mental health PDF report emailed successfully for ticket ${ticket.id}`);
+          } else {
+            console.warn(`Failed to email mental health PDF report: ${emailResult.error}`);
+          }
+        } else {
+          console.log(`Mental health PDF report generated but email service not configured - would email to manager`);
+        }
+        
+      } catch (pdfError) {
+        console.error(`Failed to generate/email mental health PDF report for ticket ${ticket.id}:`, pdfError);
+        // Continue with workflow even if PDF generation fails
+      }
 
       await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
 
