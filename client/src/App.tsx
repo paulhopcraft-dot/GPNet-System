@@ -22,6 +22,8 @@ import NatalieDashboard from "@/pages/natalie-dashboard";
 import ManagerDashboard from "@/pages/ManagerDashboard";
 import CheckManagement from "@/pages/CheckManagement";
 import MichelleDialogue from "@/pages/MichelleDialogue";
+import Workers from "@/pages/Workers";
+import Tickets from "@/pages/Tickets";
 import NotFound from "@/pages/not-found";
 import { MichelleWidget } from "@/components/MichelleWidget";
 
@@ -71,6 +73,18 @@ function Router() {
       <Route path="/michelle">
         <ProtectedRoute>
           <MichelleDialogue />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/workers">
+        <ProtectedRoute>
+          <Workers />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/tickets">
+        <ProtectedRoute>
+          <Tickets />
         </ProtectedRoute>
       </Route>
       
