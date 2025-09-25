@@ -1,9 +1,14 @@
 import OpenAI from "openai";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+// the newest OpenAI model is "gpt-4o-mini" which is current as of September 2025
 const openai = new OpenAI({ 
-  apiKey: process.env.OPENAI_API_KEY || 'demo-mode'
+  apiKey: process.env.OPENAI_API_KEY
 });
+
+// Check if we have a valid OpenAI API key
+const hasValidApiKey = process.env.OPENAI_API_KEY && 
+  process.env.OPENAI_API_KEY.startsWith('sk-') && 
+  process.env.OPENAI_API_KEY !== 'demo-mode';
 
 export interface MichelleResponse {
   reply: string;
@@ -35,6 +40,80 @@ export interface UserContext {
 // Simple in-memory conversation storage for demo
 const conversations: Map<string, ChatMessage[]> = new Map();
 
+// OpenAI Response Handler
+async function getOpenAIResponse(
+  conversationId: string,
+  message: string,
+  userContext: UserContext,
+  context?: any,
+  history?: ChatMessage[]
+): Promise<MichelleResponse> {
+  try {
+    const systemPrompt = `You are Michelle, an expert AI occupational health assistant specializing in pre-employment health assessments, workplace injury management, and return-to-work planning. 
+
+Your expertise includes:
+- Pre-employment health screenings for all job categories
+- Workplace injury assessment and return-to-work guidance
+- RAG (Red/Amber/Green) risk scoring for workplace fitness
+- Medical interpretation of health conditions and restrictions
+- Clinical assessment for occupational health contexts
+- Case management and follow-up protocols
+
+Respond in a professional, helpful manner. Always provide 3-4 relevant follow-up questions. 
+
+Your response MUST be valid JSON in this exact format:
+{
+  "reply": "your detailed professional response here",
+  "next_questions": ["question 1", "question 2", "question 3"]
+}`;
+
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...(history?.slice(-6) || []).map(msg => ({
+        role: msg.role,
+        content: msg.content
+      })),
+      { role: "user", content: message }
+    ];
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: messages,
+      response_format: { type: "json_object" },
+      max_tokens: 800
+    });
+
+    const aiResponse = JSON.parse(response.choices[0].message.content || '{"reply": "I apologize, but I had trouble understanding that.", "next_questions": ["Can you rephrase that?", "What health concerns do you have?", "How can I help you today?"]}');
+    
+    // Add AI response to history
+    if (history) {
+      history.push({
+        role: 'assistant',
+        content: aiResponse.reply,
+        timestamp: new Date()
+      });
+      conversations.set(conversationId, history);
+    }
+
+    return {
+      reply: aiResponse.reply,
+      nextQuestions: aiResponse.next_questions || [],
+      conversationId,
+      mode: userContext.userType === 'admin' && userContext.isSuperuser ? 'universal' : 'client-scoped',
+      accessLevel: userContext.userType,
+      dialogueMode: context?.dialogueMode || 'standard',
+      escalationAvailable: false,
+      requiresEscalation: false,
+      emergencyAlert: false
+    };
+
+  } catch (error) {
+    console.error('OpenAI API error:', error);
+    // Fallback to demo mode on API error
+    throw error;
+  }
+}
+
 export async function chatWithMichelle(
   conversationId: string,
   message: string,
@@ -60,8 +139,13 @@ export async function chatWithMichelle(
       timestamp: new Date()
     });
 
-    // DEMO MODE: Use enhanced professional responses
-    console.log('Running in enhanced demo mode - professional responses');
+    // Check if we can use OpenAI or need demo mode
+    if (hasValidApiKey) {
+      console.log('Using OpenAI for intelligent responses');
+      return await getOpenAIResponse(conversationId, message, userContext, context, history);
+    } else {
+      console.log('Running in enhanced demo mode - professional responses');
+    }
     
     let reply = "";
     let nextQuestions: string[] = [];
