@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { fromZodError } from 'zod-validation-error';
 import { storage } from './storage.js';
 import michelleDialogueService, { DialogueContext, DialogueResponse } from './michelleDialogueService.js';
+import { chatWithMichelle } from './michelleService.js';
 
 const router = express.Router();
 
@@ -133,6 +134,60 @@ router.post('/message', requireAuth, async (req, res) => {
     console.error('Failed to process Michelle message:', error);
     res.status(500).json({
       error: 'Failed to process message',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * POST /api/michelle/chat - Direct chat endpoint for Michelle widget
+ * This endpoint handles direct chat without requiring a pre-started session
+ */
+router.post('/chat', requireAuth, async (req, res) => {
+  try {
+    const chatSchema = z.object({
+      conversationId: z.string().optional(),
+      message: z.string().min(1).max(1000),
+      context: z.object({
+        role: z.string().optional(),
+        currentPage: z.string().optional(),
+        caseId: z.string().optional(),
+        workerName: z.string().optional(),
+        checkType: z.string().optional()
+      }).optional()
+    });
+
+    const validationResult = chatSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errorMessage = fromZodError(validationResult.error).toString();
+      return res.status(400).json({
+        error: 'Invalid request data',
+        details: errorMessage
+      });
+    }
+
+    const { conversationId = `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, message, context } = validationResult.data;
+    
+    // Create user context from session
+    const userContext = {
+      userType: 'client' as const,
+      isSuperuser: false,
+      userId: req.session.user?.id || 'dev-user',
+      email: req.session.user?.email || 'dev@example.com'
+    };
+
+    // Call Michelle chat service
+    const response = await chatWithMichelle(conversationId, message, userContext, context);
+
+    res.json({
+      success: true,
+      ...response
+    });
+
+  } catch (error) {
+    console.error('Failed to process Michelle chat:', error);
+    res.status(500).json({
+      error: 'Failed to process chat message',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
