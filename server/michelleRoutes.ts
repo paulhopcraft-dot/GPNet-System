@@ -143,7 +143,7 @@ router.post('/message', requireAuth, async (req, res) => {
  * POST /api/michelle/chat - Direct chat endpoint for Michelle widget
  * This endpoint handles direct chat without requiring a pre-started session
  */
-router.post('/chat', requireAuth, async (req, res) => {
+router.post('/chat', async (req, res) => {
   try {
     const chatSchema = z.object({
       conversationId: z.string().optional(),
@@ -168,12 +168,12 @@ router.post('/chat', requireAuth, async (req, res) => {
 
     const { conversationId = `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, message, context } = validationResult.data;
     
-    // Create user context from session
+    // Create user context (session-optional for mobile compatibility)
     const userContext = {
       userType: 'client' as const,
       isSuperuser: false,
-      userId: req.session.user?.id || 'dev-user',
-      email: req.session.user?.email || 'dev@example.com'
+      userId: req.session?.user?.id || 'mobile-user',
+      email: req.session?.user?.email || 'mobile@example.com'
     };
 
     // Call Michelle chat service

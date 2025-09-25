@@ -1,9 +1,22 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cors from "cors";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecurity";
 
 const app = express();
+
+// Trust proxy for proper headers (needed for mobile Safari)
+app.set('trust proxy', 1);
+
+// Configure CORS for mobile Safari compatibility
+app.use(cors({
+  origin: true, // Allow all origins in development
+  credentials: true, // Allow credentials (cookies, sessions)
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['set-cookie']
+}));
 
 // Handle webhook raw body BEFORE global JSON parser
 app.use('/api/medical-documents/freshdesk-webhook', express.raw({
