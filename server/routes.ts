@@ -123,7 +123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Process the email using the email processing service
-      const emailData: RawEmailData = {
+      const emailData = {
         from: email.from,
         to: email.to || forwardedBy,
         subject: email.subject || 'External Email',
