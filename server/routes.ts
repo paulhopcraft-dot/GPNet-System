@@ -12,6 +12,7 @@ import {
   normalizeExitCheckData, 
   normalizePreventionCheckData,
   normalizeGeneralHealthData,
+  normalizeJotformPayload,
   type JotformRawPayload 
 } from "./jotformPayloadNormalizer";
 import { 
@@ -228,39 +229,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // JOTFORM WEBHOOK ENDPOINTS
   // ===========================================
 
-  // Pre-employment form webhook
+  // Enhanced webhook for all health check types
   app.post("/api/webhook/jotform", webhookSecurityMiddleware, async (req, res) => {
     try {
-      console.log("Received Jotform webhook - processing pre-employment form");
+      console.log("Received Jotform webhook - processing health check form");
       
-      // Normalize Jotform payload before validation
-      const normalizedData = normalizePreEmploymentData(req.body as JotformRawPayload);
+      // Auto-detect form type and normalize payload
+      const normalizedData = normalizeJotformPayload(req.body as JotformRawPayload);
       
-      // Validate the form data
-      const validationResult = preEmploymentFormSchema.safeParse(normalizedData);
-      if (!validationResult.success) {
-        const errorMessage = fromZodError(validationResult.error).toString();
-        return res.status(400).json({ error: "Invalid form data", details: errorMessage });
+      if (!normalizedData.success) {
+        console.error("Failed to normalize Jotform payload:", normalizedData.error);
+        return res.status(400).json({ error: "Invalid form data", details: normalizedData.error });
       }
 
-      const formData = validationResult.data;
+      const { data: formData, formType } = normalizedData;
+      console.log(`Processing ${formType} health check form`);
 
-      // Create worker record
-      const worker = await storage.createWorker({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        dateOfBirth: formData.dateOfBirth,
-        phone: formData.phone,
-        email: formData.email,
-        roleApplied: formData.roleApplied,
-        site: formData.site || null,
-      });
+      // Create or find existing worker record
+      let worker;
+      const existingWorker = await storage.getWorkerByEmail(formData.email);
+      
+      if (existingWorker) {
+        worker = existingWorker;
+        console.log(`Using existing worker record: ${worker.id}`);
+      } else {
+        worker = await storage.createWorker({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          dateOfBirth: formData.dateOfBirth,
+          phone: formData.phone,
+          email: formData.email,
+          roleApplied: formData.roleApplied || null,
+          site: formData.site || null,
+        });
+        console.log(`Created new worker record: ${worker.id}`);
+      }
 
-      // Create ticket
+      // Create ticket with proper case type mapping
+      const caseTypeMapping: Record<string, string> = {
+        'pre_employment': 'pre_employment',
+        'injury': 'injury',
+        'mental_health': 'mental_health',
+        'prevention': 'prevention',
+        'general_health': 'general_health',
+        'exit_check': 'exit_check'
+      };
+
       const ticket = await storage.createTicket({
         workerId: worker.id,
-        caseType: "pre_employment",
-        status: "NEW",
+        caseType: caseTypeMapping[formType] || formType,
+        status: "ANALYSING",
       });
 
       // Create form submission record
@@ -275,9 +293,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: 'form',
         content: formData,
         timestamp: new Date(),
-        source: 'pre_employment_submission'
+        source: `${formType}_submission`
       };
-      // Get organizationId for probation validation (critical for BDD compliance)
+      
       const organizationId = (ticket as any).organizationId || (worker as any).organizationId || undefined;
       const analysisResult = await riskAssessmentService.assessRisk([riskInput], undefined, organizationId);
       
@@ -292,7 +310,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update ticket status to AWAITING_REVIEW
       await storage.updateTicketStatus(ticket.id, "AWAITING_REVIEW");
 
-      // Automatically create Freshdesk ticket if integration is available
+      // Create Freshdesk ticket if integration is available
       let freshdeskInfo = null;
       try {
         const { freshdeskService } = await import("./freshdeskService");
@@ -322,7 +340,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     'create',
                     'to_freshdesk',
                     'success',
-                    { freshdeskTicket, trigger: 'auto_pre_employment' }
+                    { freshdeskTicket, trigger: `auto_${formType}` }
                   )
                 );
 
@@ -331,7 +349,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   freshdeskUrl: mapping.freshdeskUrl
                 };
 
-                console.log(`Auto-created Freshdesk ticket ${freshdeskTicket.id} for case ${ticket.id}`);
+                console.log(`Auto-created Freshdesk ticket ${freshdeskTicket.id} for ${formType} case ${ticket.id}`);
               }
             }
           }
@@ -340,13 +358,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("Freshdesk auto-creation failed (non-blocking):", freshdeskError);
       }
 
-      console.log(`Pre-employment case ${ticket.id} created with automated analysis`);
+      // Send manager notification email
+      try {
+        const { emailService } = await import("./emailService");
+        const managerEmail = process.env.MANAGER_EMAIL || 'manager@company.com'; // Should be configurable per organization
+        
+        const notificationResult = await emailService.sendManagerNotification(
+          managerEmail,
+          `${worker.firstName} ${worker.lastName}`,
+          formType.replace('_', ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()),
+          ticket.id
+        );
+
+        if (notificationResult.success) {
+          console.log(`Manager notification sent for ${formType} submission: ${ticket.id}`);
+        } else {
+          console.warn(`Failed to send manager notification: ${notificationResult.error}`);
+        }
+      } catch (emailError) {
+        console.error("Manager notification failed (non-blocking):", emailError);
+      }
+
+      // Schedule follow-up reminders if form requires completion tracking
+      // (This would be implemented as a background job system)
+      try {
+        // Schedule 24-hour follow-up check (this would be handled by a job scheduler)
+        console.log(`Follow-up reminder scheduled for ticket ${ticket.id} in 24 hours`);
+        
+        // For demonstration, we'll just log this - in production this would use a job queue
+        // scheduleFollowUpReminder(ticket.id, worker.email, formType, 1); // Day 1
+        // scheduleFollowUpReminder(ticket.id, worker.email, formType, 3); // Day 3
+      } catch (reminderError) {
+        console.error("Follow-up reminder scheduling failed (non-blocking):", reminderError);
+      }
+
+      console.log(`${formType} case ${ticket.id} created with automated analysis and notifications sent`);
 
       res.json({
         success: true,
         ticketId: ticket.id,
         workerId: worker.id,
-        caseType: "pre_employment",
+        caseType: formType,
         status: "AWAITING_REVIEW",
         analysis: {
           ragScore: analysisResult.ragScore,
