@@ -19,7 +19,7 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { Plus, Download, Loader2, BarChart3, Grid3X3, Settings, Briefcase, ChevronDown, UserCheck, Heart, Stethoscope, ClipboardList, FileText } from "lucide-react";
+import { Plus, Download, Loader2, BarChart3, Grid3X3, Settings, Briefcase, ChevronDown, UserCheck, AlertTriangle, Shield, Heart, Brain, DoorOpen } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -112,33 +112,39 @@ export default function Dashboard() {
   const healthCheckTypes = [
     {
       id: "pre_employment",
-      label: "Pre-Employment Check", 
+      label: "Pre employment", 
       icon: UserCheck,
       description: "Medical assessment for job candidates"
     },
     {
-      id: "return_to_work",
-      label: "Return to Work Assessment",
+      id: "injury",
+      label: "Injury",
+      icon: AlertTriangle,
+      description: "Workplace injury assessment and management"
+    },
+    {
+      id: "prevention",
+      label: "Prevention",
+      icon: Shield,
+      description: "Preventive health screening and risk assessment"
+    },
+    {
+      id: "general_health_wellbeing",
+      label: "General health and well-being",
       icon: Heart,
-      description: "Clearance after injury or illness"
+      description: "Comprehensive health and wellness evaluation"
     },
     {
-      id: "annual_health",
-      label: "Annual Health Review",
-      icon: Stethoscope,
-      description: "Yearly health screening"
+      id: "mental_health",
+      label: "Mental health",
+      icon: Brain,
+      description: "Mental health assessment and support"
     },
     {
-      id: "fitness_for_duty",
-      label: "Fitness for Duty",
-      icon: ClipboardList,
-      description: "Ongoing fitness assessment"
-    },
-    {
-      id: "medical_surveillance",
-      label: "Medical Surveillance",
-      icon: FileText,
-      description: "Occupational health monitoring"
+      id: "exit",
+      label: "Exit",
+      icon: DoorOpen,
+      description: "Exit medical examination"
     }
   ];
 
@@ -551,6 +557,7 @@ export default function Dashboard() {
       {showInvitationForm && (
         <PreEmploymentInvitationForm
           onClose={() => setShowInvitationForm(false)}
+          checkType={selectedCheckType}
         />
       )}
 

@@ -30,28 +30,88 @@ type InvitationFormData = z.infer<typeof invitationSchema>;
 
 interface PreEmploymentInvitationFormProps {
   onClose: () => void;
+  checkType?: string;
 }
 
 export default function PreEmploymentInvitationForm({ 
-  onClose
+  onClose,
+  checkType = "pre_employment"
 }: PreEmploymentInvitationFormProps) {
   const { toast } = useToast();
   const [isPreview, setIsPreview] = useState(false);
 
-  // Default email template from the specification - manager name will be filled server-side
-  const defaultTemplate = `Dear [Worker Name],
+  // Health check type configurations
+  const checkTypeConfig = {
+    pre_employment: {
+      title: "Pre-Employment Check Invitation",
+      description: "Send a secure pre-employment health check invitation to a worker",
+      template: `Dear [Worker Name],
 
 Please find attached a pre-employment check from GPNet, who are looking after our pre-employment checks.
 
 Regards,
-[Manager Name]`;
+[Manager Name]`
+    },
+    injury: {
+      title: "Workplace Injury Assessment Invitation",
+      description: "Send an invitation for workplace injury assessment and management",
+      template: `Dear [Worker Name],
+
+Please find attached a workplace injury assessment from GPNet to help with your injury management and recovery.
+
+Regards,
+[Manager Name]`
+    },
+    prevention: {
+      title: "Prevention Health Check Invitation",
+      description: "Send an invitation for preventive health screening and risk assessment",
+      template: `Dear [Worker Name],
+
+Please find attached a preventive health screening from GPNet to assess and manage potential health risks.
+
+Regards,
+[Manager Name]`
+    },
+    general_health_wellbeing: {
+      title: "General Health and Well-being Check Invitation",
+      description: "Send an invitation for comprehensive health and wellness evaluation",
+      template: `Dear [Worker Name],
+
+Please find attached a comprehensive health and wellness evaluation from GPNet.
+
+Regards,
+[Manager Name]`
+    },
+    mental_health: {
+      title: "Mental Health Assessment Invitation",
+      description: "Send an invitation for mental health assessment and support",
+      template: `Dear [Worker Name],
+
+Please find attached a mental health assessment from GPNet to provide appropriate support and resources.
+
+Regards,
+[Manager Name]`
+    },
+    exit: {
+      title: "Exit Medical Examination Invitation",
+      description: "Send an invitation for exit medical examination",
+      template: `Dear [Worker Name],
+
+Please find attached an exit medical examination from GPNet as part of your departure process.
+
+Regards,
+[Manager Name]`
+    }
+  };
+
+  const currentConfig = checkTypeConfig[checkType as keyof typeof checkTypeConfig] || checkTypeConfig.pre_employment;
 
   const form = useForm<InvitationFormData>({
     resolver: zodResolver(invitationSchema),
     defaultValues: {
       workerName: "",
       workerEmail: "",
-      customMessage: defaultTemplate,
+      customMessage: currentConfig.template,
     },
   });
 
@@ -106,10 +166,10 @@ Regards,
                   <div>
                     <CardTitle className="flex items-center gap-2" data-testid="text-invitation-title">
                       <Mail className="h-5 w-5 text-blue-600" />
-                      Pre-Employment Check Invitation
+                      {currentConfig.title}
                     </CardTitle>
                     <CardDescription>
-                      Send a secure pre-employment health check invitation to a worker
+                      {currentConfig.description}
                     </CardDescription>
                   </div>
                   <Button 
