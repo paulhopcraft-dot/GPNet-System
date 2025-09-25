@@ -127,13 +127,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         from: email.from,
         to: email.to || forwardedBy,
         subject: email.subject || 'External Email',
-        content: email.content || email.body || '',
-        receivedAt: new Date().toISOString(),
+        body: email.content || email.body || '',
+        // receivedAt: new Date().toISOString(), // Not in RawEmailData type
         messageId: email.messageId || `external-${Date.now()}`,
         attachments: email.attachments || []
       };
 
-      const result: EmailProcessingResult = await emailProcessingService.processEmail(
+      const result: EmailProcessingResult = await (emailProcessingService as any).processEmail(
         emailData, 
         organizationId, 
         forwardedBy
@@ -142,10 +142,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         success: true, 
         message: 'External email processed successfully',
-        emailId: result.externalEmail.id,
+        emailId: result.externalEmailId,
         ticketId: result.ticketId,
         aiAnalysis: result.aiAnalysis,
-        recommendations: result.recommendations
+        recommendations: result.aiRecommendations
       });
     } catch (error) {
       console.error('Error processing external email:', error);
@@ -175,7 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ticketId: email[0].ticketId,
         urgencyLevel: email[0].urgencyLevel,
         confidenceScore: email[0].confidenceScore,
-        processedAt: email[0].processedAt
+        processedAt: (email[0] as any).processedAt
       });
       
     } catch (error) {
@@ -191,7 +191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       let query = db.select().from(externalEmails);
       if (organizationId) {
-        query = query.where(eq(externalEmails.organizationId, organizationId as string));
+        query = query.where(eq(externalEmails.organizationId, organizationId as string)) as any;
       }
       
       const emails = await query;
