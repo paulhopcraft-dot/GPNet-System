@@ -128,7 +128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         to: email.to || forwardedBy,
         subject: email.subject || 'External Email',
         body: email.content || email.body || '',
-        // receivedAt: new Date().toISOString(), // Not in RawEmailData type
+        date: new Date().toISOString(),
         messageId: email.messageId || `external-${Date.now()}`,
         attachments: email.attachments || []
       };
