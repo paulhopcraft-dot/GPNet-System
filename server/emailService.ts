@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { MailService } from '@sendgrid/mail';
 import { IStorage } from './storage';
 
 export interface EmailConfig {
@@ -34,6 +35,7 @@ export interface ReportEmailOptions {
 
 export class EmailService {
   private transporter: nodemailer.Transporter | null = null;
+  private sendGridService: MailService | null = null;
   private fromAddress: string;
   private fromName: string;
 
@@ -41,6 +43,7 @@ export class EmailService {
     this.fromAddress = process.env.EMAIL_FROM_ADDRESS || 'reports@gpnet.com.au';
     this.fromName = process.env.EMAIL_FROM_NAME || 'GPNet Health Assessment Services';
     this.initializeTransporter();
+    this.initializeSendGrid();
   }
 
   private initializeTransporter() {
@@ -76,11 +79,28 @@ export class EmailService {
     }
   }
 
+  private initializeSendGrid() {
+    const sendGridApiKey = process.env.SENDGRID_API_KEY;
+    if (!sendGridApiKey) {
+      console.log('SendGrid API key not found - SendGrid email sending will be disabled');
+      return;
+    }
+
+    try {
+      this.sendGridService = new MailService();
+      this.sendGridService.setApiKey(sendGridApiKey);
+      console.log('SendGrid email service initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize SendGrid service:', error);
+      this.sendGridService = null;
+    }
+  }
+
   /**
    * Check if email service is available
    */
   isAvailable(): boolean {
-    return !!this.transporter;
+    return !!this.transporter || !!this.sendGridService;
   }
 
   /**
@@ -370,6 +390,357 @@ If you have received this email in error, please delete it immediately and notif
         error: error instanceof Error ? error.message : 'Unknown email error'
       };
     }
+  }
+
+  /**
+   * Send manager notification when a worker submits a health check
+   */
+  async sendManagerNotification(managerEmail: string, workerName: string, checkType: string, ticketId: string): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!this.isAvailable()) {
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const subject = `Health Check Submitted - ${workerName} (${checkType})`;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .header { background-color: #1e3a8a; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; max-width: 600px; margin: 0 auto; }
+              .footer { background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #dee2e6; }
+              .logo { font-size: 24px; font-weight: bold; }
+              .case-info { background-color: #f8f9fa; padding: 15px; border-radius: 4px; margin: 15px 0; }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <div class="logo">GPNet Health Assessment Services</div>
+              <p style="margin: 5px 0 0 0; font-size: 14px;">Manager Notification</p>
+          </div>
+          
+          <div class="content">
+              <h2>New Health Check Submission</h2>
+              <p>Dear Manager,</p>
+              
+              <p>A health check has been submitted and is awaiting your review.</p>
+              
+              <div class="case-info">
+                  <h3 style="margin-top: 0;">Submission Details</h3>
+                  <p><strong>Worker:</strong> ${workerName}</p>
+                  <p><strong>Check Type:</strong> ${checkType}</p>
+                  <p><strong>Ticket ID:</strong> ${ticketId}</p>
+                  <p><strong>Status:</strong> Awaiting Review</p>
+                  <p><strong>Submitted:</strong> ${new Date().toLocaleDateString('en-AU', { 
+                    day: '2-digit', 
+                    month: '2-digit', 
+                    year: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit'
+                  })}</p>
+              </div>
+
+              <p>Please review this submission in the GPNet dashboard at your earliest convenience.</p>
+              
+              <p>Best regards,<br>
+              <strong>GPNet Automation System</strong></p>
+          </div>
+          
+          <div class="footer">
+              <p><strong>GPNet Health Assessment Services</strong></p>
+              <p>This is an automated notification. Please do not reply to this email.</p>
+          </div>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmailWithFallback({
+      to: managerEmail,
+      subject,
+      html
+    });
+  }
+
+  /**
+   * Send follow-up reminder to worker for incomplete health checks
+   */
+  async sendFollowUpReminder(workerEmail: string, workerName: string, checkType: string, dayNumber: number): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!this.isAvailable()) {
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const isDay3 = dayNumber === 3;
+    const subject = isDay3 
+      ? `URGENT: Health Check Still Pending - ${checkType}` 
+      : `Reminder: Health Check Pending - ${checkType}`;
+
+    const html = isDay3 ? this.getDay3ReminderHtml(workerName, checkType) : this.getDay1ReminderHtml(workerName, checkType);
+
+    return this.sendEmailWithFallback({
+      to: workerEmail,
+      subject,
+      html
+    });
+  }
+
+  /**
+   * Send admin alert for overdue health checks
+   */
+  async sendAdminAlert(adminEmail: string, workerName: string, checkType: string, dayNumber: number): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    if (!this.isAvailable()) {
+      return { success: false, error: 'Email service not configured' };
+    }
+
+    const subject = `Health Check Overdue Alert - ${workerName} (Day ${dayNumber})`;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .header { background-color: #dc2626; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; max-width: 600px; margin: 0 auto; }
+              .footer { background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #dee2e6; }
+              .logo { font-size: 24px; font-weight: bold; }
+              .alert-info { background-color: #fef2f2; padding: 15px; border-radius: 4px; margin: 15px 0; border-left: 4px solid #dc2626; }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <div class="logo">GPNet Admin Alert</div>
+              <p style="margin: 5px 0 0 0; font-size: 14px;">Health Check Overdue</p>
+          </div>
+          
+          <div class="content">
+              <h2>⚠️ Health Check Overdue Alert</h2>
+              <p>Dear Administrator,</p>
+              
+              <div class="alert-info">
+                  <h3 style="margin-top: 0;">Overdue Health Check</h3>
+                  <p><strong>Worker:</strong> ${workerName}</p>
+                  <p><strong>Check Type:</strong> ${checkType}</p>
+                  <p><strong>Days Overdue:</strong> ${dayNumber}</p>
+                  <p><strong>Alert Generated:</strong> ${new Date().toLocaleDateString('en-AU', { 
+                    day: '2-digit', 
+                    month: '2-digit', 
+                    year: 'numeric', 
+                    hour: '2-digit', 
+                    minute: '2-digit'
+                  })}</p>
+              </div>
+
+              <p>This worker has not completed their health check within the required timeframe. Please follow up with the worker and their manager immediately.</p>
+              
+              <p><strong>Recommended Actions:</strong></p>
+              <ul>
+                  <li>Contact the worker directly</li>
+                  <li>Notify their immediate supervisor</li>
+                  <li>Review any compliance implications</li>
+                  <li>Consider escalation if necessary</li>
+              </ul>
+              
+              <p>Best regards,<br>
+              <strong>GPNet Automation System</strong></p>
+          </div>
+          
+          <div class="footer">
+              <p><strong>GPNet Health Assessment Services</strong></p>
+              <p>This is an automated alert. Please take appropriate action.</p>
+          </div>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmailWithFallback({
+      to: adminEmail,
+      subject,
+      html
+    });
+  }
+
+  private getDay1ReminderHtml(workerName: string, checkType: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .header { background-color: #1e3a8a; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; max-width: 600px; margin: 0 auto; }
+              .footer { background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #dee2e6; }
+              .logo { font-size: 24px; font-weight: bold; }
+              .reminder-info { background-color: #eff6ff; padding: 15px; border-radius: 4px; margin: 15px 0; border-left: 4px solid #1e3a8a; }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <div class="logo">GPNet Health Assessment</div>
+              <p style="margin: 5px 0 0 0; font-size: 14px;">Health Check Reminder</p>
+          </div>
+          
+          <div class="content">
+              <h2>Health Check Reminder</h2>
+              <p>Dear ${workerName},</p>
+              
+              <div class="reminder-info">
+                  <h3 style="margin-top: 0;">Pending Health Check</h3>
+                  <p><strong>Check Type:</strong> ${checkType}</p>
+                  <p><strong>Status:</strong> Not Started</p>
+              </div>
+              
+              <p>This is a friendly reminder that your <strong>${checkType}</strong> health check is still pending completion.</p>
+              
+              <p>Please complete your health assessment as soon as possible to ensure compliance with workplace health requirements.</p>
+              
+              <p>If you have any questions or need assistance, please contact your manager or HR department.</p>
+              
+              <p>Thank you for your attention to this matter.</p>
+              
+              <p>Best regards,<br>
+              <strong>GPNet Health System</strong></p>
+          </div>
+          
+          <div class="footer">
+              <p><strong>GPNet Health Assessment Services</strong></p>
+              <p>This is an automated reminder. Please complete your health check promptly.</p>
+          </div>
+      </body>
+      </html>
+    `;
+  }
+
+  private getDay3ReminderHtml(workerName: string, checkType: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <meta charset="utf-8">
+          <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+              .header { background-color: #dc2626; color: white; padding: 20px; text-align: center; }
+              .content { padding: 20px; max-width: 600px; margin: 0 auto; }
+              .footer { background-color: #f8f9fa; padding: 15px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #dee2e6; }
+              .logo { font-size: 24px; font-weight: bold; }
+              .urgent-info { background-color: #fef2f2; padding: 15px; border-radius: 4px; margin: 15px 0; border-left: 4px solid #dc2626; }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <div class="logo">GPNet Health Assessment</div>
+              <p style="margin: 5px 0 0 0; font-size: 14px;">URGENT: Health Check Overdue</p>
+          </div>
+          
+          <div class="content">
+              <h2>🚨 URGENT: Health Check Overdue</h2>
+              <p>Dear ${workerName},</p>
+              
+              <div class="urgent-info">
+                  <h3 style="margin-top: 0;">⚠️ Overdue Health Check</h3>
+                  <p><strong>Check Type:</strong> ${checkType}</p>
+                  <p><strong>Status:</strong> OVERDUE - Immediate Action Required</p>
+              </div>
+              
+              <p><strong>Your ${checkType} health check is now overdue and requires immediate attention.</strong></p>
+              
+              <p>Failure to complete this health assessment may result in:</p>
+              <ul>
+                  <li>Delays in work authorization</li>
+                  <li>Compliance issues</li>
+                  <li>Potential workplace safety concerns</li>
+                  <li>Administrative follow-up actions</li>
+              </ul>
+              
+              <p><strong style="color: #dc2626;">Action Required:</strong> Please complete your health check immediately or contact your manager for assistance.</p>
+              
+              <p>If there are any issues preventing completion, please reach out to your supervisor or HR department immediately.</p>
+              
+              <p>Best regards,<br>
+              <strong>GPNet Health System</strong></p>
+          </div>
+          
+          <div class="footer">
+              <p><strong>GPNet Health Assessment Services</strong></p>
+              <p>This is an urgent automated reminder requiring immediate action.</p>
+          </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Send email with fallback between SendGrid and nodemailer
+   */
+  private async sendEmailWithFallback(options: {
+    to: string;
+    subject: string;
+    html?: string;
+    text?: string;
+    from?: string;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    const fromAddress = options.from || `"${this.fromName}" <${this.fromAddress}>`;
+
+    // Try SendGrid first if available
+    if (this.sendGridService) {
+      try {
+        const emailOptions: any = {
+          to: options.to,
+          from: fromAddress,
+          subject: options.subject
+        };
+        
+        if (options.html) {
+          emailOptions.html = options.html;
+        }
+        
+        if (options.text || options.html) {
+          emailOptions.text = options.text || (options.html ? options.html.replace(/<[^>]*>/g, '') : '');
+        }
+        
+        const result = await this.sendGridService.send(emailOptions);
+
+        console.log(`Email sent via SendGrid: ${result[0].statusCode}`);
+        return {
+          success: true,
+          messageId: result[0].headers?.['x-message-id'] as string || undefined
+        };
+      } catch (error) {
+        console.error('SendGrid email failed, trying nodemailer fallback:', error);
+      }
+    }
+
+    // Fallback to nodemailer if SendGrid fails or is not available
+    if (this.transporter) {
+      try {
+        const result = await this.transporter.sendMail({
+          from: fromAddress,
+          to: options.to,
+          subject: options.subject,
+          html: options.html,
+          text: options.text || (options.html ? options.html.replace(/<[^>]*>/g, '') : undefined)
+        });
+
+        console.log(`Email sent via nodemailer: ${result.messageId}`);
+        return {
+          success: true,
+          messageId: result.messageId
+        };
+      } catch (error) {
+        console.error('Nodemailer email failed:', error);
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown email error'
+        };
+      }
+    }
+
+    return {
+      success: false,
+      error: 'No email service available'
+    };
   }
 }
 
