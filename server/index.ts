@@ -9,9 +9,11 @@ const app = express();
 // Trust proxy for proper headers (needed for mobile Safari)
 app.set('trust proxy', 1);
 
-// Configure CORS for mobile Safari compatibility
+// Configure CORS for mobile Safari compatibility with security
 app.use(cors({
-  origin: true, // Allow all origins in development
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || false // Restrict origins in production
+    : true, // Allow all origins in development
   credentials: true, // Allow credentials (cookies, sessions)
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
