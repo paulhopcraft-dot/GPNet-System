@@ -58,8 +58,9 @@ export async function chatWithMichelle(
       timestamp: new Date()
     });
 
-    // ALWAYS use OpenAI - user confirms they have working key
-    const isValidApiKey = true;
+    // Check if we have a proper OpenAI API key 
+    const apiKey = process.env.OPENAI_API_KEY;
+    const isValidApiKey = apiKey && apiKey.startsWith('sk-') && apiKey.length > 40;
 
     // Determine Michelle's mode based on user context
     const mode = userContext.userType === 'admin' && userContext.isSuperuser 
