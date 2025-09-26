@@ -278,4 +278,37 @@ ragRoutes.delete("/data", async (req, res) => {
   }
 });
 
+/**
+ * Admin endpoint: Trigger historical backfill of Freshdesk conversations
+ */
+ragRoutes.post("/admin/backfill", async (req, res) => {
+  try {
+    const { months = 12, dryRun = false } = req.body;
+
+    console.log(`🚀 Starting admin-triggered backfill: ${months} months, dryRun: ${dryRun}`);
+
+    const result = await freshdeskRagBackfillService.backfillConversations({
+      months: parseInt(months),
+      batchSize: 5, // Smaller batches for admin UI
+      includePrivateNotes: true,
+      generateEmbeddings: true,
+      dryRun: Boolean(dryRun)
+    });
+
+    res.json({
+      status: "completed",
+      progress: result,
+      timestamp: new Date()
+    });
+
+  } catch (error) {
+    console.error("Admin backfill failed:", error);
+    res.status(500).json({
+      error: "Backfill operation failed",
+      details: (error as Error).message,
+      timestamp: new Date()
+    });
+  }
+});
+
 export default ragRoutes;
