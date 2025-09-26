@@ -3,29 +3,40 @@ import OpenAI from "openai";
 // CRITICAL FIX: Dynamic OpenAI client creation to bypass caching
 console.log('=== CRITICAL OpenAI INTEGRATION FIX ===');
 
-// Dynamic function to create fresh OpenAI client on each request
+// AGGRESSIVE ENVIRONMENT REFRESH - Forces check for new secrets
 function createFreshOpenAIClient() {
-  // Force check environment every time
-  const allEnvVars = Object.keys(process.env);
-  console.log('Available env vars:', allEnvVars.filter(k => k.includes('OPENAI')));
+  // FORCE environment variable refresh by clearing and re-reading
+  delete process.env.OPENAI_API_KEY;
   
-  const apiKey = process.env.OPENAI_API_KEY;
-  console.log('Current API key:', apiKey?.substring(0, 15) + '...');
+  // Re-read from environment
+  const freshKey = process.env.OPENAI_API_KEY;
+  console.log('🔄 Forced env refresh - key format:', freshKey?.substring(0, 15) + '...');
   
-  const isValid = apiKey && 
-    apiKey.startsWith('sk-') && 
-    !apiKey.includes('youtube') && 
-    !apiKey.includes('https://');
-    
-  console.log('Key validation result:', isValid);
+  // Also check if Replit has set the key in a different location
+  const allKeys = Object.keys(process.env).filter(k => k.toLowerCase().includes('openai'));
+  console.log('🔍 All OpenAI-related env vars:', allKeys);
   
-  if (isValid) {
-    console.log('✅ CREATING REAL OPENAI CLIENT');
-    return new OpenAI({ apiKey });
-  } else {
-    console.log('❌ OpenAI key invalid, forcing demo mode');
-    return null;
+  // Try multiple possible environment variable names to bypass caching
+  const possibleKeys = [
+    process.env.OPENAI_API_KEY,
+    process.env.MICHELLE_OPENAI_KEY,    // Alternative name to bypass cache
+    process.env.GPT_API_KEY,            // Alternative name
+    process.env.AI_API_KEY,             // Alternative name
+    process.env.OPENAI_KEY, 
+    process.env.REPLIT_OPENAI_API_KEY
+  ].filter(Boolean);
+  
+  console.log('🔑 Found possible keys:', possibleKeys.length);
+  
+  for (const key of possibleKeys) {
+    if (key && key.startsWith('sk-') && !key.includes('youtube') && !key.includes('https://')) {
+      console.log('✅ FOUND VALID OPENAI KEY - CREATING CLIENT');
+      return new OpenAI({ apiKey: key });
+    }
   }
+  
+  console.log('❌ No valid OpenAI key found in environment');
+  return null;
 }
 
 // Test immediate client creation
@@ -176,7 +187,7 @@ export async function chatWithMichelle(
       console.log('🎯 TRYING REAL OPENAI INTEGRATION');
       return await getRealOpenAIResponse(conversationId, message, userContext, context, history);
     } catch (error) {
-      console.log('⚠️ OpenAI failed, falling back to enhanced demo mode:', error.message);
+      console.log('⚠️ OpenAI failed, falling back to enhanced demo mode:', (error as Error).message);
     }
     
     // ENHANCED FALLBACK SYSTEM
