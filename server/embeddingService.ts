@@ -166,7 +166,7 @@ export class EmbeddingService {
             content: item.content,
             authorRole: item.authorRole,
             authorName: item.authorName || undefined,
-            isPrivate: item.isPrivate,
+            isPrivate: item.isPrivate || false,
             freshdeskCreatedAt: item.freshdeskCreatedAt || undefined,
             similarity
           };
@@ -209,7 +209,7 @@ export class EmbeddingService {
         content: msg.content,
         authorRole: msg.authorRole,
         authorName: msg.authorName || undefined,
-        isPrivate: msg.isPrivate,
+        isPrivate: msg.isPrivate || false,
         freshdeskCreatedAt: msg.freshdeskCreatedAt || undefined,
         similarity: 1.0 // Perfect match since it's the same ticket
       }));
@@ -271,26 +271,26 @@ export class EmbeddingService {
     recentEmbeddings: number;
   }> {
     try {
-      const [totalMessages] = await db
-        .select({ count: db.$count() })
+      const totalMessages = await db
+        .select({ count: db.$count(ticketMessages.id) })
         .from(ticketMessages);
 
-      const [embeddedMessages] = await db
-        .select({ count: db.$count() })
+      const embeddedMessages = await db
+        .select({ count: db.$count(ticketMessageEmbeddings.id) })
         .from(ticketMessageEmbeddings);
 
       const recentDate = new Date();
       recentDate.setDate(recentDate.getDate() - 7);
 
-      const [recentEmbeddings] = await db
-        .select({ count: db.$count() })
+      const recentEmbeddings = await db
+        .select({ count: db.$count(ticketMessageEmbeddings.id) })
         .from(ticketMessageEmbeddings)
         .where(eq(ticketMessageEmbeddings.createdAt, recentDate));
 
       return {
-        totalMessages: totalMessages.count,
-        embeddedMessages: embeddedMessages.count,
-        recentEmbeddings: recentEmbeddings.count
+        totalMessages: totalMessages[0].count,
+        embeddedMessages: embeddedMessages[0].count,
+        recentEmbeddings: recentEmbeddings[0].count
       };
     } catch (error) {
       console.error('EmbeddingService: Failed to get stats:', error);
