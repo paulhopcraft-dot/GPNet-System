@@ -1,29 +1,37 @@
 import OpenAI from "openai";
 
-// IMMEDIATE FIX: Direct environment variable access to bypass cache
-console.log('=== DIRECT ENV ACCESS FIX ===');
+// CRITICAL FIX: Dynamic OpenAI client creation to bypass caching
+console.log('=== CRITICAL OpenAI INTEGRATION FIX ===');
 
-// Force read fresh environment variables by accessing process.env directly each time
-function getFreshAPIKey() {
-  const envKey = process.env['OPENAI_API_KEY'];
-  console.log('Fresh API key check:', envKey?.substring(0, 10));
-  return envKey;
+// Dynamic function to create fresh OpenAI client on each request
+function createFreshOpenAIClient() {
+  // Force check environment every time
+  const allEnvVars = Object.keys(process.env);
+  console.log('Available env vars:', allEnvVars.filter(k => k.includes('OPENAI')));
+  
+  const apiKey = process.env.OPENAI_API_KEY;
+  console.log('Current API key:', apiKey?.substring(0, 15) + '...');
+  
+  const isValid = apiKey && 
+    apiKey.startsWith('sk-') && 
+    !apiKey.includes('youtube') && 
+    !apiKey.includes('https://');
+    
+  console.log('Key validation result:', isValid);
+  
+  if (isValid) {
+    console.log('✅ CREATING REAL OPENAI CLIENT');
+    return new OpenAI({ apiKey });
+  } else {
+    console.log('❌ OpenAI key invalid, forcing demo mode');
+    return null;
+  }
 }
 
-const currentKey = getFreshAPIKey();
-const hasValidApiKey = currentKey && 
-  currentKey.startsWith('sk-') && 
-  currentKey !== 'demo-mode' &&
-  !currentKey.includes('youtube') &&
-  !currentKey.includes('https://');
-
-console.log('Valid API key detected:', hasValidApiKey);
-console.log('=== ENV FIX COMPLETE ===');
-
-// the newest OpenAI model is "gpt-4o-mini" which is current as of September 2025
-const openai = new OpenAI({ 
-  apiKey: hasValidApiKey ? getFreshAPIKey() : 'demo-mode'
-});
+// Test immediate client creation
+const testClient = createFreshOpenAIClient();
+console.log('Initial client test:', testClient ? 'SUCCESS' : 'DEMO MODE');
+console.log('=== END CRITICAL FIX ===');
 
 export interface MichelleResponse {
   reply: string;
@@ -55,14 +63,22 @@ export interface UserContext {
 // Simple in-memory conversation storage for demo
 const conversations: Map<string, ChatMessage[]> = new Map();
 
-// OpenAI Response Handler
-async function getOpenAIResponse(
+// REAL OpenAI Response Handler - using fresh client each time
+async function getRealOpenAIResponse(
   conversationId: string,
   message: string,
   userContext: UserContext,
   context?: any,
   history?: ChatMessage[]
 ): Promise<MichelleResponse> {
+  console.log('🔥 ATTEMPTING REAL OPENAI CALL');
+  
+  // Create fresh client for this request
+  const freshOpenAI = createFreshOpenAIClient();
+  if (!freshOpenAI) {
+    throw new Error('No valid OpenAI client available');
+  }
+
   try {
     const systemPrompt = `You are Michelle, an expert AI occupational health assistant specializing in pre-employment health assessments, workplace injury management, and return-to-work planning. 
 
@@ -91,13 +107,15 @@ Your response MUST be valid JSON in this exact format:
       { role: "user", content: message }
     ];
 
-    const response = await openai.chat.completions.create({
+    console.log('🚀 Making OpenAI API call...');
+    const response = await freshOpenAI.chat.completions.create({
       model: "gpt-4o-mini",
       messages: messages,
       response_format: { type: "json_object" },
       max_tokens: 800
     });
 
+    console.log('✅ OpenAI API call successful!');
     const aiResponse = JSON.parse(response.choices[0].message.content || '{"reply": "I apologize, but I had trouble understanding that.", "next_questions": ["Can you rephrase that?", "What health concerns do you have?", "How can I help you today?"]}');
     
     // Add AI response to history
@@ -111,7 +129,7 @@ Your response MUST be valid JSON in this exact format:
     }
 
     return {
-      reply: aiResponse.reply,
+      reply: aiResponse.reply + " [POWERED BY REAL OPENAI]",
       nextQuestions: aiResponse.next_questions || [],
       conversationId,
       mode: userContext.userType === 'admin' && userContext.isSuperuser ? 'universal' : 'client-scoped',
@@ -123,8 +141,7 @@ Your response MUST be valid JSON in this exact format:
     };
 
   } catch (error) {
-    console.error('OpenAI API error:', error);
-    // Fallback to demo mode on API error
+    console.error('❌ OpenAI API error:', error);
     throw error;
   }
 }
@@ -154,10 +171,15 @@ export async function chatWithMichelle(
       timestamp: new Date()
     });
 
-    // INTELLIGENT RESPONSE SYSTEM: Providing OpenAI-quality responses despite caching issue
-    console.log('Running INTELLIGENT RESPONSE SYSTEM - AI-quality analysis');
+    // ATTEMPT REAL OPENAI FIRST
+    try {
+      console.log('🎯 TRYING REAL OPENAI INTEGRATION');
+      return await getRealOpenAIResponse(conversationId, message, userContext, context, history);
+    } catch (error) {
+      console.log('⚠️ OpenAI failed, falling back to enhanced demo mode:', error.message);
+    }
     
-    // Enhanced contextual AI that adapts to user needs and provides professional analysis
+    // ENHANCED FALLBACK SYSTEM
     
     let reply = "";
     let nextQuestions: string[] = [];
