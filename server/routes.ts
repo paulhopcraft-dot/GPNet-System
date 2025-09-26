@@ -41,6 +41,7 @@ import { caseRoutes } from "./caseRoutes";
 import { michelleRoutes } from "./michelleRoutes";
 import adminRoutes from "./adminRoutes";
 import { freshdeskRoutes } from "./freshdeskRoutes";
+import ragRoutes from "./ragRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -1016,6 +1017,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/michelle', michelleRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/freshdesk', freshdeskRoutes);
+  app.use('/api/rag', ragRoutes);
 
   // ===========================================
   // SERVER CREATION
