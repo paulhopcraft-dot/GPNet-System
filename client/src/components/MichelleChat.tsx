@@ -108,11 +108,17 @@ export function MichelleChat({
         workerId
       };
 
-      const response = await apiRequest("POST", "/api/michelle/chat", {
-        conversationId: currentConversationId,
+      const payload: any = {
         message,
         context
-      });
+      };
+      
+      // Only include conversationId if it's not null
+      if (currentConversationId) {
+        payload.conversationId = currentConversationId;
+      }
+
+      const response = await apiRequest("POST", "/api/michelle/chat", payload);
       return response.json();
     },
     onSuccess: (response) => {
