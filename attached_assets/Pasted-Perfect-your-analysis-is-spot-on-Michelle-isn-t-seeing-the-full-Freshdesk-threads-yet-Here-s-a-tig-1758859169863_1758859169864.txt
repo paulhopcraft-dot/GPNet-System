@@ -1,0 +1,54 @@
+Perfect—your analysis is spot-on. Michelle isn’t seeing the full Freshdesk threads yet. Here’s a tight, copy-paste message you can send to your Replit devs to close the gap, plus success checks.
+
+⸻
+
+📤 Copy-paste to devs (plain English)
+
+Goal: Make Michelle read full Freshdesk ticket conversations (all emails/replies + private notes) so she can answer with full context via RAG.
+
+Questions (yes/no + short detail):
+	1.	Are we currently pulling ticket conversations/threads (all replies) for each ticket ID?
+	2.	Are we pulling private/agent notes?
+	3.	Are we backfilling historical conversations, or only capturing new webhooks?
+	4.	Where are conversations stored (table/collection name)? Do we also store message author, timestamp, and role (requester/agent)?
+	5.	Do we generate embeddings for each message and index them in a vector store? Which one?
+	6.	Does Michelle’s reply path retrieve top-k similar past messages/threads by ticket/contact before drafting?
+	7.	Is there a daily sync job to keep Freshdesk ↔ DB in sync?
+
+Required changes (MVP):
+	•	Add methods:
+	•	getTicketConversations(ticket_id) → returns all public replies + requester/agent messages (with timestamps, authors, body HTML/text).
+	•	getTicketNotes(ticket_id) → returns private notes (flag as private; don’t surface to users).
+	•	Add a backfill job: for last 12 months, page through tickets, fetch conversations + notes, store in DB.
+	•	Schema (suggested):
+	•	tickets(id, subject, status, priority, requester_id, company_id, updated_at, …)
+	•	ticket_messages(id, ticket_id, author_id, author_role, is_private, created_at, body_html, body_text)
+	•	ticket_message_embeddings(message_id, vector, model, created_at)
+	•	RAG hook: Before Michelle answers, retrieve by: (a) ticket_id (if present), else (b) contact/company similarity, plus (c) global top-k similar threads. Pass retrieved snippets to the prompt.
+	•	Privacy: Never surface private notes in user-visible replies; allow them internally for reasoning only.
+	•	Ops: Add daily incremental sync (updated_since) and a manual reindex command.
+
+Acceptance criteria:
+	•	Given a known ticket with 5+ replies + 2 notes, Michelle retrieves at least 5 conversation messages in context and does not leak private notes.
+	•	A backfill job completes for the last 12 months without errors (log sample: processed tickets count, messages count).
+	•	A test prompt (“Summarize the current status of ticket #123 and the last customer concern.”) includes details from mid-thread messages (not just the subject/first email).
+
+Quick tests to run:
+	•	GET /health/rag → returns counts: tickets, messages, embedded_messages.
+	•	POST /admin/backfill?months=12 → logs totals.
+	•	POST /rag/test?ticket_id=123 → returns top-k snippets with message_ids + timestamps.
+
+Nice-to-have (phase 2):
+	•	Strip quoted email history and signatures before embedding.
+	•	De-dup near-identical messages.
+	•	Per-client/company data-isolation switch.
+
+⸻
+
+✅ What you should see when it’s working
+	•	A “messages” table filling with every reply from each Freshdesk ticket (author, role, time, body).
+	•	An embeddings table (or vector index) with one vector per message.
+	•	Michelle’s answers referencing specific mid-thread facts (not just the subject/first email).
+	•	Logs showing daily incremental sync (e.g., “synced 84 updated tickets, 312 messages”).
+
+If you want, I can also draft the minimal endpoint/method names or a tiny pseudo-code block the devs can turn straight into code.

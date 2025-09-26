@@ -170,6 +170,47 @@ export const attachments = pgTable("attachments", {
 });
 
 // ===============================================
+// FRESHDESK RAG SYSTEM TABLES
+// ===============================================
+
+// Ticket messages table for storing all conversation threads from Freshdesk
+export const ticketMessages = pgTable("ticket_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  freshdeskMessageId: varchar("freshdesk_message_id").unique(), // Freshdesk conversation/note ID
+  authorId: varchar("author_id"), // Freshdesk user ID (agent/requester)
+  authorRole: text("author_role").notNull(), // "requester", "agent", "system"
+  authorName: text("author_name"),
+  authorEmail: text("author_email"),
+  isPrivate: boolean("is_private").default(false), // Private notes vs public replies
+  bodyHtml: text("body_html"), // Original HTML content
+  bodyText: text("body_text").notNull(), // Cleaned text for embeddings
+  messageType: text("message_type").default("reply"), // "reply", "note", "forward"
+  incomingOrOutgoing: text("incoming_or_outgoing"), // "incoming", "outgoing"
+  createdAt: timestamp("created_at").defaultNow(),
+  freshdeskCreatedAt: timestamp("freshdesk_created_at"), // Original timestamp from Freshdesk
+}, (table) => ({
+  ticketIdIdx: index("ticket_messages_ticket_id_idx").on(table.ticketId),
+  freshdeskMessageIdIdx: index("ticket_messages_freshdesk_id_idx").on(table.freshdeskMessageId),
+  authorRoleIdx: index("ticket_messages_author_role_idx").on(table.authorRole),
+  freshdeskCreatedAtIdx: index("ticket_messages_freshdesk_created_at_idx").on(table.freshdeskCreatedAt),
+}));
+
+// Ticket message embeddings table for RAG vector search
+export const ticketMessageEmbeddings = pgTable("ticket_message_embeddings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").references(() => ticketMessages.id).notNull(),
+  vector: text("vector").notNull(), // JSON array of embedding vector (OpenAI ada-002 format)
+  model: text("model").default("text-embedding-ada-002"), // Embedding model used
+  chunkIndex: integer("chunk_index").default(0), // For long messages split into chunks
+  content: text("content").notNull(), // Text content that was embedded
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  messageIdIdx: index("ticket_message_embeddings_message_id_idx").on(table.messageId),
+  modelIdx: index("ticket_message_embeddings_model_idx").on(table.model),
+}));
+
+// ===============================================
 // MULTI-TENANT ADMIN LAYER
 // ===============================================
 
@@ -2040,6 +2081,28 @@ export const MedicalOpinionStatus = {
 } as const;
 
 export type MedicalOpinionStatus = typeof MedicalOpinionStatus[keyof typeof MedicalOpinionStatus];
+
+// ===============================================
+// FRESHDESK RAG SYSTEM TYPE EXPORTS
+// ===============================================
+
+// Insert schemas for RAG tables
+export const insertTicketMessageSchema = createInsertSchema(ticketMessages).omit({
+  id: true,
+  createdAt: true
+});
+
+export const insertTicketMessageEmbeddingSchema = createInsertSchema(ticketMessageEmbeddings).omit({
+  id: true,
+  createdAt: true
+});
+
+// Type exports for RAG tables
+export type InsertTicketMessage = z.infer<typeof insertTicketMessageSchema>;
+export type TicketMessage = typeof ticketMessages.$inferSelect;
+
+export type InsertTicketMessageEmbedding = z.infer<typeof insertTicketMessageEmbeddingSchema>;
+export type TicketMessageEmbedding = typeof ticketMessageEmbeddings.$inferSelect;
 
 // Reminder Schedule status enums
 export const ReminderStatus = {
