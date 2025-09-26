@@ -146,12 +146,16 @@ async function getRealOpenAIResponse(
         }
       }
       
-      // Also search for similar conversations globally for additional context
-      const similarMessages = await embeddingService.findSimilarMessages(message, 5, undefined, true);
-      if (similarMessages.length > 0) {
-        ragContext += "**Related Conversations from Other Cases:**\n";
-        similarMessages.forEach(msg => {
-          ragContext += `[Similarity: ${(msg.similarity * 100).toFixed(1)}%] ${msg.authorRole}: ${msg.content.substring(0, 150)}...\n`;
+      // Also search for similar content (messages AND documents) globally for additional context
+      const similarContent = await embeddingService.findSimilarContent(message, 5, undefined, true);
+      if (similarContent.length > 0) {
+        ragContext += "**Related Content from Other Cases:**\n";
+        similarContent.forEach(content => {
+          if (content.type === 'message') {
+            ragContext += `[Similarity: ${(content.similarity * 100).toFixed(1)}%] ${content.metadata.authorRole}: ${content.content.substring(0, 150)}...\n`;
+          } else {
+            ragContext += `[Similarity: ${(content.similarity * 100).toFixed(1)}%] [Medical Report: ${content.metadata.filename}]: ${content.content.substring(0, 150)}...\n`;
+          }
         });
         ragContext += "\n";
       }

@@ -1,8 +1,30 @@
 import OpenAI from "openai";
 import type { OcrFieldExtraction } from "@shared/schema";
 
+// Create OpenAI client for text extraction using the same key discovery logic
+function createOpenAIClient(): OpenAI | null {
+  const possibleKeys = [
+    process.env.OPENAI_API_KEY,
+    process.env.GPNET_OPENAI,
+    process.env.MICHELLE_OPENAI_KEY,
+    process.env.GPT_API_KEY,
+    process.env.AI_API_KEY,
+    process.env.OPENAI_KEY, 
+    process.env.REPLIT_OPENAI_API_KEY
+  ].filter(Boolean);
+
+  for (const key of possibleKeys) {
+    if (key && key.startsWith('sk-') && !key.includes('youtube') && !key.includes('https://')) {
+      return new OpenAI({ apiKey: key });
+    }
+  }
+
+  console.warn('⚠️ OCRService: No valid OpenAI key found - OCR will be disabled');
+  return null;
+}
+
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = createOpenAIClient();
 
 export interface DocumentClassificationResult {
   kind: "medical_certificate" | "diagnosis_report" | "fit_note" | "specialist_letter" | "radiology_report" | "other";
@@ -204,6 +226,9 @@ export class OcrService {
       "reasoning": "Brief explanation of classification decision"
     }`;
 
+    if (!openai) {
+      throw new Error('OpenAI client not initialized');
+    }
     const response = await openai.chat.completions.create({
       model: "gpt-5",
       messages: [
@@ -308,6 +333,9 @@ export class OcrService {
       }
     }`;
 
+    if (!openai) {
+      throw new Error('OpenAI client not initialized');
+    }
     const response = await openai.chat.completions.create({
       model: "gpt-5",
       messages: [

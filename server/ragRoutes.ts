@@ -57,7 +57,7 @@ ragRoutes.post("/search", async (req, res) => {
       });
     }
 
-    const results = await embeddingService.findSimilarMessages(
+    const results = await embeddingService.findSimilarContent(
       query,
       parseInt(limit),
       ticketId,

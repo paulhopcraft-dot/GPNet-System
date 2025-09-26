@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { db } from "./db.js";
-import { ticketMessages, ticketMessageEmbeddings } from "@shared/schema.js";
+import { ticketMessages, ticketMessageEmbeddings, documentEmbeddings, medicalDocuments } from "@shared/schema.js";
 import { eq, and, desc, count, gte } from "drizzle-orm";
 
 export interface EmbeddingResult {
@@ -18,6 +18,32 @@ export interface SimilaritySearchResult {
   authorName?: string;
   isPrivate: boolean;
   freshdeskCreatedAt?: Date;
+  similarity: number;
+}
+
+export interface DocumentSimilarityResult {
+  documentId: string;
+  ticketId: string;
+  content: string;
+  filename: string;
+  documentKind: string;
+  chunkIndex: number;
+  similarity: number;
+}
+
+export interface UnifiedSearchResult {
+  id: string;
+  type: 'message' | 'document';
+  ticketId: string;
+  content: string;
+  metadata: {
+    authorRole?: string;
+    authorName?: string;
+    filename?: string;
+    documentKind?: string;
+    chunkIndex?: number;
+    freshdeskCreatedAt?: Date;
+  };
   similarity: number;
 }
 
@@ -181,6 +207,119 @@ export class EmbeddingService {
       console.error('EmbeddingService: Failed to find similar messages:', error);
       return [];
     }
+  }
+
+  /**
+   * Find similar documents using cosine similarity
+   */
+  async findSimilarDocuments(
+    queryText: string, 
+    limit = 5,
+    ticketId?: string
+  ): Promise<DocumentSimilarityResult[]> {
+    const queryVector = await this.generateEmbedding(queryText);
+    if (!queryVector) {
+      console.warn('EmbeddingService: Could not generate query embedding for documents');
+      return [];
+    }
+
+    try {
+      // Get all document embeddings and compute similarity in application  
+      const embeddings = await db
+        .select({
+          embeddingId: documentEmbeddings.id,
+          documentId: documentEmbeddings.documentId,
+          vector: documentEmbeddings.vector,
+          content: documentEmbeddings.content,
+          filename: documentEmbeddings.filename,
+          documentKind: documentEmbeddings.documentKind,
+          chunkIndex: documentEmbeddings.chunkIndex,
+          ticketId: documentEmbeddings.ticketId,
+        })
+        .from(documentEmbeddings)
+        .where(
+          ticketId ? eq(documentEmbeddings.ticketId, ticketId) : undefined
+        )
+        .orderBy(desc(documentEmbeddings.createdAt))
+        .limit(200); // Limit for performance
+
+      // Compute cosine similarity and sort
+      const results = embeddings
+        .map(item => {
+          const itemVector = JSON.parse(item.vector) as number[];
+          const similarity = this.cosineSimilarity(queryVector, itemVector);
+          
+          return {
+            documentId: item.documentId,
+            ticketId: item.ticketId,
+            content: item.content,
+            filename: item.filename,
+            documentKind: item.documentKind,
+            chunkIndex: item.chunkIndex,
+            similarity
+          };
+        })
+        .filter(item => item.similarity > 0.7) // Only include relevant matches
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit);
+
+      console.log(`🔍 Found ${results.length} similar documents for query: "${queryText.substring(0, 50)}..."`);
+      return results;
+    } catch (error) {
+      console.error('EmbeddingService: Failed to find similar documents:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Search both messages and documents, returning unified results
+   */
+  async findSimilarContent(
+    queryText: string,
+    limit = 10,
+    ticketId?: string,
+    excludePrivate = true
+  ): Promise<UnifiedSearchResult[]> {
+    // Search both messages and documents in parallel
+    const [messageResults, documentResults] = await Promise.all([
+      this.findSimilarMessages(queryText, Math.ceil(limit * 0.7), ticketId, excludePrivate),
+      this.findSimilarDocuments(queryText, Math.ceil(limit * 0.5), ticketId)
+    ]);
+
+    // Convert to unified format
+    const unifiedMessages: UnifiedSearchResult[] = messageResults.map(msg => ({
+      id: msg.messageId,
+      type: 'message' as const,
+      ticketId: msg.ticketId,
+      content: msg.content,
+      metadata: {
+        authorRole: msg.authorRole,
+        authorName: msg.authorName,
+        freshdeskCreatedAt: msg.freshdeskCreatedAt
+      },
+      similarity: msg.similarity
+    }));
+
+    const unifiedDocuments: UnifiedSearchResult[] = documentResults.map(doc => ({
+      id: doc.documentId,
+      type: 'document' as const,
+      ticketId: doc.ticketId,
+      content: doc.content,
+      metadata: {
+        filename: doc.filename,
+        documentKind: doc.documentKind,
+        chunkIndex: doc.chunkIndex
+      },
+      similarity: doc.similarity
+    }));
+
+    // Merge and sort by similarity
+    const allResults = [...unifiedMessages, ...unifiedDocuments]
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
+
+    console.log(`🔍 Unified search found ${allResults.length} results (${unifiedMessages.length} messages, ${unifiedDocuments.length} documents)`);
+    return allResults;
   }
 
   /**
