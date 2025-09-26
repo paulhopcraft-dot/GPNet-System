@@ -18,16 +18,174 @@ const UpdateRiskLevelSchema = z.object({
   ragScore: z.enum(['green', 'amber', 'red'])
 });
 
+// Helper functions for enhanced case detail analysis
+function determineWorkStatus(ticket: any, analysis: any, formData: any): 'at_work' | 'partial_duties' | 'off_work' | 'unknown' {
+  // Check form data for work status indicators
+  if (formData) {
+    if (formData.currentlyWorking === true || formData.backAtWork === true) {
+      return 'at_work';
+    }
+    if (formData.suitableDuties === true || formData.lightDuties === true) {
+      return 'partial_duties';
+    }
+    if (formData.offWork === true || formData.unableToWork === true) {
+      return 'off_work';
+    }
+  }
+  
+  // Check ticket status
+  if (ticket.status === 'COMPLETE' && analysis?.fitClassification === 'fit') {
+    return 'at_work';
+  }
+  if (ticket.status === 'COMPLETE' && analysis?.fitClassification === 'fit_with_restrictions') {
+    return 'partial_duties';
+  }
+  if (analysis?.fitClassification === 'not_fit') {
+    return 'off_work';
+  }
+  
+  return 'unknown';
+}
+
+function interpretRAGStatus(ragScore: string, workStatus: string): { 
+  status: string; 
+  description: string; 
+  workStatusText: string;
+  riskLevel: string;
+} {
+  const interpretations = {
+    green: {
+      status: 'Green - Smooth Progress',
+      description: 'Case is progressing well with minimal complications',
+      riskLevel: 'low'
+    },
+    amber: {
+      status: 'Amber - Some Hiccups',
+      description: 'Case has some challenges but is manageable',
+      riskLevel: 'medium'
+    },
+    red: {
+      status: 'Red - Complex/Critical',
+      description: 'Case requires urgent attention or has significant barriers',
+      riskLevel: 'high'
+    }
+  };
+  
+  const workStatusTexts = {
+    at_work: 'Worker is currently at work',
+    partial_duties: 'Worker on suitable/light duties',
+    off_work: 'Worker is off work',
+    unknown: 'Work status unclear'
+  };
+  
+  const base = interpretations[ragScore as keyof typeof interpretations] || interpretations.green;
+  
+  return {
+    ...base,
+    workStatusText: workStatusTexts[workStatus as keyof typeof workStatusTexts] || workStatusTexts.unknown
+  };
+}
+
+function generateNextSteps(ticket: any, analysis: any, medicalCertificates: any[], workStatus: string): string[] {
+  const steps: string[] = [];
+  
+  // Standard next step from ticket
+  if (ticket.nextStep) {
+    steps.push(ticket.nextStep);
+  }
+  
+  // Medical certificate expiry checks
+  medicalCertificates.forEach((cert: any) => {
+    if (cert.expiresAt) {
+      const expiryDate = new Date(cert.expiresAt);
+      const daysUntilExpiry = Math.ceil((expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      
+      if (daysUntilExpiry <= 7 && daysUntilExpiry > 0) {
+        steps.push(`Medical certificate expires in ${daysUntilExpiry} days - request renewal`);
+      } else if (daysUntilExpiry <= 0) {
+        steps.push(`Medical certificate has expired - urgent renewal required`);
+      }
+    }
+  });
+  
+  // Work status-based recommendations
+  if (workStatus === 'off_work') {
+    steps.push('Monitor worker engagement and return-to-work planning');
+    if (ticket.caseType === 'injury') {
+      steps.push('Schedule progress review with medical provider');
+    }
+  } else if (workStatus === 'partial_duties') {
+    steps.push('Review accommodation effectiveness and duration');
+    steps.push('Plan progression to full duties when appropriate');
+  }
+  
+  // RAG-based recommendations
+  if (analysis?.ragScore === 'red') {
+    steps.push('Escalate to senior case manager for review');
+    steps.push('Consider Michelle AI consultation for complex case guidance');
+  } else if (analysis?.ragScore === 'amber') {
+    steps.push('Monitor closely for improvement or deterioration');
+  }
+  
+  // WorkCover specific steps
+  if (ticket.claimType === 'workcover' || ticket.caseType === 'injury') {
+    steps.push('Ensure WorkCover compliance and documentation');
+    if (ticket.nextDeadlineDate) {
+      steps.push(`Critical deadline: ${ticket.nextDeadlineType} due ${ticket.nextDeadlineDate}`);
+    }
+  }
+  
+  // Default steps if none generated
+  if (steps.length === 0) {
+    steps.push('Case monitoring and standard follow-up procedures');
+  }
+  
+  return steps;
+}
+
+function checkUrgencyFlags(ticket: any, analysis: any, medicalCertificates: any[]): boolean {
+  // Red RAG score indicates urgency
+  if (analysis?.ragScore === 'red') {
+    return true;
+  }
+  
+  // Expired medical certificates
+  const hasExpiredCerts = medicalCertificates.some((cert: any) => {
+    if (!cert.expiresAt) return false;
+    return new Date(cert.expiresAt) < new Date();
+  });
+  
+  if (hasExpiredCerts) {
+    return true;
+  }
+  
+  // WorkCover deadlines
+  if (ticket.nextDeadlineDate) {
+    const deadline = new Date(ticket.nextDeadlineDate);
+    const daysUntilDeadline = Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (daysUntilDeadline <= 3) {
+      return true;
+    }
+  }
+  
+  // Case age for certain types
+  const caseAge = Math.floor((Date.now() - new Date(ticket.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24));
+  if (ticket.caseType === 'injury' && caseAge > 30) {
+    return true;
+  }
+  
+  return false;
+}
+
 /**
  * GET /api/cases
  * Retrieve list of cases for the dashboard
  */
-router.get('/', async (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   try {
     console.log('Fetching cases for dashboard');
     
-    // For demo purposes, get all tickets regardless of organization
-    // In production, this would be filtered by user's organization
+    // Get tickets for authenticated user's organization
     const tickets = await storage.getAllTickets();
     
     // Transform tickets to dashboard case format
@@ -86,7 +244,7 @@ router.get('/', async (req, res) => {
  * GET /api/cases/:ticketId
  * Retrieve specific case details for the modal
  */
-router.get('/:ticketId', async (req, res) => {
+router.get('/:ticketId', requireAuth, async (req, res) => {
   try {
     const { ticketId } = req.params;
     console.log('Fetching case details for:', ticketId);
@@ -112,27 +270,112 @@ router.get('/:ticketId', async (req, res) => {
     // Get form submission
     const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
 
+    // Get medical documents and certificates
+    const documents = await storage.getMedicalDocumentsByTicket(ticketId);
+    const medicalCertificates = documents.filter((doc: any) => 
+      doc.kind === 'medical_certificate' && doc.isCurrentBool
+    );
+    
+    // Get email thread for case history (mock for now - can be enhanced later)
+    const emails: any[] = []; // TODO: Implement email history when getEmailsByTicket is available
+    
+    // Get attachment files (mock for now - can be enhanced later)
+    const attachments: any[] = []; // TODO: Implement attachments when getAttachmentsByTicket is available
+
+    // Enhanced RAG status interpretation with work status
+    const ragScore = analysis?.ragScore || 'green';
+    const workStatus = determineWorkStatus(ticket, analysis, formSubmission?.rawData);
+    const ragInterpretation = interpretRAGStatus(ragScore, workStatus);
+    
+    // WorkCover classification
+    const isWorkCover = ticket.claimType === 'workcover' || 
+                       ticket.caseType === 'injury' ||
+                       (formSubmission?.rawData as any)?.isWorkCoverClaim === true;
+
+    // Enhanced next steps with Michelle AI recommendations
+    const enhancedNextSteps = generateNextSteps(ticket, analysis, medicalCertificates, workStatus);
+
     const caseDetails = {
+      // Core case information
       ticketId: ticket.id,
       caseType: ticket.caseType || 'pre_employment',
       claimType: ticket.claimType,
       status: ticket.status,
+      priority: ticket.priority || 'medium',
       createdAt: new Date(ticket.createdAt || Date.now()),
+      
+      // Worker information
       workerName: worker ? `${worker.firstName} ${worker.lastName}` : 'Unknown Worker',
       email: worker?.email || '',
       phone: worker?.phone || '',
       roleApplied: worker?.roleApplied || '',
+      dateOfBirth: worker?.dateOfBirth || '',
+      
+      // Company information
       company: ticket.companyName || 'Unknown Company',
-      ragScore: analysis?.ragScore || 'green',
+      
+      // Enhanced RAG status with work interpretation
+      ragScore,
+      ragInterpretation,
+      workStatus,
+      
+      // Classification and assessment
       fitClassification: analysis?.fitClassification || 'pending',
+      isWorkCover,
+      workCoverBool: ticket.workCoverBool || false,
+      
+      // Recommendations and notes
       recommendations: analysis?.recommendations ? 
         (Array.isArray(analysis.recommendations) ? analysis.recommendations : [analysis.recommendations]) : [],
       notes: analysis?.notes || '',
+      
+      // Workflow tracking
       assignedTo: ticket.assignedTo,
       nextStep: ticket.nextStep,
+      enhancedNextSteps,
       lastStep: ticket.lastStep,
       lastStepCompletedAt: ticket.lastStepCompletedAt,
-      formData: formSubmission?.rawData || null
+      
+      // Medical certificates and documents
+      medicalCertificates: medicalCertificates.map((cert: any) => ({
+        id: cert.id,
+        filename: cert.filename || 'Unknown',
+        expiresAt: cert.expiresAt,
+        uploadedBy: cert.uploadedBy,
+        createdAt: cert.createdAt,
+        storageUrl: cert.storageUrl,
+        isCurrent: cert.isCurrentBool || true
+      })),
+      
+      // Communication history
+      emailCount: emails.length,
+      recentEmails: emails.slice(0, 3).map((email: any) => ({
+        subject: email.subject || 'No Subject',
+        direction: email.direction || 'unknown',
+        sentAt: email.sentAt,
+        senderName: email.senderName || 'Unknown'
+      })),
+      
+      // Attachments
+      attachments: attachments.map((att: any) => ({
+        id: att.id,
+        filename: att.filename,
+        uploadedAt: att.uploadedAt
+      })),
+      
+      // RTW and compliance fields for complex cases
+      rtwStep: ticket.rtwStep,
+      workplaceJurisdiction: ticket.workplaceJurisdiction,
+      complianceStatus: ticket.complianceStatus,
+      nextDeadlineDate: ticket.nextDeadlineDate,
+      nextDeadlineType: ticket.nextDeadlineType,
+      
+      // Form data for detailed analysis
+      formData: formSubmission?.rawData || null,
+      
+      // Case age and urgency indicators
+      ageDays: Math.floor((Date.now() - new Date(ticket.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24)),
+      requiresUrgentAction: checkUrgencyFlags(ticket, analysis, medicalCertificates)
     };
 
     res.json(caseDetails);
