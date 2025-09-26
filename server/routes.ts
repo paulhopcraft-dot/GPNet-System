@@ -40,6 +40,7 @@ import { autoAllocationRoutes } from "./autoAllocationRoutes";
 import { caseRoutes } from "./caseRoutes";
 import { michelleRoutes } from "./michelleRoutes";
 import adminRoutes from "./adminRoutes";
+import { freshdeskRoutes } from "./freshdeskRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
