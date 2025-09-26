@@ -1,0 +1,51 @@
+Got it — no tone control. You just want a separate agent (independent from the content generator).
+
+Here’s a clean, minimal split that works great:
+
+Two-Agent Setup
+	1.	Content Agent (generator)
+
+	•	Job: create today’s LinkedIn draft (topic → hook → 5-line body → CTA).
+	•	Inputs: your settings (niche, themes), optional prompt.
+	•	Output: raw draft object {id, content, meta}.
+
+	2.	Inbox Agent (separate, no tone)
+
+	•	Job: be the delivery + scheduling + interaction brain for your personal inbox (your web app).
+	•	Responsibilities:
+	•	Run the 09:00 schedule (calls the Content Agent).
+	•	Save drafts to DB and mark status (draft | approved).
+	•	Push a browser notification / update the UI feed.
+	•	Handle user actions: More like this, Approve, Copy, Archive.
+	•	(Optional) Dedupe check against last 7 days.
+
+This keeps “what to write” (Content Agent) separate from “when/where/how it shows up to you” (Inbox Agent).
+
+How the flow works
+	•	09:00 → Inbox Agent triggers → calls Content Agent → stores result.
+	•	Your browser app calls /api/today (served by Inbox Agent) → shows draft.
+	•	You click Approve / More like this → Inbox Agent performs the action (may call Content Agent again for a new draft).
+
+Minimal endpoints (owned by Inbox Agent)
+	•	GET /api/today → latest draft for you.
+	•	POST /api/more → asks Content Agent for another variant; stores & returns it.
+	•	POST /api/approve → marks post approved.
+	•	POST /api/archive → archives a draft.
+	•	POST /api/cron/generate → secured route; Inbox Agent calls Content Agent and saves.
+
+Tiny data model
+
+posts: id, user_id, created_at, status, content, meta
+settings: user_id, niche, themes[], post_time, timezone
+
+Why this is good
+	•	Modular: You can swap the Content Agent later without touching delivery.
+	•	Stable: Inbox Agent owns persistence, scheduling, notifications, and UI hooks.
+	•	Extensible: Later you can add other generators (Twitter Agent, Article Agent) and the same Inbox Agent will deliver them to the same web inbox.
+
+If you want, I can draft the exact TypeScript stubs for:
+	•	agents/contentAgent.ts (generate)
+	•	agents/inboxAgent.ts (schedule + API handlers)
+	•	pages/api/* (today, more, approve, cron)
+
+So you can paste into Replit and run.
