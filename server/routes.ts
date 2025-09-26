@@ -1015,6 +1015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Mount critical missing routes for Michele and Admin
   app.use('/api/michelle', michelleRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/freshdesk', freshdeskRoutes);
 
   // ===========================================
   // SERVER CREATION
