@@ -67,10 +67,10 @@ Your response MUST be valid JSON in this exact format:
   "next_questions": ["question 1", "question 2", "question 3"]
 }`;
 
-    const messages = [
+    const messages: Array<{role: "system" | "user" | "assistant"; content: string}> = [
       { role: "system", content: systemPrompt },
       ...(history?.slice(-6) || []).map(msg => ({
-        role: msg.role,
+        role: msg.role as "user" | "assistant",
         content: msg.content
       })),
       { role: "user", content: message }
