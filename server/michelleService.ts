@@ -259,9 +259,13 @@ export async function chatWithMichelle(
       timestamp: new Date()
     });
 
-    // FORCE FALLBACK FOR DEMO - OpenAI quota issues
-    console.log('🎯 BYPASSING OPENAI - USING DATABASE-POWERED FALLBACK FOR DEMO');
-    console.log('⚠️ OpenAI bypassed, using enhanced demo mode with real data');
+    // ATTEMPT REAL OPENAI FIRST
+    try {
+      console.log('🎯 TRYING REAL OPENAI INTEGRATION');
+      return await getRealOpenAIResponse(conversationId, message, userContext, context, history);
+    } catch (error) {
+      console.log('⚠️ OpenAI failed, falling back to enhanced demo mode:', (error as Error).message);
+    }
     
     // ENHANCED FALLBACK SYSTEM
     
