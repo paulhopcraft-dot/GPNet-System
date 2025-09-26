@@ -272,18 +272,18 @@ export class EmbeddingService {
   }> {
     try {
       const totalMessages = await db
-        .select({ count: db.$count(ticketMessages.id) })
+        .select({ count: db.$count() })
         .from(ticketMessages);
 
       const embeddedMessages = await db
-        .select({ count: db.$count(ticketMessageEmbeddings.id) })
+        .select({ count: db.$count() })
         .from(ticketMessageEmbeddings);
 
       const recentDate = new Date();
       recentDate.setDate(recentDate.getDate() - 7);
 
       const recentEmbeddings = await db
-        .select({ count: db.$count(ticketMessageEmbeddings.id) })
+        .select({ count: db.$count() })
         .from(ticketMessageEmbeddings)
         .where(eq(ticketMessageEmbeddings.createdAt, recentDate));
 
