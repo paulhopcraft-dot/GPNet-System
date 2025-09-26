@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { db } from "./db.js";
 import { ticketMessages, ticketMessageEmbeddings } from "@shared/schema.js";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, count, gte } from "drizzle-orm";
 
 export interface EmbeddingResult {
   messageId: string;
@@ -272,20 +272,20 @@ export class EmbeddingService {
   }> {
     try {
       const totalMessages = await db
-        .select({ count: db.$count() })
+        .select({ count: count() })
         .from(ticketMessages);
 
       const embeddedMessages = await db
-        .select({ count: db.$count() })
+        .select({ count: count() })
         .from(ticketMessageEmbeddings);
 
       const recentDate = new Date();
       recentDate.setDate(recentDate.getDate() - 7);
 
       const recentEmbeddings = await db
-        .select({ count: db.$count() })
+        .select({ count: count() })
         .from(ticketMessageEmbeddings)
-        .where(eq(ticketMessageEmbeddings.createdAt, recentDate));
+        .where(gte(ticketMessageEmbeddings.createdAt, recentDate));
 
       return {
         totalMessages: totalMessages[0].count,
