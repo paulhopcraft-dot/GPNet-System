@@ -34,10 +34,9 @@ const requireAuth = (req: any, res: any, next: any) => {
 
 /**
  * POST /api/michelle/chat - Direct chat endpoint for Michelle widget
- * This endpoint handles direct chat without requiring a pre-started session
- * MOBILE-OPTIMIZED: Works without authentication for iPhone Safari compatibility
+ * SECURITY: Requires authentication for case-specific context access
  */
-router.post('/chat', async (req, res) => {
+router.post('/chat', requireAuth, async (req, res) => {
   try {
     const chatSchema = z.object({
       conversationId: z.string().optional(),
@@ -62,16 +61,28 @@ router.post('/chat', async (req, res) => {
 
     const { conversationId = `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, message, context } = validationResult.data;
     
-    // Create user context (session-optional for mobile compatibility)
+    // SECURITY: Strip sensitive context fields if user is not authenticated properly
+    let sanitizedContext = context;
+    if (!req.session?.user?.id || !req.session?.isAuthenticated) {
+      console.log('🔒 SECURITY: Stripping case-specific context for unauthenticated user');
+      sanitizedContext = {
+        ...context,
+        caseId: undefined,
+        workerName: undefined,
+        checkType: undefined
+      };
+    }
+    
+    // Create user context
     const userContext = {
       userType: 'client' as const,
       isSuperuser: false,
-      userId: req.session?.user?.id || 'mobile-user',
-      email: req.session?.user?.email || 'mobile@example.com'
+      userId: req.session?.user?.id || 'anonymous-user',
+      email: req.session?.user?.email || 'anonymous@example.com'
     };
 
-    // Call Michelle chat service
-    const response = await chatWithMichelle(conversationId, message, userContext, context);
+    // Call Michelle chat service with sanitized context
+    const response = await chatWithMichelle(conversationId, message, userContext, sanitizedContext);
 
     res.json({
       success: true,
