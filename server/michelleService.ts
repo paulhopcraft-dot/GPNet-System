@@ -19,6 +19,7 @@ function createFreshOpenAIClient() {
   // Try multiple possible environment variable names to bypass caching
   const possibleKeys = [
     process.env.OPENAI_API_KEY,
+    process.env.GPNET_OPENAI,           // User's secret name
     process.env.MICHELLE_OPENAI_KEY,    // Alternative name to bypass cache
     process.env.GPT_API_KEY,            // Alternative name
     process.env.AI_API_KEY,             // Alternative name
