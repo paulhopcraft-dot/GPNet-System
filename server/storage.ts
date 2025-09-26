@@ -6,7 +6,7 @@ import {
   organizations, clientUsers, adminUsers, auditEvents, archiveIndex,
   externalEmails, emailAttachments, caseProviders, aiRecommendations, conversations, conversationMessages,
   specialists, escalations, specialistAssignments,
-  medicalDocuments, documentProcessingJobs, documentProcessingLogs,
+  medicalDocuments, documentProcessingJobs, documentProcessingLogs, documentEmbeddings,
   checks, companyAliases, emailDrafts, checkRequests,
   medicalOpinionRequests, organizationSettings, reminderSchedule,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
@@ -15,7 +15,7 @@ import {
   type LetterTemplate, type GeneratedLetter, type FreshdeskTicket, type FreshdeskSyncLog,
   type Organization, type ClientUser, type AdminUser, type AuditEvent, type ArchiveIndex,
   type Specialist, type Escalation, type SpecialistAssignment,
-  type MedicalDocument, type DocumentProcessingJob, type DocumentProcessingLog,
+  type MedicalDocument, type DocumentProcessingJob, type DocumentProcessingLog, type DocumentEmbedding,
   type Check, type CompanyAlias, type EmailDraft, type CheckRequest,
   type MedicalOpinionRequest, type OrganizationSettings, type ReminderSchedule,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
@@ -25,7 +25,7 @@ import {
   type InsertFreshdeskTicket, type InsertFreshdeskSyncLog,
   type InsertOrganization, type InsertClientUser, type InsertAdminUser, type InsertAuditEvent, type InsertArchiveIndex,
   type InsertSpecialist, type InsertEscalation, type InsertSpecialistAssignment,
-  type InsertMedicalDocument, type InsertDocumentProcessingJob, type InsertDocumentProcessingLog,
+  type InsertMedicalDocument, type InsertDocumentProcessingJob, type InsertDocumentProcessingLog, type InsertDocumentEmbedding,
   type InsertCheck, type InsertCompanyAlias, type InsertEmailDraft, type InsertCheckRequest,
   type InsertMedicalOpinionRequest, type InsertOrganizationSettings, type InsertReminderSchedule
 } from "@shared/schema";
@@ -359,6 +359,22 @@ export interface IStorage {
   updateReminderStatus(id: string, status: string, sentAt?: Date): Promise<ReminderSchedule>;
   getPendingReminders(): Promise<ReminderSchedule[]>;
   getOverdueReminders(): Promise<ReminderSchedule[]>;
+
+  // ===============================================
+  // DOCUMENT EMBEDDINGS FOR RAG
+  // ===============================================
+  
+  // Document embeddings for medical reports
+  createDocumentEmbedding(embedding: InsertDocumentEmbedding): Promise<DocumentEmbedding>;
+  getDocumentEmbeddingsByDocument(documentId: string): Promise<DocumentEmbedding[]>;
+  getDocumentEmbeddingsByTicket(ticketId: string): Promise<DocumentEmbedding[]>;
+  
+  // Document methods (aliasing to medical documents for now)
+  getDocument(id: string): Promise<MedicalDocument | undefined>;
+  
+  // Helper methods for Freshdesk integration
+  getAllTicketsWithFreshdeskIds(): Promise<Ticket[]>;
+  getDocumentProcessingLogs(documentId: string): Promise<DocumentProcessingLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2581,6 +2597,51 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(asc(reminderSchedule.scheduledFor));
+  }
+  // ===============================================
+  // DOCUMENT EMBEDDINGS FOR RAG
+  // ===============================================
+  
+  async createDocumentEmbedding(embedding: InsertDocumentEmbedding): Promise<DocumentEmbedding> {
+    const [result] = await db
+      .insert(documentEmbeddings)
+      .values(embedding)
+      .returning();
+    return result;
+  }
+
+  async getDocumentEmbeddingsByDocument(documentId: string): Promise<DocumentEmbedding[]> {
+    return await db
+      .select()
+      .from(documentEmbeddings)
+      .where(eq(documentEmbeddings.documentId, documentId))
+      .orderBy(documentEmbeddings.chunkIndex);
+  }
+
+  async getDocumentEmbeddingsByTicket(ticketId: string): Promise<DocumentEmbedding[]> {
+    return await db
+      .select()
+      .from(documentEmbeddings)
+      .where(eq(documentEmbeddings.ticketId, ticketId))
+      .orderBy(documentEmbeddings.filename, documentEmbeddings.chunkIndex);
+  }
+  
+  // Document methods (aliasing to medical documents for now)
+  async getDocument(id: string): Promise<MedicalDocument | undefined> {
+    return await this.getMedicalDocument(id);
+  }
+  
+  // Helper methods for Freshdesk integration
+  async getAllTicketsWithFreshdeskIds(): Promise<Ticket[]> {
+    return await db
+      .select()
+      .from(tickets)
+      .where(sql`${tickets.fdId} IS NOT NULL`)
+      .orderBy(desc(tickets.createdAt));
+  }
+
+  async getDocumentProcessingLogs(documentId: string): Promise<DocumentProcessingLog[]> {
+    return await this.getDocumentProcessingLogsByDocument(documentId);
   }
 }
 

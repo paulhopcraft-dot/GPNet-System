@@ -210,6 +210,28 @@ export const ticketMessageEmbeddings = pgTable("ticket_message_embeddings", {
   modelIdx: index("ticket_message_embeddings_model_idx").on(table.model),
 }));
 
+// Document embeddings table for RAG vector search of medical reports
+export const documentEmbeddings = pgTable("document_embeddings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  documentId: varchar("document_id").references(() => documents.id).notNull(),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(), // For efficient ticket-scoped queries
+  vector: text("vector").notNull(), // JSON array of embedding vector (OpenAI ada-002 format)
+  model: text("model").default("text-embedding-ada-002"), // Embedding model used
+  chunkIndex: integer("chunk_index").default(0), // For long documents split into chunks
+  content: text("content").notNull(), // Text content that was embedded
+  filename: text("filename").notNull(), // Document filename for context
+  documentKind: text("document_kind").notNull(), // "medical_certificate", "diagnosis_report", etc.
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  documentIdIdx: index("document_embeddings_document_id_idx").on(table.documentId),
+  ticketIdIdx: index("document_embeddings_ticket_id_idx").on(table.ticketId),
+  modelIdx: index("document_embeddings_model_idx").on(table.model),
+}));
+
+// Type exports for document embeddings
+export type DocumentEmbedding = typeof documentEmbeddings.$inferSelect;
+export type InsertDocumentEmbedding = typeof documentEmbeddings.$inferInsert;
+
 // ===============================================
 // MULTI-TENANT ADMIN LAYER
 // ===============================================

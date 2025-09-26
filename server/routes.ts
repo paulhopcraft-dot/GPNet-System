@@ -42,6 +42,7 @@ import { michelleRoutes } from "./michelleRoutes";
 import adminRoutes from "./adminRoutes";
 import { freshdeskRoutes } from "./freshdeskRoutes";
 import ragRoutes from "./ragRoutes";
+import { freshdeskBackfillService } from './freshdeskBackfillService.js';
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -998,6 +999,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ 
         success: false, 
         error: 'Simulation failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // ===========================================
+  // FRESHDESK DOCUMENT BACKFILL
+  // ===========================================
+
+  // Trigger document attachment backfill from Freshdesk
+  app.post('/api/freshdesk/backfill-documents', async (req, res) => {
+    try {
+      console.log('🔄 Starting Freshdesk document backfill...');
+      
+      const result = await freshdeskBackfillService.backfillAllTicketAttachments();
+      
+      res.json({
+        success: true,
+        message: 'Freshdesk document backfill completed',
+        stats: result
+      });
+    } catch (error) {
+      console.error('❌ Freshdesk document backfill failed:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Document backfill failed',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
     }

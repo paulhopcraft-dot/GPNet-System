@@ -647,6 +647,113 @@ export class FreshdeskService {
       return { conversations: [], notes: [] };
     }
   }
+
+  /**
+   * Get all attachments for a ticket
+   */
+  async getTicketAttachments(ticketId: number): Promise<any[]> {
+    if (!this.isAvailable()) {
+      console.log('Freshdesk integration not available, skipping attachment fetch');
+      return [];
+    }
+
+    try {
+      // Get conversations first since attachments are linked to conversations
+      const conversations = await this.getTicketConversations(ticketId);
+      const attachments: any[] = [];
+
+      // Extract attachments from each conversation
+      for (const conversation of conversations) {
+        if (conversation.attachments && Array.isArray(conversation.attachments)) {
+          for (const attachment of conversation.attachments) {
+            attachments.push({
+              ...attachment,
+              conversationId: conversation.id,
+              ticketId,
+              conversationCreatedAt: conversation.created_at
+            });
+          }
+        }
+      }
+
+      console.log(`Fetched ${attachments.length} attachments for ticket ${ticketId}`);
+      return attachments;
+    } catch (error) {
+      console.error(`Failed to fetch attachments for ticket ${ticketId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Download an attachment by its URL
+   */
+  async downloadAttachment(attachmentUrl: string): Promise<Buffer | null> {
+    if (!this.isAvailable()) {
+      console.log('Freshdesk integration not available');
+      return null;
+    }
+
+    try {
+      const headers = this.getAuthHeaders();
+      delete headers['Content-Type']; // Remove content-type for file downloads
+
+      const response = await fetch(attachmentUrl, {
+        method: 'GET',
+        headers
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download attachment: ${response.status} ${response.statusText}`);
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      console.log(`Downloaded attachment: ${attachmentUrl} (${buffer.length} bytes)`);
+      return buffer;
+    } catch (error) {
+      console.error(`Failed to download attachment from ${attachmentUrl}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Get all tickets with their attachments (for backfill operations)
+   */
+  async fetchAllTicketsWithAttachments(): Promise<Array<{
+    ticket: any;
+    attachments: any[];
+  }>> {
+    if (!this.isAvailable()) {
+      throw new Error('Freshdesk integration not available');
+    }
+
+    const tickets = await this.fetchAllTickets();
+    const ticketsWithAttachments: Array<{ ticket: any; attachments: any[] }> = [];
+
+    console.log(`Fetching attachments for ${tickets.length} tickets...`);
+
+    for (const ticket of tickets) {
+      try {
+        const attachments = await this.getTicketAttachments(ticket.id);
+        
+        if (attachments.length > 0) {
+          ticketsWithAttachments.push({
+            ticket,
+            attachments
+          });
+          console.log(`Ticket ${ticket.id}: ${attachments.length} attachments`);
+        }
+
+        // Rate limiting between requests
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Failed to fetch attachments for ticket ${ticket.id}:`, error);
+        // Continue with other tickets
+      }
+    }
+
+    console.log(`Found ${ticketsWithAttachments.length} tickets with attachments`);
+    return ticketsWithAttachments;
+  }
 }
 
 export const freshdeskService = new FreshdeskService();

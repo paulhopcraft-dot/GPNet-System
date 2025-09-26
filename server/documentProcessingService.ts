@@ -51,8 +51,6 @@ export class DocumentProcessingService {
       const job = await this.createProcessingJob({
         ticketId,
         attachmentUrl: attachmentData.url,
-        companyId,
-        requesterEmail,
         status: 'processing',
         priority: 'normal'
       });
@@ -67,7 +65,7 @@ export class DocumentProcessingService {
       const existingDoc = await this.findDocumentByChecksum(checksum);
       if (existingDoc) {
         console.log(`Duplicate document detected: ${checksum}`);
-        await this.logEvent(existingDoc.id, jobId, 'error', 'Duplicate document detected', { checksum });
+        await this.logEvent(existingDoc.id, jobId!, 'error', 'Duplicate document detected', { checksum });
         
         await this.updateJobStatus(jobId, 'completed', existingDoc.id);
         
@@ -131,7 +129,7 @@ export class DocumentProcessingService {
       await this.logEvent(documentId, jobId, 'case_updated', 'Case updated with document information');
 
       // Mark job as completed
-      await this.updateJobStatus(jobId, 'completed', documentId);
+      await this.updateJobStatus(jobId!, 'completed', documentId);
 
       // Check if review is required
       if (medicalDoc.requiresReview) {
