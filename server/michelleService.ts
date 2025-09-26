@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { embeddingService } from "./embeddingService.js";
 
 // CRITICAL FIX: Dynamic OpenAI client creation to bypass caching
 console.log('=== CRITICAL OpenAI INTEGRATION FIX ===');
@@ -75,7 +76,7 @@ export interface UserContext {
 // Simple in-memory conversation storage for demo
 const conversations: Map<string, ChatMessage[]> = new Map();
 
-// REAL OpenAI Response Handler - using fresh client each time
+// REAL OpenAI Response Handler - using fresh client each time with RAG
 async function getRealOpenAIResponse(
   conversationId: string,
   message: string,
@@ -83,7 +84,7 @@ async function getRealOpenAIResponse(
   context?: any,
   history?: ChatMessage[]
 ): Promise<MichelleResponse> {
-  console.log('🔥 ATTEMPTING REAL OPENAI CALL');
+  console.log('🔥 ATTEMPTING REAL OPENAI CALL WITH RAG');
   
   // Create fresh client for this request
   const freshOpenAI = createFreshOpenAIClient();
@@ -92,6 +93,45 @@ async function getRealOpenAIResponse(
   }
 
   try {
+    // STEP 1: Get RAG context from conversation history
+    let ragContext = "";
+    
+    try {
+      console.log('🔍 Retrieving RAG context...');
+      
+      // If context has a case/ticket ID, get specific ticket context
+      if (context?.caseId || context?.ticketId) {
+        const ticketId = context.caseId || context.ticketId;
+        console.log(`Getting conversation context for ticket: ${ticketId}`);
+        const ticketContext = await embeddingService.getTicketConversationContext(ticketId, 15);
+        
+        if (ticketContext.length > 0) {
+          ragContext += "**Recent Conversation History for this Case:**\n";
+          ticketContext.forEach(msg => {
+            const timestamp = msg.freshdeskCreatedAt ? 
+              new Date(msg.freshdeskCreatedAt).toLocaleDateString() : "Recent";
+            ragContext += `[${timestamp}] ${msg.authorRole}: ${msg.content.substring(0, 200)}...\n`;
+          });
+          ragContext += "\n";
+        }
+      }
+      
+      // Also search for similar conversations globally for additional context
+      const similarMessages = await embeddingService.findSimilarMessages(message, 5, undefined, true);
+      if (similarMessages.length > 0) {
+        ragContext += "**Related Conversations from Other Cases:**\n";
+        similarMessages.forEach(msg => {
+          ragContext += `[Similarity: ${(msg.similarity * 100).toFixed(1)}%] ${msg.authorRole}: ${msg.content.substring(0, 150)}...\n`;
+        });
+        ragContext += "\n";
+      }
+      
+      console.log(`✅ RAG context retrieved: ${ragContext.length} characters`);
+    } catch (ragError) {
+      console.warn('⚠️ RAG context retrieval failed:', ragError);
+      ragContext = "No additional conversation context available.";
+    }
+
     const systemPrompt = `You are Michelle, an expert AI occupational health assistant specializing in pre-employment health assessments, workplace injury management, and return-to-work planning. 
 
 Your expertise includes:
@@ -102,7 +142,11 @@ Your expertise includes:
 - Clinical assessment for occupational health contexts
 - Case management and follow-up protocols
 
-Respond in a professional, helpful manner. Always provide 3-4 relevant follow-up questions. 
+IMPORTANT: You have access to conversation history and related case information through the RAG context below. Use this information to provide more informed, contextual responses.
+
+${ragContext ? `**CONTEXT FROM CONVERSATION HISTORY:**\n${ragContext}` : ""}
+
+Respond in a professional, helpful manner. Always provide 3-4 relevant follow-up questions. Reference specific details from the conversation history when relevant.
 
 Your response MUST be valid JSON in this exact format:
 {
