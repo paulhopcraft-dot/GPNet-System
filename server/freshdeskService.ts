@@ -572,6 +572,81 @@ export class FreshdeskService {
       retryCount: 0
     };
   }
+
+  /**
+   * Get all conversations/replies for a ticket
+   */
+  async getTicketConversations(ticketId: number): Promise<any[]> {
+    if (!this.isAvailable()) {
+      console.log('Freshdesk integration not available, skipping conversation fetch');
+      return [];
+    }
+
+    try {
+      const conversations = await this.makeRequest<any[]>(`/tickets/${ticketId}/conversations`);
+      console.log(`Fetched ${conversations.length} conversation messages for ticket ${ticketId}`);
+      return conversations;
+    } catch (error) {
+      console.error(`Failed to fetch conversations for ticket ${ticketId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all private notes for a ticket
+   */
+  async getTicketNotes(ticketId: number): Promise<any[]> {
+    if (!this.isAvailable()) {
+      console.log('Freshdesk integration not available, skipping notes fetch');
+      return [];
+    }
+
+    try {
+      // Notes are typically included in conversations with private=true
+      const conversations = await this.getTicketConversations(ticketId);
+      const notes = conversations.filter(conv => conv.private === true);
+      console.log(`Fetched ${notes.length} private notes for ticket ${ticketId}`);
+      return notes;
+    } catch (error) {
+      console.error(`Failed to fetch notes for ticket ${ticketId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Get ticket with conversations and notes (comprehensive data)
+   */
+  async getTicketWithConversations(ticketId: number): Promise<{
+    ticket?: any;
+    conversations: any[];
+    notes: any[];
+  }> {
+    if (!this.isAvailable()) {
+      console.log('Freshdesk integration not available');
+      return { conversations: [], notes: [] };
+    }
+
+    try {
+      const [ticket, conversations] = await Promise.all([
+        this.makeRequest<any>(`/tickets/${ticketId}`).catch(() => null),
+        this.getTicketConversations(ticketId)
+      ]);
+
+      const notes = conversations.filter(conv => conv.private === true);
+      const replies = conversations.filter(conv => conv.private !== true);
+
+      console.log(`Fetched ticket ${ticketId} with ${replies.length} replies and ${notes.length} notes`);
+      
+      return {
+        ticket,
+        conversations: replies,
+        notes
+      };
+    } catch (error) {
+      console.error(`Failed to fetch comprehensive ticket data for ${ticketId}:`, error);
+      return { conversations: [], notes: [] };
+    }
+  }
 }
 
 export const freshdeskService = new FreshdeskService();
