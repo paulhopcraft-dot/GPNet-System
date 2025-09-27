@@ -185,8 +185,19 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     console.log('Fetching cases for dashboard');
     
-    // Get tickets for authenticated user's organization
-    const tickets = await storage.getAllTickets();
+    // Get authenticated user from session
+    const user = (req as any).session.user;
+    let tickets;
+    
+    // Super users (admin with super permissions) see all tickets
+    if (user.userType === 'admin' || user.role === 'super_user') {
+      console.log('Super user - fetching all tickets');
+      tickets = await storage.getAllTickets();
+    } else {
+      // Company users see only their organization's tickets
+      console.log(`Company user - fetching tickets for organization: ${user.organizationId}`);
+      tickets = await storage.getAllTicketsForOrganization(user.organizationId);
+    }
     
     // Transform tickets to dashboard case format
     const cases = await Promise.all(tickets.map(async (ticket) => {
