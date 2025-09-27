@@ -250,9 +250,17 @@ export class FreshdeskImportService {
         };
       }
 
-      // Clean up domain format
+      // Process domain using same logic as FreshdeskService
       let domain = process.env.FRESHDESK_DOMAIN;
-      if (domain && !domain.endsWith('.freshdesk.com')) {
+      if (domain) {
+        // Remove protocol if present
+        domain = domain.replace(/^https?:\/\//, '');
+        // Extract subdomain from formats like "gpnet.freshdesk.com" or "gpnet"
+        const match = domain.match(/^([^.]+)(?:\.freshdesk\.com)?/);
+        domain = match ? match[1] : domain;
+        // Remove any trailing slashes or paths
+        domain = domain.split('/')[0];
+        // Add back the .freshdesk.com suffix for display
         domain = `${domain}.freshdesk.com`;
       }
 
