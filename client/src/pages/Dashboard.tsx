@@ -10,6 +10,7 @@ import PreEmploymentInvitationForm from "@/components/PreEmploymentInvitationFor
 import PreEmploymentReviewModal from "@/components/PreEmploymentReviewModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useUser } from "@/components/UserContext";
+import { useSearch } from "@/contexts/SearchContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -79,6 +80,7 @@ interface FilterState {
 
 export default function Dashboard() {
   const { user } = useUser(); // Get user context
+  const { searchQuery } = useSearch(); // Get search context
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
   
   // Show navigation buttons at the top
@@ -154,9 +156,9 @@ export default function Dashboard() {
     setShowInvitationForm(true);
   };
   
-  // Advanced filter state
+  // Advanced filter state (search is now handled by SearchContext)
   const [filters, setFilters] = useState<FilterState>({
-    search: "",
+    search: "", // Kept for compatibility but will use searchQuery instead
     status: "all",
     caseType: "all",
     claimType: "all",
@@ -250,7 +252,7 @@ export default function Dashboard() {
   // Count active filters
   const getActiveFilterCount = () => {
     let count = 0;
-    if (filters.search) count++;
+    if (searchQuery) count++;
     if (filters.status !== 'all') count++;
     if (filters.caseType !== 'all') count++;
     if (filters.claimType !== 'all') count++;
@@ -340,9 +342,9 @@ export default function Dashboard() {
     if (filters.ragScore !== 'all' && caseItem.ragScore !== filters.ragScore) {
       return false;
     }
-    // Text search
-    if (filters.search) {
-      const searchTerm = filters.search.toLowerCase();
+    // Text search (from header search context)
+    if (searchQuery) {
+      const searchTerm = searchQuery.toLowerCase();
       const searchableText = [
         caseItem.ticketId,
         caseItem.workerName,
@@ -459,6 +461,58 @@ export default function Dashboard() {
             todayCount={8}
             weeklyGrowth={15}
           />
+        </div>
+
+        {/* Status Filter Tabs */}
+        <div className="mb-6">
+          <div className="border-b">
+            <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setFilters({...filters, status: "all"})}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  filters.status === "all" 
+                    ? "border-primary text-primary" 
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300"
+                }`}
+                data-testid="tab-all-cases"
+              >
+                All Cases
+              </button>
+              <button
+                onClick={() => setFilters({...filters, status: "NEW"})}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  filters.status === "NEW" 
+                    ? "border-primary text-primary" 
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300"
+                }`}
+                data-testid="tab-new-submissions"
+              >
+                New Submissions
+              </button>
+              <button
+                onClick={() => setFilters({...filters, status: "ANALYSING"})}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  filters.status === "ANALYSING" 
+                    ? "border-primary text-primary" 
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300"
+                }`}
+                data-testid="tab-in-progress"
+              >
+                In Progress
+              </button>
+              <button
+                onClick={() => setFilters({...filters, status: "COMPLETE"})}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  filters.status === "COMPLETE" 
+                    ? "border-primary text-primary" 
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-gray-300"
+                }`}
+                data-testid="tab-completed"
+              >
+                Completed
+              </button>
+            </nav>
+          </div>
         </div>
 
         {/* Dashboard Tabs */}

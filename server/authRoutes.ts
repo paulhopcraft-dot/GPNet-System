@@ -438,7 +438,7 @@ router.get('/me', async (req: Request, res: Response) => {
       name: sessionUser.firstName + ' ' + sessionUser.lastName,
       email: sessionUser.email,
       role: sessionUser.role,
-      userType: sessionUser.role, // 'admin' or 'client'
+      userType: 'admin', // Super user is admin type
       organizationId: sessionUser.organizationId,
       permissions: sessionUser.permissions || [],
       isImpersonating: sessionUser.isImpersonating || false,

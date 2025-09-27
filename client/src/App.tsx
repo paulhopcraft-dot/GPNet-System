@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { UserProvider } from "@/components/UserContext";
+import { SearchProvider } from "@/contexts/SearchContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Dashboard from "@/pages/Dashboard";
 import WorkerPreEmploymentCheck from "@/pages/WorkerPreEmploymentCheck";
@@ -129,11 +130,13 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light" storageKey="gpnet-ui-theme">
         <UserProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-            <MichelleWidget />
-          </TooltipProvider>
+          <SearchProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Router />
+              <MichelleWidget />
+            </TooltipProvider>
+          </SearchProvider>
         </UserProvider>
       </ThemeProvider>
     </QueryClientProvider>
