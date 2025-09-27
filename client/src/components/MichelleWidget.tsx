@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { MessageCircle, X, Send, Loader2 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useUser } from "@/components/UserContext";
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -31,6 +32,7 @@ interface MichelleWidgetProps {
 }
 
 export function MichelleWidget({ context }: MichelleWidgetProps) {
+  const { user } = useUser();
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
@@ -54,10 +56,13 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
 
   useEffect(() => {
     if (isOpen && messages.length === 0) {
-      // Start with a greeting message
+      // Start with a personalized greeting message
+      const hour = new Date().getHours();
+      const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+      const userName = user?.name || "there";
       const greeting: ChatMessage = {
         role: 'assistant',
-        content: `Hi! I'm Michelle, your occupational health assistant. How can I help you today?`,
+        content: `${timeGreeting} ${userName}. I'm Michelle, your personal case manager. How can I help you today?`,
         timestamp: new Date()
       };
       setMessages([greeting]);

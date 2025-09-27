@@ -88,6 +88,16 @@ export default function MichelleDashboardPanel({
     staleTime: 2 * 60 * 1000 // 2 minutes
   });
 
+  // Fetch organization breakdown for dashboard
+  const { data: organizationBreakdown } = useQuery<{
+    organizations: Array<{ id: string; name: string; caseCount: number }>;
+    totalActive: number;
+    totalCases: number;
+  }>({
+    queryKey: ['/api/dashboard/organizations'],
+    staleTime: 5 * 60 * 1000 // 5 minutes
+  });
+
   // Generate activity-based suggestions based on mode and context
   useEffect(() => {
     const newSuggestions: MichelleSuggestion[] = [];
@@ -283,13 +293,18 @@ export default function MichelleDashboardPanel({
               )}
             </div>
             <p className="text-blue-700 dark:text-blue-200 mt-1">
-              I'm Michelle, your AI assistant. {michelleMode?.mode === 'universal' 
+              I'm Michelle, your personal case manager. {michelleMode?.mode === 'universal' 
                 ? "I have access to platform-wide data and insights." 
                 : "I'm focused on your organization's data and cases."}
             </p>
+            {organizationBreakdown && organizationBreakdown.totalActive > 0 && (
+              <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                Monitoring {organizationBreakdown.totalActive} active organizations with {organizationBreakdown.totalCases} total cases
+              </p>
+            )}
             {michelleMode?.mode === 'universal' && michelleContext?.data.totalOrganizations && (
               <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
-                Monitoring {michelleContext.data.totalOrganizations} organizations with {michelleContext.data.totalTickets} total cases
+                Platform-wide: {michelleContext.data.totalOrganizations} organizations with {michelleContext.data.totalTickets} total cases
               </p>
             )}
           </div>
