@@ -1994,6 +1994,7 @@ export const ocrFieldExtractionSchema = z.object({
   treatmentPlan: z.string().optional(),
   followUpInterval: z.string().optional(),
   redFlags: z.string().optional(),
+  extractedText: z.string().optional(), // Full text content extracted from document
   confidence: z.number().min(0).max(100).optional(),
   fieldConfidences: z.record(z.number().min(0).max(100)).optional()
 });
