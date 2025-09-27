@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/components/UserContext";
+import { useSearch } from "@/contexts/SearchContext";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
@@ -17,6 +18,7 @@ import gpnetLogo from "@assets/GPNet Logo Design_1758707602382.png";
 
 export default function Header() {
   const { user, setUser } = useUser();
+  const { searchQuery, setSearchQuery } = useSearch();
   const [, setLocation] = useLocation();
 
   // Stop impersonation mutation
@@ -97,6 +99,8 @@ export default function Header() {
             <Input
               placeholder="Search cases, workers, or tickets..."
               className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               data-testid="input-search"
             />
           </div>
