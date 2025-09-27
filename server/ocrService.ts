@@ -80,11 +80,15 @@ export class OcrService {
       // Convert buffer to base64
       const base64Image = imageBuffer.toString('base64');
 
-      // Perform document classification and field extraction in parallel
-      const [classification, extraction] = await Promise.all([
+      // Perform document classification, field extraction, and text extraction in parallel
+      const [classification, extraction, fullText] = await Promise.all([
         this.classifyDocument(base64Image, filename, imageContentType),
-        this.extractFields(base64Image, imageContentType)
+        this.extractFields(base64Image, imageContentType),
+        this.extractFullText(base64Image, imageContentType)
       ]);
+
+      // Add the extracted text to the extraction result
+      extraction.extractedText = fullText;
 
       const processingTime = Date.now() - startTime;
 
@@ -247,6 +251,50 @@ export class OcrService {
       confidence: Math.max(0, Math.min(100, result.confidence || 0)),
       reasoning: result.reasoning || "Classification completed"
     };
+  }
+
+  /**
+   * Extract full text content from document using OpenAI Vision
+   */
+  private async extractFullText(base64Image: string, contentType: string): Promise<string> {
+    const prompt = `Extract ALL text content from this medical document image. 
+
+    Instructions:
+    - Read and transcribe every word, number, and text element visible in the document
+    - Maintain the logical reading order (top to bottom, left to right)
+    - Preserve line breaks and paragraph structure where meaningful
+    - Include headers, body text, signatures, dates, and any other text
+    - Do not interpret or summarize - provide complete literal transcription
+    - If text is unclear or partially obscured, make your best attempt
+    - Return only the extracted text, no additional formatting or commentary
+
+    Focus on accuracy and completeness of the text extraction.`;
+
+    if (!openai) {
+      throw new Error('OpenAI client not initialized');
+    }
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            {
+              type: "image_url",
+              image_url: { url: `data:${contentType};base64,${base64Image}` }
+            }
+          ]
+        }
+      ],
+      max_completion_tokens: 3000
+    });
+
+    const extractedText = response.choices[0].message.content || '';
+    
+    // Clean and normalize the extracted text
+    return this.cleanExtractedText(extractedText);
   }
 
   /**
@@ -423,6 +471,18 @@ export class OcrService {
       .replace(/\s+/g, ' ') // Normalize whitespace
       .replace(/[^\x20-\x7E\u00A0-\u024F]/g, '') // Remove special characters but keep accented letters
       .substring(0, 1000); // Limit length
+  }
+
+  /**
+   * Clean and normalize extracted text content
+   */
+  private cleanExtractedText(text: string): string {
+    return text
+      .trim()
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .replace(/\r\n/g, '\n') // Normalize line endings
+      .replace(/\n\s*\n\s*\n/g, '\n\n') // Remove excessive blank lines
+      .substring(0, 10000); // Limit length for embedding
   }
 
   /**
