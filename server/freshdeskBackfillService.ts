@@ -27,13 +27,16 @@ export class FreshdeskBackfillService {
     };
 
     try {
-      // For now, use a mock approach since getAllTickets doesn't exist
-      // In production, you'd implement pagination to get all tickets
-      console.log('📋 Using existing ticket system for testing...');
-      const mockTickets = [{id: 1, subject: 'Test medical report', description: 'Mock ticket for testing', priority: 2, requester_id: 123}];
-      console.log(`Processing ${mockTickets.length} test tickets`);
+      // Use real Freshdesk API to get all tickets with attachments
+      if (!freshdeskService.isAvailable()) {
+        throw new Error('Freshdesk integration not configured. Please set FRESHDESK_API_KEY and FRESHDESK_DOMAIN environment variables.');
+      }
+      
+      console.log('📋 Fetching all tickets from Freshdesk API...');
+      const allTickets = await freshdeskService.fetchAllTickets();
+      console.log(`Processing ${allTickets.length} tickets from Freshdesk`);
 
-      for (const fdTicket of mockTickets) {
+      for (const fdTicket of allTickets) {
         try {
           results.processed++;
           console.log(`\n🎫 Processing Freshdesk ticket ${fdTicket.id}: ${fdTicket.subject}`);
