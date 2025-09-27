@@ -6,6 +6,8 @@ import { db } from './db.js';
 import { externalEmails, medicalDocuments } from '@shared/schema';
 import { sql } from 'drizzle-orm';
 import { embeddingService } from './embeddingService.js';
+import { freshdeskService } from './freshdeskService.js';
+import { documentProcessingService } from './documentProcessingService.js';
 
 const router = Router();
 
@@ -441,6 +443,98 @@ router.get('/unmatched-emails', requireAdmin, async (req: Request, res: Response
   } catch (error) {
     console.error('Get unmatched emails error:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Fetch and import a specific ticket from Freshdesk by ID
+router.get('/fetch-ticket/:ticketId', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { ticketId } = req.params;
+    const freshdeskTicketId = parseInt(ticketId);
+    
+    if (isNaN(freshdeskTicketId)) {
+      return res.status(400).json({ error: 'Invalid ticket ID' });
+    }
+
+    console.log(`🎯 Fetching specific ticket ${freshdeskTicketId} from Freshdesk...`);
+    
+    // Check if Freshdesk is available
+    if (!freshdeskService.isAvailable()) {
+      return res.status(400).json({ 
+        error: 'Freshdesk integration not configured',
+        details: 'Please configure FRESHDESK_API_KEY and FRESHDESK_DOMAIN environment variables'
+      });
+    }
+
+    // Fetch the specific ticket
+    const ticket = await freshdeskService.getTicket(freshdeskTicketId);
+    
+    if (!ticket) {
+      return res.status(404).json({ 
+        error: 'Ticket not found',
+        details: `Ticket ${freshdeskTicketId} not found in Freshdesk`
+      });
+    }
+
+    console.log(`✅ Found ticket: ${ticket.subject}`);
+
+    // Check if ticket already exists in our database
+    const existingTicket = await storage.findTicketByFreshdeskId(freshdeskTicketId);
+    if (existingTicket) {
+      return res.json({
+        success: true,
+        message: 'Ticket already exists in database',
+        ticket: existingTicket
+      });
+    }
+
+    // Import the ticket into our system
+    console.log(`📥 Importing ticket ${freshdeskTicketId} into database...`);
+    
+    // Use existing default organization
+    let organizationId = 'a25459c3-4c2a-4cb0-b3a3-89402ec69cce';
+    
+    // Extract worker name from subject (e.g., "Symmetry- Jacob Gunn")
+    const subjectParts = ticket.subject.split('-');
+    const workerName = subjectParts.length > 1 ? subjectParts[1].trim() : 'Unknown Worker';
+    
+    // Create the ticket
+    const newTicket = await storage.createTicket({
+      caseType: 'injury',
+      status: 'NEW',
+      claimType: 'workcover',
+      priority: 'medium',
+      companyName: subjectParts[0]?.trim() || 'Unknown Company',
+      workerId: null, // Will be linked to worker later if needed
+      organizationId: organizationId,
+      fdId: freshdeskTicketId,
+      subject: ticket.subject,
+      workplaceJurisdiction: 'Unknown',
+      complianceStatus: 'pending',
+      nextDeadlineType: 'Initial Assessment',
+      nextStep: 'Process injury report',
+      ageDays: Math.floor((Date.now() - new Date(ticket.created_at).getTime()) / (24 * 60 * 60 * 1000))
+    });
+
+    console.log(`✅ Ticket imported successfully with ID: ${newTicket.id}`);
+    
+    // Documents will be processed separately if available
+    console.log(`📄 Ticket imported, documents can be processed via Freshdesk document service`);
+
+    res.json({
+      success: true,
+      message: 'Ticket fetched and imported successfully',
+      ticket: newTicket,
+      originalFreshdeskTicket: ticket
+    });
+
+  } catch (error) {
+    console.error('❌ Fetch ticket error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch and import ticket',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
