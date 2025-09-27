@@ -46,7 +46,7 @@ export class FreshdeskBackfillService {
           
           // Process attachments for this ticket
           const attachmentResult = await freshdeskDocumentService.processTicketAttachments(
-            fdTicket.id.toString(),
+            fdTicket.id,
             gpnetTicket.id
           );
 
@@ -115,9 +115,9 @@ export class FreshdeskBackfillService {
       caseType: this.extractIssueType(fdTicket),
       priority: this.mapPriority(fdTicket.priority),
       status: 'NEW',
-      company: companyName,
-      description: fdTicket.description || `Imported from Freshdesk ticket ${fdTicket.id}`,
-      fdId: fdTicket.id.toString(),
+      companyName: companyName,
+      subject: fdTicket.subject || `Imported from Freshdesk ticket ${fdTicket.id}`,
+      fdId: fdTicket.id,
       // Map other relevant fields
       nextStep: 'process_documents'
     });
