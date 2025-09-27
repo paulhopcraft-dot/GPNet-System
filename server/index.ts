@@ -4,6 +4,34 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecurity";
 
+/**
+ * Log object storage health status on startup
+ */
+async function logObjectStorageHealth() {
+  try {
+    const configuredDir = process.env.PRIVATE_OBJECT_DIR;
+    let mode: 'persistent' | 'temp' = 'temp';
+    let root = '/tmp/private-storage';
+    
+    if (configuredDir) {
+      try {
+        const fs = await import('fs/promises');
+        const stats = await fs.stat(configuredDir);
+        if (stats.isDirectory()) {
+          root = configuredDir;
+          mode = 'persistent';
+        }
+      } catch (error) {
+        // Directory doesn't exist or isn't accessible - use temp fallback
+      }
+    }
+    
+    console.log(`Object storage root: ${root} (mode: ${mode})`);
+  } catch (error) {
+    console.warn('Object storage health check failed:', error);
+  }
+}
+
 const app = express();
 
 // Trust proxy for proper headers (needed for mobile Safari)
@@ -114,6 +142,9 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
+  // Object storage health check
+  await logObjectStorageHealth();
+
   const port = parseInt(process.env.PORT || '5000', 10);
   server.listen({
     port,

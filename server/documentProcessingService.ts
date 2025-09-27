@@ -4,6 +4,8 @@ import type {
   InsertMedicalDocument, 
   InsertDocumentProcessingJob, 
   InsertDocumentProcessingLog,
+  MedicalDocument,
+  DocumentProcessingJob,
   DocumentKind,
   FitStatus,
   ProcessingStatus 
@@ -28,6 +30,39 @@ export interface AttachmentData {
 
 export class DocumentProcessingService {
   constructor(private storage: IStorage) {}
+
+  /**
+   * Resolve the object storage root directory with existence check and fallback
+   */
+  private async resolveStorageRoot(): Promise<{ root: string, mode: 'persistent' | 'temp' }> {
+    const configuredDir = process.env.PRIVATE_OBJECT_DIR;
+    
+    if (configuredDir) {
+      try {
+        const fs = await import('fs/promises');
+        const stats = await fs.stat(configuredDir);
+        if (stats.isDirectory()) {
+          return { root: configuredDir, mode: 'persistent' };
+        }
+      } catch (error) {
+        // Directory doesn't exist or isn't accessible
+        console.warn(`Object storage mount '${configuredDir}' not available, falling back to temp storage`);
+      }
+    }
+    
+    // Fallback to temporary storage
+    const tempRoot = '/tmp/private-storage';
+    return { root: tempRoot, mode: 'temp' };
+  }
+
+  /**
+   * Build a safe storage path using the resolved storage root
+   */
+  private async buildStoragePath(storageKey: string): Promise<string> {
+    const { root } = await this.resolveStorageRoot();
+    const path = await import('path');
+    return path.join(root, storageKey);
+  }
 
   /**
    * Process a medical document attachment from Freshdesk
@@ -67,7 +102,7 @@ export class DocumentProcessingService {
         console.log(`Duplicate document detected: ${checksum}`);
         await this.logEvent(existingDoc.id, jobId!, 'error', 'Duplicate document detected', { checksum });
         
-        await this.updateJobStatus(jobId, 'completed', existingDoc.id);
+        await this.updateJobStatus(jobId!, 'completed', existingDoc.id);
         
         return {
           success: true,
@@ -181,19 +216,19 @@ export class DocumentProcessingService {
       const ext = filename.split('.').pop() || 'bin';
       const uniqueFilename = `medical-docs/${timestamp}-${hash}.${ext}`;
 
-      // Get the private object storage directory with fallback
-      const privateDir = process.env.PRIVATE_OBJECT_DIR || '/tmp/private-storage';
+      // Resolve storage root with existence check and fallback
+      const { root, mode } = await this.resolveStorageRoot();
       
       // Import filesystem modules
       const fs = await import('fs/promises');
       const path = await import('path');
 
-      // Ensure the medical-docs subdirectory exists
-      const medicalDocsDir = path.join(privateDir, 'medical-docs');
+      // Only create subdirectories under the verified root (never create the mount root itself)
+      const medicalDocsDir = path.join(root, 'medical-docs');
       await fs.mkdir(medicalDocsDir, { recursive: true });
 
-      // Full path for the file
-      const filePath = path.join(privateDir, uniqueFilename);
+      // Build full path for the file using storage key
+      const filePath = await this.buildStoragePath(uniqueFilename);
       
       // Write the file to object storage
       await fs.writeFile(filePath, buffer);
@@ -204,7 +239,7 @@ export class DocumentProcessingService {
         throw new Error(`File size mismatch: expected ${buffer.length}, got ${stats.size}`);
       }
 
-      console.log(`Document successfully stored in object storage: ${stats.size} bytes`);
+      console.log(`Document successfully stored in object storage (${mode}): ${stats.size} bytes`);
       
       // Return only the storage key (not absolute path) for security and portability
       return uniqueFilename;
@@ -357,42 +392,37 @@ export class DocumentProcessingService {
   /**
    * Create a new medical document record
    */
-  private async createMedicalDocument(data: Omit<InsertMedicalDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<any> {
-    // For now, return a mock object since we need the storage interface to be updated
-    // In real implementation, this would call storage.createMedicalDocument
-    const mockDocument = {
-      id: 'doc_' + Date.now(),
-      ...data,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    console.log('Created medical document:', mockDocument.id);
-    return mockDocument;
+  private async createMedicalDocument(data: Omit<InsertMedicalDocument, 'id' | 'createdAt' | 'updatedAt'>): Promise<MedicalDocument> {
+    const document = await this.storage.createMedicalDocument(data);
+    console.log('Created medical document:', document.id);
+    return document;
   }
 
   /**
    * Create a processing job record
    */
-  private async createProcessingJob(data: Omit<InsertDocumentProcessingJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<any> {
-    // For now, return a mock object since we need the storage interface to be updated
-    const mockJob = {
-      id: 'job_' + Date.now(),
-      ...data,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    console.log('Created processing job:', mockJob.id);
-    return mockJob;
+  private async createProcessingJob(data: Omit<InsertDocumentProcessingJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<DocumentProcessingJob> {
+    const job = await this.storage.createDocumentProcessingJob(data);
+    console.log('Created processing job:', job.id);
+    return job;
   }
 
   /**
    * Update job status
    */
   private async updateJobStatus(jobId: string, status: ProcessingStatus, documentId?: string, errorMessage?: string): Promise<void> {
-    console.log(`Updated job ${jobId} status to ${status}${documentId ? ` with document ${documentId}` : ''}`);
-    // In real implementation, this would update the job record
+    try {
+      await this.storage.updateDocumentProcessingJob(jobId, {
+        status,
+        documentId,
+        errorMessage,
+        updatedAt: new Date()
+      });
+      console.log(`Updated job ${jobId} status to ${status}${documentId ? ` with document ${documentId}` : ''}`);
+    } catch (error) {
+      console.error(`Failed to update job ${jobId} status:`, error);
+      // Don't throw - processing should continue
+    }
   }
 
   /**
