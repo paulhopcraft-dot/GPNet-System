@@ -847,6 +847,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Organization breakdown for dashboard
+  app.get("/api/dashboard/organizations", requireAuth, async (req, res) => {
+    try {
+      const organizations = await storage.getAllOrganizations();
+      
+      // Enhance with case counts
+      const enhancedOrgs = await Promise.all(
+        organizations.map(async (org) => {
+          const tickets = await storage.getAllTicketsForOrganization(org.id);
+          return {
+            id: org.id,
+            name: org.name,
+            caseCount: tickets.length,
+            isActive: tickets.length > 0
+          };
+        })
+      );
+      
+      // Filter to only active organizations (those with cases)
+      const activeOrgs = enhancedOrgs.filter(org => org.isActive);
+      
+      res.json({
+        organizations: activeOrgs,
+        totalActive: activeOrgs.length,
+        totalCases: activeOrgs.reduce((sum, org) => sum + org.caseCount, 0)
+      });
+    } catch (error) {
+      console.error("Error fetching organization breakdown:", error);
+      res.status(500).json({ error: "Failed to fetch organization breakdown" });
+    }
+  });
+
   // ===========================================
   // PRE-EMPLOYMENT INVITATION ENDPOINTS  
   // ===========================================
