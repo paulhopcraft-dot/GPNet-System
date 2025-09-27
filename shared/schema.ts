@@ -213,7 +213,7 @@ export const ticketMessageEmbeddings = pgTable("ticket_message_embeddings", {
 // Document embeddings table for RAG vector search of medical reports
 export const documentEmbeddings = pgTable("document_embeddings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  documentId: varchar("document_id").references(() => documents.id).notNull(),
+  documentId: varchar("document_id").references(() => medicalDocuments.id).notNull(),
   ticketId: varchar("ticket_id").references(() => tickets.id).notNull(), // For efficient ticket-scoped queries
   vector: text("vector").notNull(), // JSON array of embedding vector (OpenAI ada-002 format)
   model: text("model").default("text-embedding-ada-002"), // Embedding model used
