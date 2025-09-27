@@ -424,9 +424,9 @@ router.get('/me', async (req: Request, res: Response) => {
         firstName: 'Development',
         lastName: 'User',
         email: 'dev@example.com',
-        role: 'admin',
+        role: 'super_user',
         organizationId: 'default-org',
-        permissions: ['admin']
+        permissions: ['admin', 'super_user']
       };
       req.session.isAuthenticated = true;
     }
