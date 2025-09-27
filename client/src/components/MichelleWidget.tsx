@@ -136,6 +136,21 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
     handleSendMessage(question);
   };
 
+  // Get responsive dimensions
+  const isMobile = window.innerWidth <= 768;
+  const getWidgetDimensions = () => {
+    if (isMobile) {
+      return {
+        width: Math.min(window.innerWidth - 32, 350), // Max 350px or screen width - 32px margin
+        height: Math.min(window.innerHeight - 100, 500) // Max 500px or screen height - 100px margin
+      };
+    }
+    return {
+      width: 320, // Desktop default
+      height: 384
+    };
+  };
+
   // Drag handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
@@ -155,12 +170,11 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
     const newY = e.clientY - dragOffset.y;
     
     // Keep widget on screen with proper margins
-    const widgetWidth = 320; // w-80 = 20rem = 320px
-    const widgetHeight = 384; // h-96 = 24rem = 384px
-    const margin = 20; // Keep some margin from screen edges
+    const dimensions = getWidgetDimensions();
+    const margin = isMobile ? 16 : 20; // Smaller margin on mobile
     
-    const maxX = Math.max(margin, window.innerWidth - widgetWidth - margin);
-    const maxY = Math.max(margin, window.innerHeight - widgetHeight - margin);
+    const maxX = Math.max(margin, window.innerWidth - dimensions.width - margin);
+    const maxY = Math.max(margin, window.innerHeight - dimensions.height - margin);
     
     setPosition({
       x: Math.max(margin, Math.min(newX, maxX)),
@@ -171,6 +185,23 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
   const handleMouseUp = () => {
     setIsDragging(false);
   };
+
+  // Handle window resize to adjust positioning
+  useEffect(() => {
+    const handleResize = () => {
+      const dimensions = getWidgetDimensions();
+      const margin = window.innerWidth <= 768 ? 16 : 20;
+      
+      // Adjust position if widget is now outside screen bounds
+      setPosition(prev => ({
+        x: Math.max(margin, Math.min(prev.x, window.innerWidth - dimensions.width - margin)),
+        y: Math.max(margin, Math.min(prev.y, window.innerHeight - dimensions.height - margin))
+      }));
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Add global mouse listeners for drag
   useEffect(() => {
@@ -199,6 +230,8 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
     );
   }
 
+  const dimensions = getWidgetDimensions();
+
   return (
     <div 
       ref={dragRef}
@@ -207,10 +240,12 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
         left: `${position.x}px`,
         top: `${position.y}px`,
         bottom: 'auto',
-        right: 'auto'
+        right: 'auto',
+        width: `${dimensions.width}px`,
+        height: `${dimensions.height}px`
       }}
     >
-      <Card className="w-80 h-96 flex flex-col shadow-lg">
+      <Card className="w-full h-full flex flex-col shadow-lg overflow-hidden">
         <CardHeader 
           className="flex flex-row items-center justify-between py-3 cursor-move flex-shrink-0"
           onMouseDown={handleMouseDown}
@@ -230,23 +265,43 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
           </Button>
         </CardHeader>
         
-        <CardContent className="flex-1 flex flex-col gap-2 p-4 min-h-0">
-          <ScrollArea className="flex-1 pr-2">
-            <div className="space-y-3">
+        <CardContent className="flex-1 flex flex-col gap-2 p-4 min-h-0 overflow-hidden">
+          <ScrollArea className="flex-1 pr-2 overflow-x-hidden">
+            <div className="space-y-3 max-w-full overflow-hidden">
               {messages.map((message, index) => (
                 <div
                   key={index}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex w-full ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   data-testid={`message-${message.role}-${index}`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-lg px-3 py-2 text-sm break-words ${
+                    className={`rounded-lg px-3 py-2 text-sm break-words overflow-hidden ${
                       message.role === 'user'
                         ? 'bg-blue-600 text-white'
                         : 'bg-muted text-muted-foreground'
                     }`}
+                    style={{ 
+                      maxWidth: isMobile 
+                        ? (message.role === 'user' ? '280px' : '310px')
+                        : (message.role === 'user' ? '85%' : '95%'),
+                      overflowWrap: 'anywhere !important',
+                      wordBreak: 'break-word !important',
+                      hyphens: 'auto',
+                      minWidth: '0 !important',
+                      width: 'fit-content !important',
+                      display: 'inline-block !important'
+                    }}
                   >
-                    <div className="whitespace-pre-wrap">{message.content}</div>
+                    <div 
+                      className="whitespace-pre-wrap leading-relaxed overflow-hidden"
+                      style={{
+                        maxWidth: '100% !important',
+                        overflowWrap: 'anywhere !important',
+                        wordBreak: 'break-word !important'
+                      }}
+                    >
+                      {message.content}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -263,14 +318,23 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
               {nextQuestions.length > 0 && !chatMutation.isPending && (
                 <div className="space-y-2">
                   <div className="text-xs text-muted-foreground">Suggested questions:</div>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-1 overflow-hidden" style={{ width: '100%' }}>
                     {nextQuestions.map((question, index) => (
                       <Badge
                         key={index}
                         variant="outline"
-                        className="cursor-pointer text-xs hover-elevate break-words"
+                        className="cursor-pointer text-xs hover-elevate flex-shrink"
                         onClick={() => handleQuestionClick(question)}
                         data-testid={`suggestion-${index}`}
+                        style={{
+                          maxWidth: isMobile ? '280px' : '100%',
+                          minWidth: '0 !important',
+                          overflow: 'hidden !important',
+                          textOverflow: 'ellipsis !important',
+                          whiteSpace: 'nowrap !important',
+                          display: 'inline-block !important',
+                          wordBreak: 'break-all !important'
+                        }}
                       >
                         {question}
                       </Badge>
