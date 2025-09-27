@@ -1586,6 +1586,9 @@ export const medicalDocuments = pgTable("medical_documents", {
   followUpInterval: varchar("follow_up_interval"),
   redFlags: text("red_flags"),
   
+  // Raw extracted text for RAG/embeddings
+  extractedText: text("extracted_text"), // Full text content extracted from document
+  
   // Processing metadata
   confidence: integer("confidence").default(0), // Overall confidence 0-100
   fieldConfidences: jsonb("field_confidences"), // Per-field confidence scores
