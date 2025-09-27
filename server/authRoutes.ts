@@ -55,9 +55,23 @@ const passwordChangeSchema = z.object({
 
 // Middleware for general authentication (any user)
 export const requireAuth = (req: Request, res: Response, next: any) => {
-  if (!req.session.user || !req.session.isAuthenticated) {
+  // Development mode bypass - ONLY for demo/development
+  if ((!req.session.user || !req.session.isAuthenticated) && process.env.NODE_ENV === 'development') {
+    console.warn('⚠️  DEV MODE: Auto-creating super_user session for development/demo');
+    req.session.user = {
+      id: 'dev-user',
+      firstName: 'Development',
+      lastName: 'User',
+      email: 'dev@example.com',
+      role: 'super_user',
+      organizationId: 'default-org',
+      permissions: ['admin', 'super_user', 'superuser'] // Include both variants for compatibility
+    };
+    req.session.isAuthenticated = true;
+  } else if (!req.session.user || !req.session.isAuthenticated) {
     return res.status(401).json({ error: 'Authentication required' });
   }
+  
   next();
 };
 
@@ -414,11 +428,12 @@ router.get('/audit', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-// Get current user endpoint - TEMP: bypass auth for development  
+// Get current user endpoint - Development bypass for demo
 router.get('/me', async (req: Request, res: Response) => {
   try {
-    // TEMP: Create and set mock user for development if none exists
-    if (!req.session.user || !req.session.isAuthenticated) {
+    // Development mode bypass - ONLY for demo/development
+    if ((!req.session.user || !req.session.isAuthenticated) && process.env.NODE_ENV === 'development') {
+      console.warn('⚠️  DEV MODE: Auto-creating super_user session for /me endpoint');
       req.session.user = {
         id: 'dev-user',
         firstName: 'Development',
@@ -426,9 +441,11 @@ router.get('/me', async (req: Request, res: Response) => {
         email: 'dev@example.com',
         role: 'super_user',
         organizationId: 'default-org',
-        permissions: ['admin', 'super_user']
+        permissions: ['admin', 'super_user', 'superuser'] // Include both variants for compatibility
       };
       req.session.isAuthenticated = true;
+    } else if (!req.session.user || !req.session.isAuthenticated) {
+      return res.status(401).json({ error: 'Authentication required' });
     }
     
     const sessionUser = req.session.user;
