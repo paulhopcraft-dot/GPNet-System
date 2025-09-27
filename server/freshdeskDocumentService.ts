@@ -242,21 +242,20 @@ export class FreshdeskDocumentService {
    */
   private async getDocumentExtractedText(documentId: string): Promise<string | null> {
     try {
-      // Get the latest OCR processing log for this document
-      const logs = await this.storage.getDocumentProcessingLogs(documentId);
+      // Get the document directly from the medical_documents table
+      const document = await this.storage.getDocument(documentId);
       
-      // Find the OCR completion log that contains extracted text
-      const ocrLog = logs.find((log: DocumentProcessingLog) => 
-        log.eventType === 'ocr_completed' && 
-        log.details && 
-        typeof log.details === 'object' &&
-        'extractedText' in log.details
-      );
-
-      if (ocrLog && ocrLog.details && typeof ocrLog.details === 'object' && 'extractedText' in ocrLog.details) {
-        return ocrLog.details.extractedText as string;
+      if (!document) {
+        console.log(`Document ${documentId} not found in database`);
+        return null;
       }
 
+      // Return the extracted text field from the medical document
+      if (document.extracted_text && document.extracted_text.trim().length > 0) {
+        return document.extracted_text;
+      }
+
+      console.log(`Document ${documentId} found but no extracted text available`);
       return null;
     } catch (error) {
       console.error(`Failed to get extracted text for document ${documentId}:`, error);

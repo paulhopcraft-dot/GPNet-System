@@ -3,8 +3,9 @@ import { authService } from './authService.js';
 import { storage } from './storage.js';
 import { z } from 'zod';
 import { db } from './db.js';
-import { externalEmails } from '@shared/schema';
+import { externalEmails, medicalDocuments } from '@shared/schema';
 import { sql } from 'drizzle-orm';
+import { embeddingService } from './embeddingService.js';
 
 const router = Router();
 
@@ -101,7 +102,7 @@ router.post('/organizations/:id/archive', requireAdmin, async (req: Request, res
       actorId: req.session.user!.id,
       actorType: 'admin',
       actorEmail: req.session.user!.email,
-      companyId: id,
+      organizationId: id,
       targetType: 'organization',
       targetId: id,
       action: `Admin archived organization: ${organization.name}`,
@@ -161,7 +162,7 @@ router.post('/client-users/:id/suspend', requireAdmin, async (req: Request, res:
       actorId: req.session.user!.id,
       actorType: 'admin',
       actorEmail: req.session.user!.email,
-      companyId: user.organizationId,
+      organizationId: user.organizationId,
       targetType: 'user',
       targetId: id,
       action: `Admin ${newStatus === 'active' ? 'activated' : 'suspended'} user: ${user.email}`,
@@ -302,7 +303,7 @@ router.get('/audit-logs', requireAdmin, async (req: Request, res: Response) => {
     // Enhance with organization names
     const enhancedEvents = await Promise.all(
       auditEvents.map(async (event) => {
-        const org = event.companyId ? await storage.getOrganization(event.companyId) : null;
+        const org = event.organizationId ? await storage.getOrganization(event.organizationId) : null;
         return {
           ...event,
           organizationName: org?.name || null
@@ -418,7 +419,7 @@ router.get('/unmatched-emails', requireAdmin, async (req: Request, res: Response
   try {
     const unmatchedEmails = await db.select({
       id: externalEmails.id,
-      organizationId: externalEmails.companyId,
+      organizationId: externalEmails.organizationId,
       originalSender: externalEmails.originalSender,
       originalSenderName: externalEmails.originalSenderName,
       originalSubject: externalEmails.originalSubject,
@@ -442,5 +443,155 @@ router.get('/unmatched-emails', requireAdmin, async (req: Request, res: Response
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// Generate embeddings for existing documents that have extracted text but no embeddings
+router.post('/generate-embeddings', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    console.log('🔄 Starting manual embedding generation for existing documents...');
+    
+    // Find documents with extracted text but no embeddings
+    const documentsNeedingEmbeddings = await db.select({
+      id: medicalDocuments.id,
+      ticketId: medicalDocuments.ticketId,
+      originalFilename: medicalDocuments.originalFilename,
+      extractedText: medicalDocuments.extractedText
+    })
+    .from(medicalDocuments)
+    .where(sql`extracted_text IS NOT NULL AND LENGTH(extracted_text) > 100`);
+
+    if (documentsNeedingEmbeddings.length === 0) {
+      return res.json({ 
+        success: true, 
+        message: 'No documents found needing embeddings',
+        processed: 0 
+      });
+    }
+
+    console.log(`📄 Found ${documentsNeedingEmbeddings.length} documents needing embeddings`);
+    
+    let successCount = 0;
+    let errorCount = 0;
+    const errors: string[] = [];
+
+    // Process each document
+    for (const doc of documentsNeedingEmbeddings) {
+      try {
+        if (!doc.extractedText || doc.extractedText.trim().length < 10) {
+          console.log(`⏭️  Skipping ${doc.originalFilename}: insufficient text`);
+          continue;
+        }
+
+        console.log(`🔍 Processing ${doc.originalFilename} (${doc.extractedText.length} chars)`);
+
+        // Split text into chunks if it's too long
+        const chunks = splitTextIntoChunks(doc.extractedText, 1000);
+        
+        // Generate embeddings for each chunk
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          
+          try {
+            const embedding = await embeddingService.generateEmbedding(chunk);
+            
+            if (embedding) {
+              // Store document embedding
+              await storage.createDocumentEmbedding({
+                documentId: doc.id,
+                ticketId: doc.ticketId,
+                vector: JSON.stringify(embedding),
+                content: chunk,
+                filename: doc.originalFilename,
+                documentKind: 'medical_report',
+                chunkIndex: i
+              });
+
+              console.log(`✅ Generated embedding for ${doc.originalFilename} chunk ${i + 1}/${chunks.length}`);
+            }
+          } catch (chunkError) {
+            console.error(`❌ Failed to generate embedding for ${doc.originalFilename} chunk ${i}:`, chunkError);
+          }
+        }
+        
+        successCount++;
+      } catch (error) {
+        errorCount++;
+        const errorMsg = `Failed to process ${doc.originalFilename}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        errors.push(errorMsg);
+        console.error('❌', errorMsg);
+      }
+    }
+
+    const result = {
+      success: true,
+      message: `Completed embedding generation`,
+      processed: successCount,
+      errors: errorCount,
+      errorDetails: errors,
+      total: documentsNeedingEmbeddings.length
+    };
+
+    console.log(`🎉 Embedding generation complete: ${successCount} successful, ${errorCount} errors`);
+    res.json(result);
+
+  } catch (error) {
+    console.error('❌ Generate embeddings error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Server error' 
+    });
+  }
+});
+
+/**
+ * Split text into chunks for embedding
+ */
+function splitTextIntoChunks(text: string, maxChunkSize: number): string[] {
+  const chunks: string[] = [];
+  
+  // Split by sentences first to maintain context
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  
+  let currentChunk = '';
+  
+  for (const sentence of sentences) {
+    const trimmedSentence = sentence.trim();
+    
+    if (currentChunk.length + trimmedSentence.length + 1 <= maxChunkSize) {
+      currentChunk += (currentChunk ? '. ' : '') + trimmedSentence;
+    } else {
+      if (currentChunk) {
+        chunks.push(currentChunk);
+      }
+      currentChunk = trimmedSentence;
+    }
+  }
+  
+  if (currentChunk) {
+    chunks.push(currentChunk);
+  }
+  
+  // If no chunks were created, split by words as fallback
+  if (chunks.length === 0 && text.length > 0) {
+    const words = text.split(/\s+/);
+    let chunk = '';
+    
+    for (const word of words) {
+      if (chunk.length + word.length + 1 <= maxChunkSize) {
+        chunk += (chunk ? ' ' : '') + word;
+      } else {
+        if (chunk) {
+          chunks.push(chunk);
+        }
+        chunk = word;
+      }
+    }
+    
+    if (chunk) {
+      chunks.push(chunk);
+    }
+  }
+  
+  return chunks;
+}
 
 export default router;
