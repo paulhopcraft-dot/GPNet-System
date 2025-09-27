@@ -1,5 +1,5 @@
 import { freshdeskService } from './freshdeskService.js';
-import { documentProcessingService } from './documentProcessingService.js';
+import { documentProcessingService, initDocumentProcessingService } from './documentProcessingService.js';
 import { embeddingService } from './embeddingService.js';
 import type { IStorage } from './storage.js';
 import type { AttachmentData } from './documentProcessingService.js';
@@ -11,7 +11,10 @@ import path from 'path';
  * Integrates Freshdesk → Document Processing → RAG Embeddings pipeline
  */
 export class FreshdeskDocumentService {
-  constructor(private storage: IStorage) {}
+  constructor(private storage: IStorage) {
+    // Initialize document processing service with storage
+    initDocumentProcessingService(storage);
+  }
 
   /**
    * Process all attachments for a specific Freshdesk ticket

@@ -41,13 +41,20 @@ export class FreshdeskBackfillService {
           results.processed++;
           console.log(`\n🎫 Processing Freshdesk ticket ${fdTicket.id}: ${fdTicket.subject}`);
 
-          // Find or create corresponding GPNet ticket
-          const gpnetTicket = await this.findOrCreateGPNetTicket(fdTicket);
+          // Find existing GPNet ticket by Freshdesk ID, skip if not found
+          const allTickets = await storage.getAllTickets();
+          const existingTicket = allTickets.find(t => t.fdId === fdTicket.id || t.fdId === fdTicket.id.toString());
+          if (!existingTicket) {
+            console.log(`⏭️ No existing GPNet ticket found for Freshdesk ticket ${fdTicket.id}, skipping`);
+            continue;
+          }
+          
+          console.log(`✅ Found existing GPNet ticket ${existingTicket.id} for Freshdesk ticket ${fdTicket.id}`);
           
           // Process attachments for this ticket
           const attachmentResult = await freshdeskDocumentService.processTicketAttachments(
             fdTicket.id,
-            gpnetTicket.id
+            existingTicket.id
           );
 
           if (attachmentResult.processed > 0 || attachmentResult.errors.length === 0) {

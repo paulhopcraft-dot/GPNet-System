@@ -95,7 +95,20 @@ export class FreshdeskService {
 
   constructor() {
     this.apiKey = process.env.FRESHDESK_API_KEY || null;
-    this.domain = process.env.FRESHDESK_DOMAIN || null;
+    let domain = process.env.FRESHDESK_DOMAIN || null;
+    
+    // Extract just the subdomain from various formats
+    if (domain) {
+      // Remove protocol if present
+      domain = domain.replace(/^https?:\/\//, '');
+      // Extract subdomain from formats like "gpnet.freshdesk.com" or "gpnet"
+      const match = domain.match(/^([^.]+)(?:\.freshdesk\.com)?/);
+      domain = match ? match[1] : domain;
+      // Remove any trailing slashes or paths
+      domain = domain.split('/')[0];
+    }
+    
+    this.domain = domain;
     this.baseUrl = this.domain ? `https://${this.domain}.freshdesk.com/api/v2` : null;
   }
 
