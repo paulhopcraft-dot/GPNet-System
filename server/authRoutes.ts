@@ -64,6 +64,7 @@ export const requireAuth = (req: Request, res: Response, next: any) => {
       lastName: 'User',
       email: 'dev@example.com',
       role: 'super_user',
+      userType: 'admin', // CRITICAL: This is what the case route checks for
       organizationId: 'default-org',
       permissions: ['admin', 'super_user', 'superuser'] // Include both variants for compatibility
     };
@@ -440,6 +441,7 @@ router.get('/me', async (req: Request, res: Response) => {
         lastName: 'User',
         email: 'dev@example.com',
         role: 'super_user',
+        userType: 'admin', // CRITICAL: This is what the case route checks for
         organizationId: 'default-org',
         permissions: ['admin', 'super_user', 'superuser'] // Include both variants for compatibility
       };
