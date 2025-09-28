@@ -57,6 +57,17 @@ export default function Header() {
     logoutMutation.mutate();
   };
 
+  // Get time-appropriate greeting
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good morning";
+    if (hour < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
+  // Check if user is admin and show personalized greeting
+  const showAdminGreeting = user?.userType === 'admin' && user?.name?.includes('Natalie');
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background">
       <div className="flex h-16 items-center justify-between px-6">
@@ -91,6 +102,15 @@ export default function Header() {
             </div>
           )}
         </div>
+
+        {/* Admin Greeting */}
+        {showAdminGreeting && (
+          <div className="flex items-center">
+            <h2 className="text-lg font-medium text-foreground" data-testid="text-admin-greeting">
+              {getGreeting()} Natalie
+            </h2>
+          </div>
+        )}
 
         {/* Search Bar */}
         <div className="flex-1 max-w-md mx-8">

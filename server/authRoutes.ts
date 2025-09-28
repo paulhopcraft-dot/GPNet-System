@@ -55,21 +55,23 @@ const passwordChangeSchema = z.object({
 
 // Middleware for general authentication (any user)
 export const requireAuth = (req: Request, res: Response, next: any) => {
+  // TEMPORARILY DISABLED DEV MODE BYPASS FOR ADMIN LOGIN TESTING
   // Development mode bypass - ONLY for demo/development
-  if ((!req.session.user || !req.session.isAuthenticated) && process.env.NODE_ENV === 'development') {
-    console.warn('⚠️  DEV MODE: Auto-creating super_user session for development/demo');
-    req.session.user = {
-      id: 'dev-user',
-      firstName: 'Development',
-      lastName: 'User',
-      email: 'dev@example.com',
-      role: 'super_user',
-      userType: 'admin', // CRITICAL: This is what the case route checks for
-      organizationId: 'default-org',
-      permissions: ['admin', 'super_user', 'superuser'] // Include both variants for compatibility
-    };
-    req.session.isAuthenticated = true;
-  } else if (!req.session.user || !req.session.isAuthenticated) {
+  // if ((!req.session.user || !req.session.isAuthenticated) && process.env.NODE_ENV === 'development') {
+  //   console.warn('⚠️  DEV MODE: Auto-creating super_user session for development/demo');
+  //   req.session.user = {
+  //     id: 'dev-user',
+  //     firstName: 'Development',
+  //     lastName: 'User',
+  //     email: 'dev@example.com',
+  //     role: 'super_user',
+  //     userType: 'admin', // CRITICAL: This is what the case route checks for
+  //     organizationId: 'default-org',
+  //     permissions: ['admin', 'super_user', 'superuser'] // Include both variants for compatibility
+  //   };
+  //   req.session.isAuthenticated = true;
+  // } else 
+  if (!req.session.user || !req.session.isAuthenticated) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   
@@ -432,21 +434,23 @@ router.get('/audit', requireAdmin, async (req: Request, res: Response) => {
 // Get current user endpoint - Development bypass for demo
 router.get('/me', async (req: Request, res: Response) => {
   try {
+    // TEMPORARILY DISABLED DEV MODE BYPASS FOR ADMIN LOGIN TESTING
     // Development mode bypass - ONLY for demo/development
-    if ((!req.session.user || !req.session.isAuthenticated) && process.env.NODE_ENV === 'development') {
-      console.warn('⚠️  DEV MODE: Auto-creating super_user session for /me endpoint');
-      req.session.user = {
-        id: 'dev-user',
-        firstName: 'Development',
-        lastName: 'User',
-        email: 'dev@example.com',
-        role: 'super_user',
-        userType: 'admin', // CRITICAL: This is what the case route checks for
-        organizationId: 'default-org',
-        permissions: ['admin', 'super_user', 'superuser'] // Include both variants for compatibility
-      };
-      req.session.isAuthenticated = true;
-    } else if (!req.session.user || !req.session.isAuthenticated) {
+    // if ((!req.session.user || !req.session.isAuthenticated) && process.env.NODE_ENV === 'development') {
+    //   console.warn('⚠️  DEV MODE: Auto-creating super_user session for /me endpoint');
+    //   req.session.user = {
+    //     id: 'dev-user',
+    //     firstName: 'Development',
+    //     lastName: 'User',
+    //     email: 'dev@example.com',
+    //     role: 'super_user',
+    //     userType: 'admin', // CRITICAL: This is what the case route checks for
+    //     organizationId: 'default-org',
+    //     permissions: ['admin', 'super_user', 'superuser'] // Include both variants for compatibility
+    //   };
+    //   req.session.isAuthenticated = true;
+    // } else 
+    if (!req.session.user || !req.session.isAuthenticated) {
       return res.status(401).json({ error: 'Authentication required' });
     }
     
