@@ -303,7 +303,14 @@ export class AuthService {
       baseUser.organizationId = clientUser.organizationId;
     } else {
       const adminUser = user as AdminUser;
+      baseUser.userType = 'admin'; // CRITICAL: This is what the case route checks for
       baseUser.permissions = adminUser.permissions as any[] || [];
+      
+      // If admin has superuser permissions, set role to super_user for backward compatibility
+      if (adminUser.permissions?.includes('superuser')) {
+        baseUser.role = 'super_user';
+      }
+      
       baseUser.isImpersonating = !!adminUser.currentImpersonationTarget;
       baseUser.impersonationTarget = adminUser.currentImpersonationTarget || undefined;
     }
