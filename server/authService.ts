@@ -110,7 +110,9 @@ export class AuthService {
   // Admin authentication
   async authenticateAdmin(email: string, password: string): Promise<AdminUser | null> {
     try {
-      const user = await storage.getAdminUserByEmail(email);
+      // Normalize email for consistent lookup
+      const normalizedEmail = email.trim().toLowerCase();
+      const user = await storage.getAdminUserByEmail(normalizedEmail);
       
       if (!user || user.isArchived) {
         await this.safeLogAudit({
@@ -245,8 +247,10 @@ export class AuthService {
     permissions?: any[];
   }, createdBy: string): Promise<AdminUser | null> {
     try {
+      // Normalize email for consistent storage and lookup
+      const normalizedEmail = userData.email.trim().toLowerCase();
       // Check if admin already exists
-      const existingAdmin = await storage.getAdminUserByEmail(userData.email);
+      const existingAdmin = await storage.getAdminUserByEmail(normalizedEmail);
       if (existingAdmin) {
         return null;
       }
@@ -254,7 +258,7 @@ export class AuthService {
       const hashedPassword = await this.hashPassword(userData.password);
       
       const newAdmin: InsertAdminUser = {
-        email: userData.email,
+        email: normalizedEmail,
         passwordHash: hashedPassword,
         firstName: userData.firstName,
         lastName: userData.lastName,
