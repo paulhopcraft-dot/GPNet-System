@@ -20,8 +20,7 @@ export default function ProtectedRoute({
 }: ProtectedRouteProps) {
   const { user, isLoading } = useUser();
 
-  // TEMPORARY: Bypass authentication for development testing
-  return <>{children}</>;
+  // Authentication is now properly enforced
 
   // Stop impersonation mutation
   const stopImpersonationMutation = useMutation({

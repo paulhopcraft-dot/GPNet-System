@@ -13,6 +13,7 @@ import WorkerPreEmploymentCheck from "@/pages/WorkerPreEmploymentCheck";
 import AdminConsole from "@/pages/AdminConsole";
 import ClientLogin from "@/pages/ClientLogin";
 import AdminLogin from "@/pages/AdminLogin";
+import AdminRoute from "@/components/AdminRoute";
 import WorkerForm from "@/pages/WorkerForm";
 import InjuryFormPage from "@/pages/InjuryForm";
 import RtwPlans from "@/pages/RtwPlans";
@@ -43,11 +44,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
-      <Route path="/admin">
-        <ProtectedRoute requireAdmin>
-          <AdminConsole />
-        </ProtectedRoute>
-      </Route>
+      <Route path="/admin" component={AdminRoute} />
       
       <Route path="/natalie">
         <ProtectedRoute requireAdmin>
