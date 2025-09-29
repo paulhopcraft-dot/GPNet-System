@@ -656,4 +656,25 @@ function splitTextIntoChunks(text: string, maxChunkSize: number): string[] {
   return chunks;
 }
 
+// Data migration endpoint - download SQL to import into production
+router.get('/export-production-data', requireSuperuser, async (req: Request, res: Response) => {
+  try {
+    const fs = await import('fs');
+    const exportPath = '/tmp/PRODUCTION_MIGRATION.sql';
+    
+    if (!fs.existsSync(exportPath)) {
+      return res.status(404).json({ error: 'Migration file not found. Please contact support.' });
+    }
+    
+    const sqlContent = fs.readFileSync(exportPath, 'utf8');
+    
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Disposition', 'attachment; filename="gpnet_production_migration.sql"');
+    res.send(sqlContent);
+  } catch (error) {
+    console.error('Export download error:', error);
+    res.status(500).json({ error: 'Failed to download migration file' });
+  }
+});
+
 export default router;
