@@ -39,8 +39,21 @@ export default function AdminLogin() {
       const response = await apiRequest("POST", "/api/auth/login/admin", data);
       return await response.json();
     },
-    onSuccess: (userData) => {
-      setUser(userData);
+    onSuccess: (response) => {
+      // Extract user data from response and format it correctly
+      const user = response.user;
+      const formattedUser = {
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`,
+        email: user.email,
+        role: 'admin',
+        userType: user.userType,
+        organizationId: user.organizationId,
+        permissions: user.permissions,
+        isImpersonating: user.isImpersonating,
+        impersonationTarget: user.impersonationTarget
+      };
+      setUser(formattedUser);
       setLocation("/admin"); // Redirect to admin console
     },
     onError: (error: any) => {
