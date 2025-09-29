@@ -131,7 +131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     cookie: {
       secure: process.env.NODE_ENV === 'production',
       httpOnly: true,
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Better mobile cross-origin support
+      sameSite: 'lax', // Use 'lax' for better compatibility with published apps
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       domain: undefined // Allow automatic domain detection for mobile
     }
