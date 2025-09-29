@@ -10,22 +10,7 @@ const router = express.Router();
 // In-memory store for dialogue contexts (in production, use Redis or database)
 const activeDialogues = new Map<string, DialogueContext>();
 
-// DEV-only auth bypass for development access
 const requireAuth = (req: any, res: any, next: any) => {
-  if (process.env.NODE_ENV === 'development') {
-    // Set mock session for development
-    req.session.user = req.session.user || {
-      id: 'dev-user',
-      email: 'dev@example.com',
-      role: 'client',
-      firstName: 'Development',
-      lastName: 'User',
-      organizationId: 'default-org'
-    };
-    req.session.isAuthenticated = true;
-    return next();
-  }
-  
   if (!req.session?.user?.id || !req.session?.isAuthenticated) {
     return res.status(401).json({ error: 'Authentication required' });
   }
