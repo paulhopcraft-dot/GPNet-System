@@ -15,7 +15,8 @@ import {
   UserCheck,
   Archive,
   Eye,
-  Mail
+  Mail,
+  FileText
 } from "lucide-react";
 import OrganizationsTab from "@/components/admin/OrganizationsTab";
 import ClientUsersTab from "@/components/admin/ClientUsersTab";
@@ -24,6 +25,7 @@ import AuditLogsTab from "@/components/admin/AuditLogsTab";
 import SystemStatsTab from "@/components/admin/SystemStatsTab";
 import CrossTenantAnalyticsTab from "@/components/admin/CrossTenantAnalyticsTab";
 import UnmatchedEmailsTab from "@/components/admin/UnmatchedEmailsTab";
+import AdminCasesTab from "@/components/admin/AdminCasesTab";
 import { FreshdeskTab } from "@/components/admin/FreshdeskTab";
 
 export default function AdminConsole() {
@@ -80,10 +82,14 @@ export default function AdminConsole() {
 
       {/* Admin Console Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className={`grid w-full ${user.permissions?.includes('superuser') ? 'grid-cols-9' : 'grid-cols-8'}`}>
+        <TabsList className={`grid w-full ${user.permissions?.includes('superuser') ? 'grid-cols-10' : 'grid-cols-9'}`}>
           <TabsTrigger value="overview" className="flex items-center gap-2" data-testid="tab-overview">
             <BarChart3 className="h-4 w-4" />
             Overview
+          </TabsTrigger>
+          <TabsTrigger value="cases" className="flex items-center gap-2" data-testid="tab-cases">
+            <FileText className="h-4 w-4" />
+            Cases
           </TabsTrigger>
           {user.permissions?.includes('superuser') && (
             <TabsTrigger value="cross-tenant" className="flex items-center gap-2" data-testid="tab-cross-tenant">
@@ -123,6 +129,10 @@ export default function AdminConsole() {
 
         <TabsContent value="overview" className="space-y-6">
           <SystemStatsTab />
+        </TabsContent>
+
+        <TabsContent value="cases" className="space-y-6">
+          <AdminCasesTab />
         </TabsContent>
 
         {user.permissions?.includes('superuser') && (
