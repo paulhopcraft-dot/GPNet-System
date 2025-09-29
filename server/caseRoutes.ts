@@ -189,9 +189,9 @@ router.get('/', requireAuth, async (req, res) => {
     const user = (req as any).session.user;
     let tickets;
     
-    // Super users (admin with super permissions) see all tickets
-    if (user.userType === 'admin' || user.role === 'super_user') {
-      console.log('Super user - fetching all tickets');
+    // Admin users see all tickets across all organizations
+    if (user.userType === 'admin' || user.role === 'admin' || user.role === 'super_user' || user.permissions?.includes('admin') || user.permissions?.includes('superuser')) {
+      console.log('Admin user - fetching all tickets across all organizations');
       tickets = await storage.getAllTickets();
     } else {
       // Company users see only their organization's tickets
