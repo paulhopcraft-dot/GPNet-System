@@ -327,7 +327,7 @@ export class AuthService {
   async startImpersonation(adminId: string, targetOrgId: string): Promise<AdminUser | null> {
     try {
       const admin = await storage.getAdminUser(adminId);
-      if (!admin || !(admin as any).isSuperuser) {
+      if (!admin || !admin.permissions?.includes('superuser')) {
         return null;
       }
 
