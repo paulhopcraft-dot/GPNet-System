@@ -13,7 +13,7 @@ const router = Router();
 
 // Enhanced middleware for admin authentication with active status check
 export const requireAdmin = async (req: Request, res: Response, next: any) => {
-  if (!req.session.user || req.session.user.role !== 'admin') {
+  if (!req.session.user || req.session.user.userType !== 'admin') {
     return res.status(401).json({ error: 'Admin access required' });
   }
   next();
@@ -21,7 +21,7 @@ export const requireAdmin = async (req: Request, res: Response, next: any) => {
 
 // Enhanced middleware for superuser authentication with active status check
 export const requireSuperuser = async (req: Request, res: Response, next: any) => {
-  if (!req.session.user || req.session.user.role !== 'admin' || !req.session.user.permissions?.includes('superuser')) {
+  if (!req.session.user || req.session.user.userType !== 'admin' || !req.session.user.permissions?.includes('superuser')) {
     return res.status(403).json({ error: 'Superuser access required' });
   }
   next();
