@@ -40,7 +40,9 @@ export function UserProvider({ children }: UserProviderProps) {
     // Fetch user from authentication API
     const fetchUser = async () => {
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include' // CRITICAL: Include cookies for session
+        });
         if (response.ok) {
           const userData = await response.json();
           setUser(userData);
