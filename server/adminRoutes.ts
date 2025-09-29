@@ -13,22 +13,6 @@ const router = Router();
 
 // Enhanced middleware for admin authentication with active status check
 export const requireAdmin = async (req: Request, res: Response, next: any) => {
-  // DEV-only bypass for development access
-  if (process.env.NODE_ENV === 'development') {
-    // Set mock session for development
-    req.session.user = req.session.user || {
-      id: 'dev-admin',
-      email: 'dev@admin.com',
-      role: 'admin',
-      firstName: 'Development',
-      lastName: 'Admin',
-      permissions: ['admin', 'superuser'],
-      organizationId: 'default-org'
-    };
-    req.session.isAuthenticated = true;
-    return next();
-  }
-  
   if (!req.session.user || req.session.user.role !== 'admin') {
     return res.status(401).json({ error: 'Admin access required' });
   }
@@ -37,22 +21,6 @@ export const requireAdmin = async (req: Request, res: Response, next: any) => {
 
 // Enhanced middleware for superuser authentication with active status check
 export const requireSuperuser = async (req: Request, res: Response, next: any) => {
-  // DEV-only bypass for development access
-  if (process.env.NODE_ENV === 'development') {
-    // Set mock session for development
-    req.session.user = req.session.user || {
-      id: 'dev-superuser',
-      email: 'dev@superuser.com',
-      role: 'admin',
-      firstName: 'Development',
-      lastName: 'Superuser',
-      permissions: ['admin', 'superuser'],
-      organizationId: 'default-org'
-    };
-    req.session.isAuthenticated = true;
-    return next();
-  }
-  
   if (!req.session.user || req.session.user.role !== 'admin' || !req.session.user.permissions?.includes('superuser')) {
     return res.status(403).json({ error: 'Superuser access required' });
   }
