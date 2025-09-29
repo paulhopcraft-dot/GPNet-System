@@ -57,7 +57,10 @@ export default function AdminConsole() {
           <h1 className="text-3xl font-bold" data-testid="text-admin-console-title">
             GPNet Admin Console
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-lg text-primary mt-1 mb-2" data-testid="text-greeting">
+            Good afternoon {user.name?.split(' ')[0] || 'Natalie'}
+          </p>
+          <p className="text-muted-foreground">
             Manage organizations, users, and system administration
           </p>
           <div className="flex items-center gap-2 mt-2">
