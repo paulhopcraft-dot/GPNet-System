@@ -430,37 +430,6 @@ router.get('/audit', requireAdmin, async (req: Request, res: Response) => {
   }
 });
 
-// TEMPORARY: Emergency admin password reset (REMOVE AFTER DEMO)
-router.post('/emergency-reset-admin', async (req: Request, res: Response) => {
-  try {
-    const { email, newPassword, secret } = req.body;
-    
-    // Simple security check
-    if (secret !== 'emergency-reset-gpnet-2024') {
-      return res.status(403).json({ error: 'Invalid secret' });
-    }
-    
-    // Find admin by email
-    const admins = await storage.getAllAdminUsers();
-    const admin = admins.find(a => a.email === email);
-    
-    if (!admin) {
-      return res.status(404).json({ error: 'Admin not found' });
-    }
-    
-    // Hash new password
-    const bcrypt = await import('bcrypt');
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
-    // Update password
-    await storage.updateAdminPassword(admin.id, hashedPassword);
-    
-    res.json({ message: 'Password reset successfully', email: admin.email });
-  } catch (error) {
-    console.error('Emergency password reset error:', error);
-    res.status(500).json({ error: 'Reset failed' });
-  }
-});
 
 // Get current user endpoint - Development bypass for demo
 router.get('/me', async (req: Request, res: Response) => {
