@@ -287,7 +287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create or find existing worker record
       let worker;
-      const existingWorker = await storage.getWorkerByEmail(formData.email);
+      const existingWorker = await storage.findWorkerByEmail(formData.email);
       
       if (existingWorker) {
         worker = existingWorker;
@@ -1065,6 +1065,199 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===========================================
   // MOUNT ADDITIONAL ROUTE MODULES
   // ===========================================
+
+  // ===========================================
+  // WORKER PROFILE API
+  // ===========================================
+  
+  // Get worker profile with cases
+  app.get('/api/workers/:workerId/profile', async (req, res) => {
+    try {
+      const { workerId } = req.params;
+      
+      // Fetch worker details
+      const worker = await storage.getWorker(workerId);
+      if (!worker) {
+        return res.status(404).json({ error: 'Worker not found' });
+      }
+      
+      // Fetch all tickets for this worker
+      const allTickets = await storage.findCasesByWorkerId(workerId);
+      
+      // Separate active and completed cases
+      const activeCases: any[] = [];
+      const completedCases: any[] = [];
+      
+      for (const ticket of allTickets) {
+        const caseData = {
+          ticketId: ticket.id,
+          caseType: ticket.caseType,
+          status: ticket.status,
+          priority: ticket.priority || 'medium',
+          ragScore: 'green', // Default, will be updated from analysis
+          createdAt: ticket.createdAt || new Date().toISOString(),
+          updatedAt: ticket.updatedAt,
+          company: ticket.companyName || 'Unknown Company',
+          nextStep: ticket.nextStep,
+        };
+        
+        // Try to get RAG score from analysis
+        try {
+          const analysis = await storage.getAnalysisByTicket(ticket.id);
+          if (analysis) {
+            caseData.ragScore = analysis.ragScore || 'green';
+          }
+        } catch (err) {
+          console.error('Error fetching analysis for ticket:', ticket.id, err);
+        }
+        
+        if (ticket.status === 'COMPLETE') {
+          completedCases.push(caseData);
+        } else {
+          activeCases.push(caseData);
+        }
+      }
+      
+      // Calculate stats
+      const stats = {
+        totalCases: allTickets.length,
+        activeCases: activeCases.length,
+        completedCases: completedCases.length,
+        redFlags: [...activeCases, ...completedCases].filter(c => c.ragScore === 'red').length,
+        amberFlags: [...activeCases, ...completedCases].filter(c => c.ragScore === 'amber').length,
+        greenFlags: [...activeCases, ...completedCases].filter(c => c.ragScore === 'green').length,
+      };
+      
+      res.json({
+        worker,
+        activeCases,
+        allCases: allTickets.map((ticket, index) => {
+          // Use the pre-computed case data if available
+          const precomputed = [...activeCases, ...completedCases].find(c => c.ticketId === ticket.id);
+          return precomputed || {
+            ticketId: ticket.id,
+            caseType: ticket.caseType,
+            status: ticket.status,
+            priority: ticket.priority || 'medium',
+            ragScore: 'green',
+            createdAt: ticket.createdAt || new Date().toISOString(),
+            updatedAt: ticket.updatedAt,
+            company: ticket.companyName || 'Unknown Company',
+            nextStep: ticket.nextStep,
+          };
+        }),
+        stats,
+      });
+    } catch (error) {
+      console.error('Error fetching worker profile:', error);
+      res.status(500).json({ error: 'Failed to fetch worker profile' });
+    }
+  });
+
+  // ===========================================
+  // ORGANIZATION/CUSTOMER OVERVIEW API
+  // ===========================================
+  
+  // Get organization overview with cases and workers
+  app.get('/api/organizations/:organizationId/overview', async (req, res) => {
+    try {
+      const { organizationId } = req.params;
+      
+      // Fetch organization details
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(404).json({ error: 'Organization not found' });
+      }
+      
+      // Fetch all tickets for this organization
+      const allTickets = await storage.getAllTicketsForOrganization(organizationId);
+      
+      // Get unique worker IDs from tickets and fetch workers
+      const workerIds = [...new Set(allTickets.map(t => t.workerId).filter(Boolean))] as string[];
+      const allWorkers = await Promise.all(
+        workerIds.map(id => storage.getWorker(id))
+      ).then(workers => workers.filter((w): w is NonNullable<typeof w> => w !== undefined));
+      
+      // Prepare cases data
+      const activeCases: any[] = [];
+      const completedCases: any[] = [];
+      
+      for (const ticket of allTickets) {
+        // Get worker info
+        const worker = await storage.getWorker(ticket.workerId!);
+        if (!worker) continue;
+        
+        const caseData = {
+          ticketId: ticket.id,
+          workerId: worker.id,
+          workerName: `${worker.firstName} ${worker.lastName}`,
+          caseType: ticket.caseType,
+          status: ticket.status,
+          priority: ticket.priority || 'medium',
+          ragScore: 'green',
+          createdAt: ticket.createdAt || new Date().toISOString(),
+          updatedAt: ticket.updatedAt,
+          nextStep: ticket.nextStep,
+        };
+        
+        // Get RAG score from analysis
+        try {
+          const analysis = await storage.getAnalysisByTicket(ticket.id);
+          if (analysis) {
+            caseData.ragScore = analysis.ragScore || 'green';
+          }
+        } catch (err) {
+          console.error('Error fetching analysis:', err);
+        }
+        
+        if (ticket.status === 'COMPLETE') {
+          completedCases.push(caseData);
+        } else {
+          activeCases.push(caseData);
+        }
+      }
+      
+      // Prepare workers data with case counts
+      const workerSummaries = await Promise.all(
+        allWorkers.map(async (worker: any) => {
+          const workerTickets = await storage.findCasesByWorkerId(worker.id);
+          const activeCount = workerTickets.filter(t => t.status !== 'COMPLETE').length;
+          
+          return {
+            id: worker.id,
+            firstName: worker.firstName,
+            lastName: worker.lastName,
+            email: worker.email,
+            totalCases: workerTickets.length,
+            activeCases: activeCount,
+          };
+        })
+      );
+      
+      // Calculate stats
+      const allCases = [...activeCases, ...completedCases];
+      const stats = {
+        totalCases: allTickets.length,
+        activeCases: activeCases.length,
+        completedCases: completedCases.length,
+        totalWorkers: allWorkers.length,
+        redFlags: allCases.filter(c => c.ragScore === 'red').length,
+        amberFlags: allCases.filter(c => c.ragScore === 'amber').length,
+        greenFlags: allCases.filter(c => c.ragScore === 'green').length,
+      };
+      
+      res.json({
+        organization,
+        activeCases,
+        completedCases,
+        allWorkers: workerSummaries,
+        stats,
+      });
+    } catch (error) {
+      console.error('Error fetching organization overview:', error);
+      res.status(500).json({ error: 'Failed to fetch organization overview' });
+    }
+  });
 
   // Mount additional routes modules
   app.use('/api/email-drafts', emailDraftRoutes);

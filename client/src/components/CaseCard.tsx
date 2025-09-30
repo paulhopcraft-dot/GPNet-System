@@ -6,7 +6,8 @@ import { formatDistanceToNow } from "date-fns";
 
 interface CaseCardProps {
   ticketId: string;
-  caseType: "pre_employment" | "injury";
+  workerId?: string;
+  caseType: "pre_employment" | "injury" | "rtw" | "capacity" | "surveillance" | "fitness" | "workcover";
   claimType?: string | null;
   priority?: string | null;
   workerName: string;
@@ -20,6 +21,7 @@ interface CaseCardProps {
   lastStepCompletedAt?: Date | string | null;
   assignedTo?: string | null;
   onViewCase?: () => void;
+  onWorkerClick?: (workerId: string) => void;
 }
 
 const statusConfig = {
@@ -37,7 +39,7 @@ const ragConfig = {
   green: { className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200", label: "Low Risk" },
 };
 
-const caseTypeConfig = {
+const caseTypeConfig: Record<string, { variant: "outline"; label: string; className: string }> = {
   pre_employment: { 
     variant: "outline" as const, 
     label: "Pre-Employment",
@@ -47,6 +49,31 @@ const caseTypeConfig = {
     variant: "outline" as const, 
     label: "Workplace Injury",
     className: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800"
+  },
+  rtw: {
+    variant: "outline" as const,
+    label: "Return to Work",
+    className: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800"
+  },
+  capacity: {
+    variant: "outline" as const,
+    label: "Capacity Assessment",
+    className: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800"
+  },
+  surveillance: {
+    variant: "outline" as const,
+    label: "Health Surveillance",
+    className: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950 dark:text-cyan-300 dark:border-cyan-800"
+  },
+  fitness: {
+    variant: "outline" as const,
+    label: "Fitness for Duty",
+    className: "bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300 dark:border-green-800"
+  },
+  workcover: {
+    variant: "outline" as const,
+    label: "WorkCover Claim",
+    className: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800"
   },
 };
 
@@ -58,6 +85,7 @@ const priorityConfig = {
 
 export default function CaseCard({
   ticketId,
+  workerId,
   caseType,
   claimType,
   priority,
@@ -72,10 +100,18 @@ export default function CaseCard({
   lastStepCompletedAt,
   assignedTo,
   onViewCase,
+  onWorkerClick,
 }: CaseCardProps) {
   const handleViewCase = () => {
     console.log(`Viewing case ${ticketId}`);
     onViewCase?.();
+  };
+  
+  const handleWorkerClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (workerId && onWorkerClick) {
+      onWorkerClick(workerId);
+    }
   };
 
   return (
@@ -103,7 +139,11 @@ export default function CaseCard({
                 </Badge>
               )}
             </div>
-            <h3 className="font-semibold text-lg" data-testid={`text-worker-name-${ticketId}`}>
+            <h3 
+              className={`font-semibold text-lg ${workerId && onWorkerClick ? 'text-primary hover:underline cursor-pointer' : ''}`}
+              onClick={workerId && onWorkerClick ? handleWorkerClick : undefined}
+              data-testid={`text-worker-name-${ticketId}`}
+            >
               {workerName}
             </h3>
           </div>

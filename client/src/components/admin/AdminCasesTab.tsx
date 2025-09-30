@@ -1,16 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import CaseCard from "@/components/CaseCard";
 import CaseDetailsModal from "@/components/CaseDetailsModal";
-import { Search, FileText, Download } from "lucide-react";
+import PersonProfilePanel from "@/components/PersonProfilePanel";
+import { Search, FileText, Download, Filter } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface DashboardCase {
   ticketId: string;
+  workerId?: string;
   caseType: string;
   claimType?: string;
   priority: string;
@@ -39,10 +44,46 @@ interface CasesResponse {
   success: boolean;
 }
 
+// Case type options with their display names
+const CASE_TYPES = [
+  { value: 'pre_employment', label: 'Pre-Employment Check' },
+  { value: 'injury', label: 'Injury Assessment' },
+  { value: 'rtw', label: 'Return to Work' },
+  { value: 'capacity', label: 'Capacity Assessment' },
+  { value: 'surveillance', label: 'Health Surveillance' },
+  { value: 'fitness', label: 'Fitness for Duty' },
+  { value: 'workcover', label: 'WorkCover Claim' },
+] as const;
+
 export default function AdminCasesTab() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
+  const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
+  
+  // Load selected case types from sessionStorage on mount
+  const [selectedCaseTypes, setSelectedCaseTypes] = useState<string[]>(() => {
+    const stored = sessionStorage.getItem('adminCasesTab_selectedCaseTypes');
+    return stored ? JSON.parse(stored) : [];
+  });
+  
+  // Persist selected case types to sessionStorage whenever they change
+  useEffect(() => {
+    sessionStorage.setItem('adminCasesTab_selectedCaseTypes', JSON.stringify(selectedCaseTypes));
+  }, [selectedCaseTypes]);
+  
+  const toggleCaseType = (value: string) => {
+    setSelectedCaseTypes(prev => 
+      prev.includes(value) 
+        ? prev.filter(t => t !== value)
+        : [...prev, value]
+    );
+  };
+  
+  const clearCaseTypeFilters = () => {
+    setSelectedCaseTypes([]);
+  };
 
   // Fetch all cases (admin sees all cases across all organizations)
   const { 
@@ -75,13 +116,21 @@ export default function AdminCasesTab() {
   const cases = casesResponse?.cases || [];
   const totalCases = casesResponse?.total || 0;
 
-  // Filter cases based on search term
-  const filteredCases = cases.filter(caseItem => 
-    caseItem.workerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    caseItem.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    caseItem.ticketId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    caseItem.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter cases based on search term and case types
+  const filteredCases = cases.filter(caseItem => {
+    // Apply search filter
+    const matchesSearch = searchTerm === '' || 
+      caseItem.workerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      caseItem.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      caseItem.ticketId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      caseItem.email.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    // Apply case type filter (if any types are selected)
+    const matchesCaseType = selectedCaseTypes.length === 0 || 
+      selectedCaseTypes.includes(caseItem.caseType);
+    
+    return matchesSearch && matchesCaseType;
+  });
 
   const handleViewCase = (caseData: DashboardCase) => {
     console.log("Opening case details for:", caseData.ticketId);
@@ -97,6 +146,12 @@ export default function AdminCasesTab() {
   const handleRecommendationsUpdate = (ticketId: string, recommendations: string[]) => {
     console.log("Recommendations update requested:", ticketId, recommendations);
     updateRecommendationsMutation.mutate({ ticketId, recommendations });
+  };
+  
+  const handleWorkerClick = (workerId: string) => {
+    console.log("Opening worker profile:", workerId);
+    setSelectedWorkerId(workerId);
+    setIsProfilePanelOpen(true);
   };
 
   if (casesLoading) {
@@ -187,7 +242,7 @@ export default function AdminCasesTab() {
           </div>
 
           {/* Search and Actions */}
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
@@ -198,10 +253,62 @@ export default function AdminCasesTab() {
                 data-testid="input-search-cases"
               />
             </div>
-            <Button variant="outline" size="sm" data-testid="button-export-cases">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
+            <div className="flex items-center gap-2">
+              {/* Case Type Filter */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid="button-filter-case-type">
+                    <Filter className="h-4 w-4 mr-2" />
+                    Case Type
+                    {selectedCaseTypes.length > 0 && (
+                      <Badge variant="secondary" className="ml-2 px-1.5 py-0 min-w-5 h-5 text-xs">
+                        {selectedCaseTypes.length}
+                      </Badge>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64" align="end" data-testid="popover-case-type-filter">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-sm">Filter by Case Type</h4>
+                      {selectedCaseTypes.length > 0 && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-auto py-1 px-2 text-xs"
+                          onClick={clearCaseTypeFilters}
+                          data-testid="button-clear-case-type-filters"
+                        >
+                          Clear
+                        </Button>
+                      )}
+                    </div>
+                    <div className="space-y-3">
+                      {CASE_TYPES.map((type) => (
+                        <div key={type.value} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`case-type-${type.value}`}
+                            checked={selectedCaseTypes.includes(type.value)}
+                            onCheckedChange={() => toggleCaseType(type.value)}
+                            data-testid={`checkbox-case-type-${type.value}`}
+                          />
+                          <Label
+                            htmlFor={`case-type-${type.value}`}
+                            className="text-sm font-normal cursor-pointer"
+                          >
+                            {type.label}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Button variant="outline" size="sm" data-testid="button-export-cases">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+            </div>
           </div>
 
           {/* Cases Grid */}
@@ -224,6 +331,7 @@ export default function AdminCasesTab() {
                   <CaseCard
                     key={caseItem.ticketId}
                     ticketId={caseItem.ticketId}
+                    workerId={caseItem.workerId}
                     caseType={caseItem.caseType as "pre_employment" | "injury"}
                     claimType={caseItem.claimType}
                     priority={caseItem.priority}
@@ -238,6 +346,7 @@ export default function AdminCasesTab() {
                     lastStepCompletedAt={caseItem.lastStepCompletedAt}
                     assignedTo={caseItem.assignedTo}
                     onViewCase={() => handleViewCase(caseItem)}
+                    onWorkerClick={handleWorkerClick}
                   />
                 ))}
               </div>
@@ -257,6 +366,13 @@ export default function AdminCasesTab() {
         } as any : null}
         onStatusUpdate={handleStatusUpdate}
         onRecommendationsUpdate={handleRecommendationsUpdate}
+      />
+      
+      {/* Person Profile Panel */}
+      <PersonProfilePanel
+        workerId={selectedWorkerId}
+        open={isProfilePanelOpen}
+        onOpenChange={setIsProfilePanelOpen}
       />
     </>
   );
