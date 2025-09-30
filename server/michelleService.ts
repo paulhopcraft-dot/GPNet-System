@@ -317,32 +317,42 @@ async function getRealOpenAIResponse(
       systemData = "System data temporarily unavailable.\n";
     }
 
-    // STEP 2: Get RAG context from conversation history
+    // STEP 2: Get RAG context from conversation history (PARALLELIZED for speed)
     let ragContext = "";
     
     try {
-      console.log('🔍 Retrieving RAG context...');
+      console.log('🔍 Retrieving RAG context in parallel...');
+      const startTime = Date.now();
       
-      // If context has a case/ticket ID, get specific ticket context
-      if (context?.caseId || context?.ticketId) {
-        const ticketId = context.caseId || context.ticketId;
-        console.log(`Getting conversation context for ticket: ${ticketId}`);
-        const ticketContext = await embeddingService.getTicketConversationContext(ticketId, 15);
+      // Run both RAG queries in PARALLEL for 2x faster response
+      const [ticketContext, similarContent] = await Promise.all([
+        // Query 1: Ticket-specific conversation history (if applicable)
+        (async () => {
+          if (context?.caseId || context?.ticketId) {
+            const ticketId = context.caseId || context.ticketId;
+            console.log(`Getting conversation context for ticket: ${ticketId}`);
+            return await embeddingService.getTicketConversationContext(ticketId, 10); // Reduced from 15 to 10
+          }
+          return [];
+        })(),
         
-        if (ticketContext.length > 0) {
-          ragContext += "**Recent Conversation History for this Case:**\n";
-          ticketContext.forEach(msg => {
-            const timestamp = msg.freshdeskCreatedAt ? 
-              new Date(msg.freshdeskCreatedAt).toLocaleDateString() : "Recent";
-            ragContext += `[${timestamp}] ${msg.authorRole}: ${msg.content.substring(0, 200)}...\n`;
-          });
-          ragContext += "\n";
-        }
+        // Query 2: Similar content from other cases (runs simultaneously)
+        embeddingService.findSimilarContent(message, 3, undefined, true) // Reduced from 5 to 3
+      ]);
+      
+      // Format ticket context
+      if (ticketContext && ticketContext.length > 0) {
+        ragContext += "**Recent Conversation History for this Case:**\n";
+        ticketContext.forEach(msg => {
+          const timestamp = msg.freshdeskCreatedAt ? 
+            new Date(msg.freshdeskCreatedAt).toLocaleDateString() : "Recent";
+          ragContext += `[${timestamp}] ${msg.authorRole}: ${msg.content.substring(0, 200)}...\n`;
+        });
+        ragContext += "\n";
       }
       
-      // Also search for similar content (messages AND documents) globally for additional context
-      const similarContent = await embeddingService.findSimilarContent(message, 5, undefined, true);
-      if (similarContent.length > 0) {
+      // Format similar content
+      if (similarContent && similarContent.length > 0) {
         ragContext += "**Related Content from Other Cases:**\n";
         similarContent.forEach(content => {
           if (content.type === 'message') {
@@ -354,7 +364,8 @@ async function getRealOpenAIResponse(
         ragContext += "\n";
       }
       
-      console.log(`✅ RAG context retrieved: ${ragContext.length} characters`);
+      const elapsed = Date.now() - startTime;
+      console.log(`✅ RAG context retrieved in ${elapsed}ms: ${ragContext.length} characters`);
     } catch (ragError) {
       console.warn('⚠️ RAG context retrieval failed:', ragError);
       ragContext = "No additional conversation context available.";
