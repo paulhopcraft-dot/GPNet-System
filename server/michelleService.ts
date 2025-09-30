@@ -537,7 +537,7 @@ Always respond in valid JSON:
     }
 
     return {
-      reply: aiResponse.reply + " [POWERED BY REAL OPENAI]",
+      reply: aiResponse.reply,
       nextQuestions: aiResponse.next_questions || [],
       conversationId,
       mode: userContext.userType === 'admin' && userContext.isSuperuser ? 'universal' : 'client-scoped',
