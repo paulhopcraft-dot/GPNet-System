@@ -221,6 +221,7 @@ router.get('/', requireAuth, async (req, res) => {
       
       return {
         ticketId: ticket.id,
+        workerId: ticket.workerId,
         caseType: ticket.caseType || 'pre_employment',
         claimType: ticket.claimType,
         priority: ticket.priority || 'medium',
