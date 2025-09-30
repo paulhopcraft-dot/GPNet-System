@@ -31,8 +31,9 @@ interface ExternalEmail {
   processingStatus: 'pending' | 'processing' | 'completed' | 'failed';
   aiRecommendations?: any[];
   forwardedBy: string;
-  receivedAt: string;
-  processedAt?: string;
+  forwardedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   attachments?: Array<{
     id: string;
     filename: string;
@@ -193,7 +194,7 @@ export default function ExternalEmailsSection({ ticketId }: ExternalEmailsSectio
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
-                      {formatDate(email.receivedAt)}
+                      {formatDate(email.forwardedAt || email.createdAt)}
                     </span>
                     <span className="flex items-center gap-1 text-xs">
                       <ExternalLink className="h-3 w-3" />
@@ -291,12 +292,12 @@ export default function ExternalEmailsSection({ ticketId }: ExternalEmailsSectio
                         <span className="font-mono text-xs">{email.messageId}</span>
                         <span className="font-medium">Status:</span>
                         <span>{email.processingStatus}</span>
-                        <span className="font-medium">Received:</span>
-                        <span>{formatDate(email.receivedAt)}</span>
-                        {email.processedAt && (
+                        <span className="font-medium">Forwarded:</span>
+                        <span>{formatDate(email.forwardedAt || email.createdAt)}</span>
+                        {email.updatedAt && email.updatedAt !== email.createdAt && (
                           <>
-                            <span className="font-medium">Processed:</span>
-                            <span>{formatDate(email.processedAt)}</span>
+                            <span className="font-medium">Updated:</span>
+                            <span>{formatDate(email.updatedAt)}</span>
                           </>
                         )}
                       </div>
