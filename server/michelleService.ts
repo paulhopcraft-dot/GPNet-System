@@ -79,6 +79,200 @@ export interface UserContext {
 // Simple in-memory conversation storage for demo
 const conversations: Map<string, ChatMessage[]> = new Map();
 
+/**
+ * Detects emotional state, case type, and context from manager's message
+ * Returns empathy templates and detected concerns
+ */
+function detectManagerSentiment(message: string): {
+  emotionalState: string[];
+  caseType: string[];
+  stakeholderFrustration: string[];
+  authenticityDoubt: boolean;
+  actionReadiness: string;
+  empathyTemplates: string[];
+} {
+  const msg = message.toLowerCase();
+  
+  const emotionalState: string[] = [];
+  const caseType: string[] = [];
+  const stakeholderFrustration: string[] = [];
+  let authenticityDoubt = false;
+  let actionReadiness = 'vent-only';
+  const empathyTemplates: string[] = [];
+  
+  // Detect case types
+  if (msg.includes('mental health') || msg.includes('psychological') || msg.includes('anxiety') || 
+      msg.includes('depression') || msg.includes('stress') || msg.includes('burnout')) {
+    caseType.push('mental-health');
+  }
+  if (msg.includes('older worker') || msg.includes('aging') || msg.includes('age') || 
+      msg.includes('retirement') || msg.includes('declining')) {
+    caseType.push('older-worker');
+  }
+  if (msg.includes('injury') || msg.includes('injured') || msg.includes('workers comp') || 
+      msg.includes('rtw') || msg.includes('return to work')) {
+    caseType.push('injury');
+  }
+  if (msg.includes('fraud') || msg.includes('faking') || msg.includes('scam') || 
+      msg.includes('manipulating') || msg.includes('malingering')) {
+    caseType.push('suspected-fraud');
+    authenticityDoubt = true;
+  }
+  
+  // Detect emotional states
+  if (msg.includes('frustrated') || msg.includes('frustrating') || msg.includes('annoying')) {
+    emotionalState.push('frustrated');
+  }
+  if (msg.includes('exhausted') || msg.includes('worn down') || msg.includes('draining') || 
+      msg.includes('taking over') || msg.includes('overwhelming')) {
+    emotionalState.push('overwhelmed');
+  }
+  if (msg.includes('guilty') || msg.includes('feel bad') || msg.includes('am i being') || 
+      msg.includes('too harsh') || msg.includes('feel terrible')) {
+    emotionalState.push('guilty');
+  }
+  if (msg.includes("don't know what to do") || msg.includes('stuck') || msg.includes('confused') ||
+      msg.includes("don't know how to")) {
+    emotionalState.push('confused');
+    actionReadiness = 'needs-guidance';
+  }
+  if (msg.includes('worried') || msg.includes('concerned') || msg.includes('afraid') ||
+      msg.includes('scared')) {
+    emotionalState.push('worried');
+  }
+  
+  // Detect stakeholder frustrations
+  if ((msg.includes('worker') || msg.includes('employee')) && 
+      (msg.includes("won't") || msg.includes('refuses') || msg.includes('reject'))) {
+    stakeholderFrustration.push('worker');
+  }
+  if (msg.includes('doctor') && (msg.includes("won't") || msg.includes('useless') || 
+      msg.includes("can't get") || msg.includes('vague'))) {
+    stakeholderFrustration.push('doctor');
+  }
+  if ((msg.includes('insurer') || msg.includes('insurance')) && 
+      (msg.includes("won't respond") || msg.includes('ghosting') || msg.includes('no response') ||
+       msg.includes('rejected'))) {
+    stakeholderFrustration.push('insurer');
+  }
+  if (msg.includes('hr') || msg.includes('legal')) {
+    stakeholderFrustration.push('internal');
+  }
+  
+  // Detect authenticity doubts - EXPANDED FOR ALL CLAIM TYPES
+  const authenticitySignals = [
+    'social media',
+    "doesn't add up",
+    'not adding up',
+    'can do x but',
+    'doctor shopping',
+    'story keeps changing',
+    "don't believe",
+    'faking',
+    'malingering',
+    'gaming the system',
+    'suspicious',
+    'inconsistent',
+    'manipulating',
+    'exaggerating',
+    'claims but',
+    'says they can\'t but'
+  ];
+  
+  if (authenticitySignals.some(signal => msg.includes(signal))) {
+    authenticityDoubt = true;
+    actionReadiness = 'needs-permission';
+  }
+  
+  // ===== SELECT EMPATHY TEMPLATES =====
+  
+  // ALWAYS start with validation
+  if (emotionalState.includes('frustrated')) {
+    empathyTemplates.push("I know how frustrating this situation must be for you.");
+  }
+  if (emotionalState.includes('overwhelmed')) {
+    empathyTemplates.push("This case has become more complex than it should be — that's not your fault. Managing these sensitive situations is genuinely difficult.");
+  }
+  if (emotionalState.includes('confused')) {
+    empathyTemplates.push("It's okay to feel stuck when everyone's giving you different answers or when you're not sure how to handle something this sensitive.");
+  }
+  if (emotionalState.includes('worried')) {
+    empathyTemplates.push("Your concerns about handling this appropriately are completely valid.");
+  }
+  
+  // CASE-TYPE SPECIFIC EMPATHY
+  
+  // Mental Health Cases
+  if (caseType.includes('mental-health')) {
+    if (authenticityDoubt) {
+      empathyTemplates.push("Mental health claims are particularly difficult to assess because symptoms can be invisible and subjective. It's okay to have questions about the severity or legitimacy of claims while still being supportive.");
+    } else {
+      empathyTemplates.push("Managing mental health cases requires a delicate balance between compassion and workplace needs. It's okay to find this challenging.");
+    }
+  }
+  
+  // Older Worker Cases
+  if (caseType.includes('older-worker')) {
+    empathyTemplates.push("Managing performance or capability concerns with older workers is sensitive — you want to be respectful and fair while also addressing legitimate business needs. That tension is real and difficult.");
+    if (emotionalState.includes('worried')) {
+      empathyTemplates.push("Your concern about age discrimination is appropriate. Let's make sure your approach is based on objective capability assessment, not age.");
+    }
+  }
+  
+  // Suspected Fraud Cases
+  if (caseType.includes('suspected-fraud')) {
+    empathyTemplates.push("Suspecting fraud is uncomfortable, but ignoring genuine warning signs isn't fair to your organization or other employees who act in good faith.");
+  }
+  
+  // Handle authenticity doubts with permission-giving
+  if (authenticityDoubt) {
+    if (emotionalState.includes('guilty')) {
+      empathyTemplates.push("Having doubts doesn't mean you lack compassion — it means you're doing due diligence. You can support someone while still verifying their claims. Your job is to be fair to everyone, including the business and other employees.");
+    } else {
+      empathyTemplates.push("It's okay to notice when things don't add up — your observations matter. Trusting your instincts about inconsistencies doesn't make you unsupportive.");
+    }
+    
+    // ALWAYS include ethical guardrail for authenticity doubts
+    if (caseType.includes('mental-health')) {
+      empathyTemplates.push("GUARDRAIL: Mental health symptoms can be inconsistent and fluctuating. Before assuming fraud, consider whether what you're seeing could be explained by the nature of their condition. What objective evidence do you have?");
+    } else if (caseType.includes('older-worker')) {
+      empathyTemplates.push("GUARDRAIL: Make sure your concerns are based on objective capability evidence, not age-related assumptions. Are you treating this differently than you would a younger worker with similar issues?");
+    } else {
+      empathyTemplates.push("GUARDRAIL: Before we proceed, have you considered alternative explanations for these behaviors? Let's make sure we're being objective and documenting facts, not impressions.");
+    }
+  }
+  
+  // Stakeholder-specific validation
+  if (stakeholderFrustration.includes('worker')) {
+    empathyTemplates.push("It's exhausting when an employee won't engage constructively with the process you're trying to manage.");
+  }
+  if (stakeholderFrustration.includes('doctor')) {
+    empathyTemplates.push("Waiting for medical providers when you need information to make decisions is incredibly frustrating, especially when certificates are vague or unhelpful.");
+  }
+  if (stakeholderFrustration.includes('insurer')) {
+    empathyTemplates.push("Insurance companies not responding or rejecting claims without clear reasoning puts you in an impossible position.");
+  }
+  
+  // If needs guidance, add support
+  if (actionReadiness === 'needs-guidance') {
+    empathyTemplates.push("Let's break down your options together and find your best path forward.");
+  }
+  
+  // If needs permission (authenticity doubts), empower action
+  if (actionReadiness === 'needs-permission' && authenticityDoubt) {
+    empathyTemplates.push("Let's document what you're observing objectively. You have the right to request independent assessments or investigations when claims seem inconsistent with observable evidence.");
+  }
+  
+  return {
+    emotionalState,
+    caseType,
+    stakeholderFrustration,
+    authenticityDoubt,
+    actionReadiness,
+    empathyTemplates
+  };
+}
+
 // REAL OpenAI Response Handler - using fresh client each time with RAG
 async function getRealOpenAIResponse(
   conversationId: string,
