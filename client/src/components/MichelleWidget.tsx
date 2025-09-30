@@ -148,12 +148,12 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
   const getWidgetDimensions = () => {
     if (isMobile) {
       return {
-        width: Math.min(window.innerWidth - 32, 350), // Max 350px or screen width - 32px margin
+        width: Math.min(window.innerWidth - 32, 525), // Max 525px or screen width - 32px margin (50% wider)
         height: Math.min(window.innerHeight - 100, 500) // Max 500px or screen height - 100px margin
       };
     }
     return {
-      width: 320, // Desktop default
+      width: 480, // Desktop default (50% wider: 320 * 1.5 = 480)
       height: 384
     };
   };
@@ -327,13 +327,11 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
                         onClick={() => handleQuestionClick(question)}
                         data-testid={`suggestion-${index}`}
                         style={{
-                          maxWidth: isMobile ? '280px' : '100%',
-                          minWidth: '0 !important',
-                          overflow: 'hidden !important',
-                          textOverflow: 'ellipsis !important',
-                          whiteSpace: 'nowrap !important',
-                          display: 'inline-block !important',
-                          wordBreak: 'break-all !important'
+                          maxWidth: isMobile ? '420px' : '100%',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          display: 'inline-block'
                         }}
                       >
                         {question}
