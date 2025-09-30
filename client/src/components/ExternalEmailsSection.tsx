@@ -48,6 +48,18 @@ interface ExternalEmailsSectionProps {
 export default function ExternalEmailsSection({ ticketId }: ExternalEmailsSectionProps) {
   const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
 
+  // Helper function to safely format dates
+  const formatDate = (dateString: string | undefined | null) => {
+    if (!dateString) return 'Date unknown';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Invalid date';
+      return format(date, 'MMM d, yyyy h:mm a');
+    } catch {
+      return 'Invalid date';
+    }
+  };
+
   // Fetch external emails for this ticket
   const { data: emails, isLoading, error, refetch } = useQuery({
     queryKey: ['/api/external-emails', 'ticket', ticketId],
@@ -181,7 +193,7 @@ export default function ExternalEmailsSection({ ticketId }: ExternalEmailsSectio
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
-                      {format(new Date(email.receivedAt), 'MMM d, yyyy h:mm a')}
+                      {formatDate(email.receivedAt)}
                     </span>
                     <span className="flex items-center gap-1 text-xs">
                       <ExternalLink className="h-3 w-3" />
@@ -280,11 +292,11 @@ export default function ExternalEmailsSection({ ticketId }: ExternalEmailsSectio
                         <span className="font-medium">Status:</span>
                         <span>{email.processingStatus}</span>
                         <span className="font-medium">Received:</span>
-                        <span>{format(new Date(email.receivedAt), 'MMM d, yyyy h:mm:ss a')}</span>
+                        <span>{formatDate(email.receivedAt)}</span>
                         {email.processedAt && (
                           <>
                             <span className="font-medium">Processed:</span>
-                            <span>{format(new Date(email.processedAt), 'MMM d, yyyy h:mm:ss a')}</span>
+                            <span>{formatDate(email.processedAt)}</span>
                           </>
                         )}
                       </div>
