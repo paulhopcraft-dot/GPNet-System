@@ -6,6 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 
 interface CaseCardProps {
   ticketId: string;
+  fdId?: number | null;
   workerId?: string;
   caseType: "pre_employment" | "injury" | "rtw" | "capacity" | "surveillance" | "fitness" | "workcover";
   claimType?: string | null;
@@ -87,6 +88,7 @@ const priorityConfig = {
 
 export default function CaseCard({
   ticketId,
+  fdId,
   workerId,
   caseType,
   claimType,
@@ -132,7 +134,9 @@ export default function CaseCard({
         <div className="flex items-start justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm text-muted-foreground">#{ticketId}</span>
+              <span className="font-mono text-sm text-muted-foreground">
+                #{fdId || ticketId.substring(0, 8).toUpperCase()}
+              </span>
               <Badge 
                 className={caseTypeConfig[caseType]?.className || "bg-gray-50 text-gray-700 border-gray-200"}
                 data-testid={`badge-case-type-${caseType}`}
