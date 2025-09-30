@@ -224,6 +224,16 @@ router.get('/', requireAuth, async (req, res) => {
         caseType: ticket.caseType || 'pre_employment',
         claimType: ticket.claimType,
         priority: ticket.priority || 'medium',
+        priorityLevel: ticket.priorityLevel || 'Low',
+        priorityScore: ticket.priorityScore || 0,
+        flags: {
+          red: ticket.flagRedCount || 0,
+          amber: ticket.flagAmberCount || 0,
+          green: ticket.flagGreenCount || 0
+        },
+        slaDueAt: ticket.slaDueAt?.toISOString(),
+        lastUpdateAt: ticket.lastUpdateAt?.toISOString(),
+        assignedOwner: ticket.assignedOwner,
         status: ticket.status,
         createdAt: ticket.createdAt?.toISOString() || new Date().toISOString(),
         updatedAt: ticket.updatedAt?.toISOString(),
