@@ -1,10 +1,10 @@
-modules = ["nodejs-20", "web", "postgresql-16"]
+modules = ["nodejs-20", "web", "postgresql-16", "python-3.11"]
 run = "npm run dev"
 hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["chromium", "glib", "gtk3", "nss", "mesa", "libxkbcommon", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXfixes", "alsa-lib", "at-spi2-atk", "at-spi2-core", "atk", "dbus", "poppler_utils", "imagemagick"]
+packages = ["alsa-lib", "at-spi2-atk", "at-spi2-core", "atk", "chromium", "dbus", "glib", "glibcLocales", "gtk3", "imagemagick", "libxcrypt", "libxkbcommon", "mesa", "nss", "poppler_utils", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXfixes"]
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -78,6 +78,10 @@ externalPort = 6800
 [[ports]]
 localPort = 40965
 externalPort = 8000
+
+[[ports]]
+localPort = 40999
+externalPort = 8081
 
 [[ports]]
 localPort = 41287
