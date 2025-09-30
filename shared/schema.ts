@@ -14,6 +14,14 @@ export const tickets = pgTable("tickets", {
   claimType: text("claim_type"), // "standard", "workcover" (for injury cases)
   status: text("status").notNull().default("NEW"),
   priority: text("priority").default("medium"), // "low", "medium", "high", "urgent"
+  priorityLevel: text("priority_level").default("Low"), // "High", "Medium", "Low" - computed from priority_score
+  priorityScore: integer("priority_score").default(0), // Numeric score for sorting (0-100+)
+  flagRedCount: integer("flag_red_count").default(0), // Count of red flags
+  flagAmberCount: integer("flag_amber_count").default(0), // Count of amber flags
+  flagGreenCount: integer("flag_green_count").default(0), // Count of green flags
+  slaDueAt: timestamp("sla_due_at"), // SLA deadline for response/resolution
+  lastUpdateAt: timestamp("last_update_at").defaultNow(), // Last significant update to case
+  assignedOwner: varchar("assigned_owner"), // User ID of case owner
   companyName: text("company_name"),
   
   // Freshdesk integration fields (new - nullable for incremental migration)

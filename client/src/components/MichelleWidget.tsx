@@ -59,10 +59,11 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
       // Start with a personalized greeting message
       const hour = new Date().getHours();
       const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-      const userName = user?.name || "there";
+      // Extract first name only (before first space)
+      const firstName = user?.name ? user.name.split(' ')[0] : "there";
       const greeting: ChatMessage = {
         role: 'assistant',
-        content: `${timeGreeting} ${userName}. I'm Michelle, your personal case manager. How can I help you today?`,
+        content: `${timeGreeting}, ${firstName}. I'm Michelle, your personal case manager. How can I help you today?`,
         timestamp: new Date()
       };
       setMessages([greeting]);
