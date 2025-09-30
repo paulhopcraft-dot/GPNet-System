@@ -1,0 +1,220 @@
+GPNet App — Replit Update Pack (Manager & Case UX)
+
+0) Context
+
+You’re testing the GPNet app in Replit. The following changes correct UI copy, complete filters, and wire key interactions (dashboard > lists > detail). Implement exactly as below.
+
+⸻
+
+1) Global UX/Text fixes
+
+1.1 Greeting copy
+	•	Replace: Good morning, Natalie Support
+	•	With: Good morning, Natalie
+	•	Keep subsequent sentence: “I’m Michelle, your personal case manager.”
+	•	Remove/replace the confusing label “Client Scoped”. If scope must be surfaced, show a subtle tag: Scope: <CustomerName> only when the user has selected a customer context. Otherwise, show nothing.
+
+Acceptance
+	•	Load dashboard as Natalie → header shows “Good morning, Natalie”.
+	•	No “Support” suffix anywhere.
+	•	No “Client Scoped” text unless a customer scope tag is explicitly set.
+
+⸻
+
+2) Search & Case Type Filters
+
+2.1 Search
+	•	Current: Searching “Sarah Jones” returns a result, showing “3 active cases”.
+	•	Required behavior:
+	•	Clicking the person row opens a Person profile panel with:
+	•	Person header (name, unique ID, status)
+	•	Active Cases list (cards: case type, status, priority, last update, flags)
+	•	All Cases (tab) for full history
+	•	“3 active cases” is clickable → jumps to the Active Cases tab.
+
+2.2 Case type filter options
+Add the full GPNet check taxonomy as selectable filters (multi-select):
+	•	Pre-Employment
+	•	Workplace Injury
+	•	New Starter
+	•	Exit
+	•	Prevention
+	•	General Health & Wellbeing
+	•	Mental Health
+
+Include an “All case types” option (default). Persist user’s last selection per session.
+
+Acceptance
+	•	Typing “Sarah Jones” shows a result row; clicking opens profile with Active Cases visible.
+	•	The case-type filter includes all 7 items above (+ All).
+	•	Filtering updates the list immediately without page reload.
+
+⸻
+
+3) Manager Dashboard — Customers → Cases Drilldown
+
+3.1 Customers list view
+Add a Customers panel on the Manager dashboard:
+	•	Columns: Customer name, # Active cases, # Flags, Last activity, Assigned consultant.
+	•	Search box for customer name.
+	•	Row click → Customer Overview.
+
+3.2 Customer Overview
+	•	Header: Customer name + info pill (Active cases count, Flags count).
+	•	Tabs:
+	•	Active Cases (default): table/cards with Case ID, Case type, Person, Priority, Status, Last update, Flags.
+	•	People: list of workers/candidates linked to the customer.
+	•	All Cases: full history (filterable).
+
+Acceptance
+	•	From Manager dashboard, selecting a customer opens their Overview.
+	•	Active Cases renders with correct counts and respects case-type filters.
+	•	Navigation back to dashboard preserves prior scroll/filter state.
+
+⸻
+
+4) “X cases need your review (High)” → Click-through
+
+4.1 Click behavior
+	•	The KPI “38 cases need your review – High” must be clickable.
+	•	On click → open Review Queue view filtered to priority = High, sorted by Priority DESC, then SLA due ASC, then Last update ASC.
+
+4.2 Review Queue content
+	•	Columns: Case ID, Person, Customer, Case type, Priority, Flags (icons), SLA due (relative + absolute), Last update, Assigned owner.
+	•	Row click → Case detail.
+	•	Bulk actions disabled for now (optional later).
+
+Acceptance
+	•	Click KPI opens Review Queue with exactly 38 rows (test fixture).
+	•	Sorting: High priority first; within same priority, earliest SLA due first.
+
+⸻
+
+5) Priority & Flags (server-side defaults)
+
+If not implemented, add a deterministic priority score for sorting:
+	•	Priority levels: High / Medium / Low (derived from score).
+	•	Priority score calculation (server):
+	•	Start at 0
+	•	+50 if any Red flag (e.g., pain escalation, psychosocial risk, missed capacity note)
+	•	+30 if SLA due within 24h; +15 if within 72h
+	•	+20 if new message from worker in last 24h with negative sentiment
+	•	+10 if manager has not viewed last update within 48h
+	•	Map: >=60 → High, 30–59 → Medium, <30 → Low
+	•	Store priority_level, priority_score, sla_due_at, last_update_at, has_red_flags on the case object for fast queries.
+
+Acceptance
+	•	Priority levels match mapping above for test cases.
+	•	Review Queue order matches stored priority_level/score and tiebreakers.
+
+⸻
+
+6) Routing & State
+	•	Deep links:
+	•	/dashboard?review=high → opens Review Queue (High).
+	•	/customers/:id → Customer Overview.
+	•	/people/:id → Person profile (Active Cases default tab).
+	•	Preserve filter state in query string (e.g., ?caseTypes=Pre-Employment,Exit).
+	•	Back/forward browser navigation must restore state.
+
+Acceptance
+	•	Copying/sharing any of the above URLs reproduces the same view and filters.
+
+⸻
+
+7) Performance & UX polish
+	•	Lists load with skeleton placeholders (no blank flashes).
+	•	Debounce search input (250ms).
+	•	Infinite scroll or paginated (server-side). If paginated, default 25 per page with page param in URL.
+	•	Empty states:
+	•	No matches: “No cases match your filters.”
+	•	No active cases for person/customer: “No active cases. View All Cases.”
+
+Acceptance
+	•	Search feels responsive (no >300ms input lag in local test data).
+	•	Empty and loading states display correctly.
+
+⸻
+
+8) Data Model (minimum fields used by UI)
+
+Case
+
+id, person_id, customer_id, case_type, status,
+priority_level, priority_score,
+flags: { red:int, amber:int, green:int },
+sla_due_at, last_update_at, assigned_owner,
+updated_at, created_at
+
+Person
+
+id, full_name, dob?, email?, phone?, active_case_count, customer_id
+
+Customer
+
+id, name, active_case_count, flag_count, last_activity_at, assigned_consultant
+
+Acceptance
+	•	API returns the fields above; UI renders without client-side guessing.
+
+⸻
+
+9) API Endpoints (example contract)
+	•	GET /api/search?query=<text>&type=person|case
+→ { people:[{id,full_name,active_case_count,customer_id}], cases:[...] }
+	•	GET /api/people/:id
+→ { person:{...}, active_cases:[...], all_cases:[...] }
+	•	GET /api/customers?query=&page=
+→ { items:[{...}], page, total }
+	•	GET /api/customers/:id/overview
+→ { customer:{...}, active_cases:[...], people:[...], all_cases_paged:{...} }
+	•	GET /api/cases/review?priority=High&page=
+→ { items:[{...}], page, total }
+
+Acceptance
+	•	All list endpoints support pagination; return totals.
+	•	Filter params: caseTypes, priority, status, customerId, personId.
+
+⸻
+
+10) QA Scenarios (must pass)
+	1.	Greeting fix: Dashboard header shows “Good morning, Natalie” (no “Support”, no “Client Scoped”).
+	2.	Search → Person: Search “Sarah Jones”, click result → Person profile with Active Cases; “3 active cases” is clickable.
+	3.	Full filter set: Case type filter includes all 7 GPNet checks; selecting 2 filters narrows list correctly.
+	4.	KPI click-through: Click “38 cases need your review – High” → Review Queue opens with High-priority cases sorted correctly.
+	5.	Manager flow: Dashboard → Customers → select a customer → see Active Cases; case filters and counts are accurate.
+	6.	Deep links: Visiting /dashboard?review=high goes straight to Review Queue (High).
+	7.	State restore: Use back button from Case detail to Review Queue with prior scroll/filters intact.
+	8.	Performance: Search typing does not freeze UI; lists render skeletons while fetching.
+
+⸻
+
+11) Non-functional
+	•	Log all clicks on KPI tiles and filter changes (for future analytics).
+	•	Handle permission errors gracefully with a toast: “You don’t have access to this resource.”
+	•	Unit tests for:
+	•	Priority mapping
+	•	Filter parsing/serialization
+	•	Sort order comparator
+	•	E2E tests for flows #2, #4, #5 above.
+
+⸻
+
+12) Notes for Replit
+	•	Do not rename existing routes; add redirects if you must change.
+	•	Keep copy, labels, and sort order exactly as specified above.
+	•	If any field is missing in the current schema, add it with a migration and default safely (e.g., priority_level = 'Low' when null).
+
+⸻
+
+If you need a compact checklist for the dev board, use these 8 tickets:
+	1.	Greeting/Copy fixes (+ remove “Client Scoped”)
+	2.	Search → Person profile with Active/All tabs & clickable active-count
+	3.	Case-type filter: add full GPNet taxonomy (7 items + All)
+	4.	Manager dashboard: Customers list + Customer Overview tabs
+	5.	KPI click-through → Review Queue (High) with correct sorting
+	6.	Priority & flags computation (server), expose fields to UI
+	7.	Routing + URL state (deep links, filter persistence)
+	8.	QA passes (unit + E2E), skeleton loaders, debounce
+
+That’s the whole update pack.
