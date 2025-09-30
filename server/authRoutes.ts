@@ -55,6 +55,23 @@ const passwordChangeSchema = z.object({
 
 // Middleware for general authentication (any user)
 export const requireAuth = (req: Request, res: Response, next: any) => {
+  // TEMPORARY: Bypass authentication for development
+  if (process.env.NODE_ENV === 'development') {
+    // Mock session for development
+    if (!req.session.user) {
+      req.session.user = {
+        id: 'dev-user',
+        email: 'support@gpnet.au',
+        name: 'Natalie Support',
+        userType: 'admin',
+        role: 'Administrator',
+        permissions: ['admin', 'superuser']
+      };
+      req.session.isAuthenticated = true;
+    }
+    return next();
+  }
+  
   if (!req.session.user || !req.session.isAuthenticated) {
     return res.status(401).json({ error: 'Authentication required' });
   }
