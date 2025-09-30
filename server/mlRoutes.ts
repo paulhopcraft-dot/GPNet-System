@@ -44,38 +44,46 @@ router.get('/predictions/:ticketId', async (req, res) => {
     const analysis = await storage.getAnalysisByTicket(ticketId);
     
     // Mock alerts for demonstration (replace with real ML predictions when service is running)
+    // Broadened conditions to ensure alerts show across typical demo cases
     const alerts = [];
+    const caseAge = Math.floor((Date.now() - new Date(ticket.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24));
     
-    // Trigger escalation alert for high-risk cases (WorkCover claims)
-    if (ticket.claimType === 'workcover' && analysis?.ragScore === 'red') {
+    // Trigger escalation alert for high-risk cases
+    // Show for: WorkCover claims OR high-severity cases OR older cases
+    if (
+      ticket.claimType === 'workcover' || 
+      analysis?.ragScore === 'red' ||
+      (analysis?.ragScore === 'amber' && ticket.caseType === 'injury')
+    ) {
       alerts.push({
         type: 'escalation',
         severity: 'high',
         message: 'This case shows patterns associated with WorkCover escalation. Consider early intervention.',
         probability: 0.82,
         shap_top: [
-          { feature: 'claim_type', label: 'WorkCover Claim', impact: 0.31, direction: 'increase' },
-          { feature: 'injury_severity', label: 'High Severity', impact: 0.24, direction: 'increase' },
+          { feature: 'claim_type', label: 'Claim Type', impact: 0.31, direction: 'increase' },
+          { feature: 'injury_severity', label: 'Injury Severity', impact: 0.24, direction: 'increase' },
           { feature: 'days_open', label: 'Days Open', impact: 0.15, direction: 'increase' }
         ]
       });
     }
     
-    // Trigger compliance alert for cases with multiple issues
-    if (ticket.status === 'AWAITING_REVIEW' && analysis?.ragScore === 'amber') {
-      const caseAge = Math.floor((Date.now() - new Date(ticket.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24));
-      if (caseAge > 7) {
-        alerts.push({
-          type: 'compliance',
-          severity: 'high',
-          message: 'Worker engagement declining. Recommend proactive outreach to maintain compliance.',
-          entitlement_at_risk: true,
-          shap_top: [
-            { feature: 'response_time', label: 'Slow Response', impact: 0.28, direction: 'increase' },
-            { feature: 'days_open', label: 'Case Duration', impact: 0.19, direction: 'increase' }
-          ]
-        });
-      }
+    // Trigger compliance alert for older cases or cases awaiting review
+    // Show for: cases older than 3 days in AWAITING_REVIEW or amber/red cases older than 5 days
+    if (
+      (ticket.status === 'AWAITING_REVIEW' && caseAge > 3) ||
+      ((analysis?.ragScore === 'amber' || analysis?.ragScore === 'red') && caseAge > 5)
+    ) {
+      alerts.push({
+        type: 'compliance',
+        severity: 'high',
+        message: 'Worker engagement declining. Recommend proactive outreach to maintain compliance.',
+        entitlement_at_risk: true,
+        shap_top: [
+          { feature: 'response_time', label: 'Response Latency', impact: 0.28, direction: 'increase' },
+          { feature: 'days_open', label: 'Case Duration', impact: 0.19, direction: 'increase' }
+        ]
+      });
     }
     
     res.json({
