@@ -16,8 +16,15 @@ import {
   Archive,
   Eye,
   Mail,
-  FileText
+  FileText,
+  Download,
+  Upload,
+  AlertCircle,
+  CheckCircle
 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import OrganizationsTab from "@/components/admin/OrganizationsTab";
 import ClientUsersTab from "@/components/admin/ClientUsersTab";
 import AdminUsersTab from "@/components/admin/AdminUsersTab";
@@ -27,6 +34,90 @@ import CrossTenantAnalyticsTab from "@/components/admin/CrossTenantAnalyticsTab"
 import UnmatchedEmailsTab from "@/components/admin/UnmatchedEmailsTab";
 import AdminCasesTab from "@/components/admin/AdminCasesTab";
 import { FreshdeskTab } from "@/components/admin/FreshdeskTab";
+
+// Database Migration Card Component
+function DatabaseMigrationCard() {
+  const { toast } = useToast();
+  
+  const migrationMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/admin/execute-migration', {});
+      return res;
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Migration Successful!",
+        description: data.message || `Database now has ${data.casesImported} cases`,
+        variant: "default",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Migration Failed",
+        description: error.message || "Failed to migrate data. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleMigration = () => {
+    if (confirm("This will import 108 demo cases into the current database. Continue?")) {
+      migrationMutation.mutate();
+    }
+  };
+
+  return (
+    <Card className="border-primary/20">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Database className="h-5 w-5 text-primary" />
+          Database Migration
+        </CardTitle>
+        <CardDescription>
+          Import 108 demo cases into your production database
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-start gap-3 p-4 bg-muted/50 rounded-lg">
+          <AlertCircle className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <h4 className="font-medium mb-1">One-Click Migration</h4>
+            <p className="text-sm text-muted-foreground mb-3">
+              Click the button below to import all 108 demo patient cases, workers, and admin users into the current database. This operation is safe and can be run multiple times.
+            </p>
+            <Button 
+              onClick={handleMigration}
+              disabled={migrationMutation.isPending}
+              className="gap-2"
+              data-testid="button-execute-migration"
+            >
+              {migrationMutation.isPending ? (
+                <>
+                  <Upload className="h-4 w-4 animate-pulse" />
+                  Migrating...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4" />
+                  Import 108 Demo Cases
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+        
+        {migrationMutation.isSuccess && (
+          <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <p className="text-sm text-green-700 font-medium">
+              Migration completed successfully!
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function AdminConsole() {
   const { user } = useUser();
@@ -166,6 +257,9 @@ export default function AdminConsole() {
         </TabsContent>
 
         <TabsContent value="system" className="space-y-6">
+          {user.permissions?.includes('superuser') && (
+            <DatabaseMigrationCard />
+          )}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

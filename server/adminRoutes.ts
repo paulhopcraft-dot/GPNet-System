@@ -677,4 +677,37 @@ router.get('/export-production-data', requireSuperuser, async (req: Request, res
   }
 });
 
+// Execute migration - import 108 demo cases into current database
+router.post('/execute-migration', requireSuperuser, async (req: Request, res: Response) => {
+  try {
+    const fs = await import('fs');
+    const exportPath = '/tmp/PRODUCTION_MIGRATION.sql';
+    
+    if (!fs.existsSync(exportPath)) {
+      return res.status(404).json({ error: 'Migration file not found. Please contact support.' });
+    }
+    
+    // Read SQL file
+    const sqlContent = fs.readFileSync(exportPath, 'utf8');
+    
+    // Execute SQL (raw SQL execution)
+    await db.execute(sql.raw(sqlContent));
+    
+    // Count tickets to verify
+    const ticketCount = await storage.getAllTickets();
+    
+    res.json({ 
+      success: true, 
+      message: `Migration completed successfully! Database now has ${ticketCount.length} cases.`,
+      casesImported: ticketCount.length
+    });
+  } catch (error) {
+    console.error('Migration execution error:', error);
+    res.status(500).json({ 
+      error: 'Migration failed', 
+      details: error instanceof Error ? error.message : 'Unknown error' 
+    });
+  }
+});
+
 export default router;
