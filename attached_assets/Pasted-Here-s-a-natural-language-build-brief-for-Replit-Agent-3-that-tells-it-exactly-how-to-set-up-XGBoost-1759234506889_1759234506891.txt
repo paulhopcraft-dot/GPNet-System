@@ -1,0 +1,296 @@
+Here’s a natural-language build brief for Replit Agent 3 that tells it exactly how to set up XGBoost + SHAP and implement the case-management UCs (UC-1…UC-13). Paste this straight into Agent 3.
+
+⸻
+
+Replit Agent 3 — Build Brief
+
+Goal: Implement ML services for GPNet case management using XGBoost (with calibrated probabilities) and SHAP explanations, exposing one HTTP endpoint per Use-Case (UC-1…UC-13). Include data schema, feature pipeline, training/inference jobs, and UI-ready responses.
+
+0) Tech & Conventions
+	•	Python 3.11, FastAPI, Uvicorn, Pydantic, xgboost, shap, scikit-learn, pandas, numpy, joblib.
+	•	Repo uses /app package. Persist models in /models. Store feature schemas in /schemas. Store demo data in /data.
+	•	All endpoints return JSON with: model_version, calibrated probabilities, band/decision, top-5 SHAP drivers (readable names, impact, direction), and a short recommendation string.
+	•	Calibration: isotonic (preferred) or Platt if data sparse.
+	•	Fallback policy: on any error or missing critical fields → conservative decision (Hold/Monitor/Quarantine) with reason:"fallback_policy".
+
+1) Project Scaffold (create these files)
+
+/app/__init__.py
+/app/main.py                   # FastAPI app + routes
+/app/config.py                 # constants, thresholds, paths
+/app/data_models.py            # Pydantic request/response schemas
+/app/feature_schema_v3.json    # single shared feature contract
+/app/features.py               # deterministic featurizer
+/app/policy.py                 # banding, guardrails, recommendations
+/app/uc_registry.py            # UC registry + model loader
+/app/train/
+    train_uc_X.py              # one script per UC to train & save artifacts
+    utils.py                   # shared load/split/calibration/metrics
+/models/                       # saved model+calibrator+explainer
+/data/demo/                    # small synthetic CSVs for each UC
+/tests/
+    test_endpoints.py          # smoke tests & example payloads
+README.md
+requirements.txt
+
+2) Requirements (pin these)
+
+fastapi==0.115.0
+uvicorn==0.30.6
+pydantic==2.9.2
+pandas==2.2.2
+numpy==1.26.4
+scikit-learn==1.5.2
+xgboost==2.1.1
+shap==0.46.0
+joblib==1.4.2
+
+3) Shared Config (policy & thresholds)
+
+In config.py define:
+	•	Thresholds (defaults)
+	•	UC-1 Case Priority: high>=0.70, medium>=0.40
+	•	UC-5 Auto-Send: send>=0.85 and confidence>=0.75
+	•	UC-7 Fraud: quarantine>=0.80
+	•	UC-8 Phishing: quarantine>=0.85
+	•	UC-10 IR Non-Fit: nonfit>=0.70
+	•	UC-11 Work-Relatedness: work>=0.75, unclear 0.40–0.74, else non-work
+	•	UC-12 Non-Compliance: high>=0.70, medium>=0.40
+	•	UC-13 Claim Escalation: high>=0.70, medium>=0.40
+	•	Guardrails: if missing case_id or conflicting states or legal-threat keywords → force Hold/Manual and include guardrail_reason.
+
+4) Data Contracts (Pydantic)
+
+In data_models.py, define request bodies. Examples:
+	•	CasePriorityRequest(case_id:str, latest_message_id:str|None)
+	•	CheckinEscalationRequest(case_id:str, checkin_id:str)
+	•	IncidentRoutingRequest(case_id:str, text:str|None, fields:dict|None)
+	•	DocCompletenessRequest(case_id:str, docs:list[str], fields:dict|None)
+	•	EmailStrategyRequest(thread_id:str, draft_type:str, text:str)
+	•	ComplaintRiskRequest(thread_id:str, subject:str, body:str)
+	•	FraudDocRequest(case_id:str, doc_id:str, ocr_text:str, meta:dict)
+	•	PhishingRequest(thread_id:str, subject:str, body:str, sender:str, urls:list[str])
+	•	RecoveryTimelineRequest(case_id:str, injury:dict, treatment:dict, worker:dict)
+	•	IRNFRequest(case_id:str, job_profile:dict, restrictions:dict, progress:dict)
+	•	WorkRelatedRequest(case_id:str, incident:dict, narratives:dict, medical:dict)
+	•	ObligationComplianceRequest(case_id:str, attendance:dict, comms:dict, directives:dict)
+	•	ClaimEscalationRequest(case_id:str, early_signals:dict, narratives:dict, clinical:dict)
+
+Define a unified Response base with:
+
+BaseResp = {
+  "model_version": str,
+  "decision": str | None,
+  "band": str | None,
+  "score": int | None,
+  "probabilities": dict | None,
+  "recommendation": str,
+  "shap_top": [{"feature": str, "label": str, "impact": float, "direction": "up|down"}]
+}
+
+5) Feature Schema v3 (single JSON)
+
+Create /app/feature_schema_v3.json listing all candidate features (typed) used across UCs:
+	•	Meta: days_open, SLA_breaches, channel_email/whatsapp/web (one-hot), site_risk_score
+	•	Text/NLP: sentiment_compound, anger, fear, len_chars, qmark_density, caps_ratio, keyword_doctor/claim/lawyer, injury_terms_count
+	•	Engagement: checkin_completion_rate, avg_response_latency_mins, missed_appts_7d/30d, consecutive_missed_appts, refused_duties_flag, cert_late_days
+	•	Incident/Forms: incident_present, injury_register_logged, witness_present, report_delay_days
+	•	Clinical: injury_type_onehot[...], body_part_onehot[...], severity_scale, comorbidities_count, treatment_sessions_total, imaging_delay_days, restrictions_lift_kg, restrictions_stand_hours, cognitive_restrict_flag
+	•	Role: role_lift_req_kg, role_stand_req_hours, role_cognitive_load
+	•	Fraud: ocr_text_mismatch_rate, doc_hash_repeat, font_anomaly_flag, provider_abn_match_flag
+	•	Phishing: sender_domain_reputation, url_count, url_reputation_min
+	•	WorkRelated: preexisting_same_bodypart_flag, gradual_onset_flag
+	•	ClaimEsc: mention_lawyer_count, neg_sentiment_trend_7d, diagnostic_delay_flag
+
+6) Deterministic Featurizer
+
+Implement features.py:
+	•	Accept a request payload + optional raw text.
+	•	Produce a fixed-order numpy array / pandas Series matching feature_schema_v3.json.
+	•	Handle missing with explicit default values and missing_* indicator features.
+	•	No network calls. Pure transforms.
+
+7) Training Utilities
+
+In /app/train/utils.py:
+	•	load_dataset(path) -> (X, y) reading from /data/demo/uc_X.csv
+	•	Time-based split (70/15/15)
+	•	XGB starter params:
+
+max_depth=6, n_estimators=400, learning_rate=0.05,
+subsample=0.8, colsample_bytree=0.8, reg_lambda=1.0, min_child_weight=1
+
+
+	•	Handle imbalance via scale_pos_weight.
+	•	Fit model; then calibrate on validation (isotonic if n>1000 else sigmoid).
+	•	Save artifacts to /models/{uc_name}/:
+	•	model.joblib, calibrator.joblib, explainer.joblib, feature_order.json, metrics.json, version.txt
+
+Metrics to compute per UC:
+	•	Classifiers: AUC, PR-AUC, F1 (positive), ECE (Expected Calibration Error), confusion matrix
+	•	Regressor (UC-9): RMSE, MAE, 80% CI coverage
+
+8) One Trainer per UC
+
+Create train_uc_1.py … train_uc_13.py. Each:
+	•	Loads demo data
+	•	Trains, calibrates
+	•	Builds a shap.TreeExplainer(model)
+	•	Saves artifacts
+	•	Prints metrics summary
+
+9) Model Loader & Registry
+
+uc_registry.py:
+	•	Map UC_KEY -> {artifact_paths, postprocess_band_fn, recommendation_fn}
+	•	Lazy-load artifacts on first request; cache in memory.
+	•	Validate feature order at inference.
+
+10) Policy & Recommendations
+
+policy.py:
+	•	Functions to map calibrated probs to bands and decisions per UC using thresholds in config.py.
+	•	guardrails(text, fields) -> GuardrailDecision to force Hold/Manual on: missing IDs, legal threats (“lawyer”, “defamation”, “privacy complaint”), or conflicting states.
+	•	recommendation(uc, band, shap_top) -> str short human text, e.g.
+	•	UC-1 High: “Review today; prolonged open time and injury terms present.”
+	•	UC-5 Hold: “Hold for Natalie due to complaint cues and prior overrides.”
+	•	UC-11 Unclear: “Request GP notes + witness statement.”
+	•	UC-12 High: “Flag entitlement risk; compile missed appt evidence.”
+
+11) FastAPI Routes (one per UC)
+
+main.py:
+	•	Mount POST /ml/score/case-priority … /ml/score/claim-escalation
+	•	Each route:
+	1.	Parse request → featurize
+	2.	Run model → probs (or weeks for UC-9)
+	3.	Calibrate probabilities; compute band/decision via policy
+	4.	Compute SHAP for this instance; extract top-5 with readable labels (use a feature label map)
+	5.	Build response payload with model_version, probs, band/decision, shap_top, recommendation
+	6.	Persist a row to predictions (for now, write to /data/predictions.log.jsonl)
+	7.	Return JSON
+
+Response patterns (examples):
+	•	UC-1 Case Priority
+
+{
+  "model_version":"xgb_uc1_v1",
+  "score": 82, "band":"red",
+  "probabilities":{"high":0.82,"medium":0.12,"low":0.06},
+  "recommendation":"Review today; long open time & negative tone.",
+  "shap_top":[{"feature":"days_open","label":"Days case open","impact":0.19,"direction":"up"}, ...]
+}
+
+
+	•	UC-9 Recovery Timeline
+
+{
+  "model_version":"xgb_uc9_v1",
+  "expected_weeks": 8.1, "ci_lower":6.4, "ci_upper":9.7,
+  "delayed_recovery_risk": true,
+  "recommendation":"Expedite imaging/referral; review plan.",
+  "shap_top":[...]
+}
+
+
+
+12) UC Explanations (for devs; put in README and as code comments)
+
+UC-1 Case Priority — Classify open cases H/M/L for the review queue.
+Features: days_open, prior_escalations, sentiment_compound, injury_terms_count, SLA_breaches.
+Labels: escalated within 48h = High; routine = Low; otherwise Medium.
+
+UC-2 Check-in Escalation — From worker/manager check-ins, predict Escalate|Monitor.
+Features: pain/fatigue deltas, sleep decline, refused duties, negative tone.
+Label: manual escalations.
+
+UC-3 Incident vs Prevention Routing — Detect discrete incident → route to Injury flow.
+Signals: incident flag, register lodged, “fell/slipped/struck” keywords, witness present.
+
+UC-4 Document Completeness — Are critical docs missing?
+Signals: certificate presence/timeliness, register entry, imaging/referrals.
+Output: Complete|MissingCritical + which fields are missing (derive from features).
+
+UC-5 Email Auto-Send vs Hold — Decide to send draft or hold for Natalie; also return template/tone.
+Signals: complaint/legal keywords, prior human overrides, tone, thread depth.
+Policy: Send only if p>=0.85 and confidence>=0.75; else Hold.
+
+UC-6 Complaint Risk (Pre-send) — Predict email likely to trigger complaint.
+Signals: negative tone, accusatory phrasing, history with same recipient.
+Action: warn or switch to safer template.
+
+UC-7 Document/ID Fraud — Detect forged certificates/invoices/timesheets/IDs.
+Signals: OCR vs text mismatch, duplicate hash across cases, font/metadata anomalies, provider ABN mismatch.
+Action: quarantine:true, request verified re-upload.
+
+UC-8 Phishing/Abuse/Coached — Flag malicious or coached inbound emails.
+Signals: URL reputation, sender domain, repeated narrative patterns.
+Action: quarantine and route to review.
+
+UC-9 Expected Recovery Timeline (ERT) — Regress weeks to functional recovery with CI.
+Features: injury type/body part/severity, age, comorbidities, treatment sessions, imaging delays, psychosocial flags.
+Action: if slower than benchmark for injury type → delayed_recovery_risk:true and suggest actions.
+
+UC-10 Inherent Requirements Non-Fit (IRNF) — Probability worker cannot meet inherent role requirements.
+Features: role demands (lift/stand/cognitive), current restrictions, progress, prior RTW attempts.
+Action: if p_nonfit>=0.70 → recommend redeployment/vocational pathway.
+
+UC-11 Work-Relatedness — Probability injury is work-related vs non-work.
+Signals: register logged, report delay, witness/CCTV, gradual onset, same-body-part preexisting, certificate wording (“non-occupational”).
+Bands: work (>=0.75), unclear (0.40–0.74), non_work (<0.40).
+
+UC-12 Obligation Compliance — Probability of non-compliance (missed appts, refusing duties, non-responsive).
+Action: for WorkCover, flag “entitlement at risk” + generate evidence log; for non-WorkCover, generate reasonable-directives checklist.
+
+UC-13 Claim Escalation Risk — Minor issue likely to escalate to a formal WorkCover claim.
+Signals: mention of lawyer/claim, negative sentiment trend, diagnostic delay, refusal of light duties.
+Action: early intervention & supportive comms.
+
+13) Demo Data
+
+Create small synthetic CSVs under /data/demo/ for each UC with columns matching feature_schema_v3. Include ~300–1,000 rows per UC with plausible distributions so unit tests can train quickly.
+
+14) Tests
+
+tests/test_endpoints.py:
+	•	Spin up FastAPI test client.
+	•	For each endpoint, post a sample payload (include examples for red/yellow/green cases) and assert:
+	•	200 OK
+	•	Has model_version, probabilities, band/decision, shap_top (len 5), and a non-empty recommendation.
+
+15) Run Commands (add to README)
+	•	Install: pip install -r requirements.txt
+	•	Train all: python -m app.train.train_uc_1 … train_uc_13
+	•	Serve: uvicorn app.main:app --reload --port 8000
+	•	Test: pytest -q
+
+16) Non-Functional
+	•	Log each prediction to /data/predictions.log.jsonl with input hash, latency, decision.
+	•	If model artifacts missing for a UC, return 501 Not Implemented with detail:"model_not_trained".
+	•	Keep responses < 32KB. Do not include raw text in responses.
+
+17) Example Curl (put in README)
+
+curl -X POST http://localhost:8000/ml/score/work-related \
+  -H "Content-Type: application/json" \
+  -d '{
+        "case_id":"C-123",
+        "incident":{"register_logged":false,"report_delay_days":5,"witness_present":false},
+        "narratives":{"worker":"gradual back pain after weekend sport","manager":"no incident observed"},
+        "medical":{"certificate_text":"Likely non-occupational"}
+      }'
+
+Expected (example):
+
+{
+  "model_version":"xgb_uc11_v1",
+  "band":"non_work",
+  "probabilities":{"work":0.18,"unclear":0.22,"non_work":0.60},
+  "recommendation":"Review for pre-existing causes; request GP notes & register confirmation.",
+  "shap_top":[{"feature":"gradual_onset_flag","label":"Gradual onset","impact":0.21,"direction":"up"}, ...]
+}
+
+
+⸻
+
+This brief gives Agent 3 everything: folder structure, dependencies, schemas, training pipeline, endpoints, thresholds, guardrails, UC explanations, demo data, tests, and example I/O.
