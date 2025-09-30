@@ -135,7 +135,7 @@ export default function MichelleDashboardPanel({
       if (currentStats.new > 0) {
         newSuggestions.push({
           id: "new-submissions",
-          text: `${currentStats.new} new pre-employment checks to review`,
+          text: `${currentStats.new} new cases to review`,
           action: "view_new",
           icon: FileText,
           priority: "medium",
