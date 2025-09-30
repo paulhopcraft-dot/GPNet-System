@@ -314,40 +314,54 @@ export default function Dashboard() {
   const totalCases: number = casesResponse?.total || 0;
   
   // Apply client-side filtering since we're using simple API call
-  const filteredCases = cases.filter(caseItem => {
-    // Status filter
-    if (filters.status !== 'all' && caseItem.status !== filters.status) {
-      return false;
-    }
-    // Case type filter
-    if (filters.caseType !== 'all' && caseItem.caseType !== filters.caseType) {
-      return false;
-    }
-    // Priority filter
-    if (filters.priority !== 'all' && caseItem.priority !== filters.priority) {
-      return false;
-    }
-    // RAG score filter
-    if (filters.ragScore !== 'all' && caseItem.ragScore !== filters.ragScore) {
-      return false;
-    }
-    // Text search - check BOTH header search and case filters search
-    const combinedSearchTerm = (searchQuery || filters.search || '').toLowerCase().trim();
-    if (combinedSearchTerm) {
-      const searchableText = [
-        caseItem.ticketId,
-        caseItem.workerName,
-        caseItem.email,
-        caseItem.roleApplied,
-        caseItem.company
-      ].join(' ').toLowerCase();
-      
-      if (!searchableText.includes(combinedSearchTerm)) {
+  const filteredCases = cases
+    .filter(caseItem => {
+      // Status filter
+      if (filters.status !== 'all' && caseItem.status !== filters.status) {
         return false;
       }
-    }
-    return true;
-  });
+      // Case type filter
+      if (filters.caseType !== 'all' && caseItem.caseType !== filters.caseType) {
+        return false;
+      }
+      // Priority filter
+      if (filters.priority !== 'all' && caseItem.priority !== filters.priority) {
+        return false;
+      }
+      // RAG score filter
+      if (filters.ragScore !== 'all' && caseItem.ragScore !== filters.ragScore) {
+        return false;
+      }
+      // Text search - check BOTH header search and case filters search
+      const combinedSearchTerm = (searchQuery || filters.search || '').toLowerCase().trim();
+      if (combinedSearchTerm) {
+        const searchableText = [
+          caseItem.ticketId,
+          caseItem.workerName,
+          caseItem.email,
+          caseItem.roleApplied,
+          caseItem.company
+        ].join(' ').toLowerCase();
+        
+        if (!searchableText.includes(combinedSearchTerm)) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      // Sort by priority: high -> medium -> low
+      const priorityOrder: { [key: string]: number } = {
+        'high': 1,
+        'medium': 2,
+        'low': 3
+      };
+      
+      const aPriority = priorityOrder[a.priority?.toLowerCase() || ''] || 999;
+      const bPriority = priorityOrder[b.priority?.toLowerCase() || ''] || 999;
+      
+      return aPriority - bPriority;
+    });
 
   // Handle loading states
   if (statsLoading || casesLoading) {
