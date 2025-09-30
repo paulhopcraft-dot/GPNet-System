@@ -265,6 +265,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get external emails for a specific ticket
+  app.get("/api/external-emails/ticket/:ticketId", requireAuth, async (req, res) => {
+    try {
+      const { ticketId } = req.params;
+      const user = (req as any).session.user;
+      
+      // Verify user has access to this ticket
+      const ticket = await storage.getTicket(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+      
+      // Check authorization: Admin users can access all tickets, 
+      // non-admin users can only access tickets from their organization
+      const isAdmin = user.userType === 'admin' || user.role === 'admin' || 
+                     user.permissions?.includes('admin') || user.permissions?.includes('superuser');
+      
+      if (!isAdmin && ticket.organizationId !== user.organizationId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      const emails = await db.select()
+        .from(externalEmails)
+        .where(eq(externalEmails.ticketId, ticketId))
+        .orderBy(externalEmails.forwardedAt);
+      
+      res.json(emails);
+      
+    } catch (error) {
+      console.error("Failed to get external emails for ticket:", error);
+      res.status(500).json({ error: "Failed to retrieve external emails" });
+    }
+  });
+
   // ===========================================
   // JOTFORM WEBHOOK ENDPOINTS
   // ===========================================
@@ -1173,7 +1207,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allTickets = await storage.getAllTicketsForOrganization(organizationId);
       
       // Get unique worker IDs from tickets and fetch workers
-      const workerIds = [...new Set(allTickets.map(t => t.workerId).filter(Boolean))] as string[];
+      const workerIds = Array.from(new Set(allTickets.map(t => t.workerId).filter(Boolean))) as string[];
       const allWorkers = await Promise.all(
         workerIds.map(id => storage.getWorker(id))
       ).then(workers => workers.filter((w): w is NonNullable<typeof w> => w !== undefined));

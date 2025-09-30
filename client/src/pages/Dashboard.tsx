@@ -353,9 +353,9 @@ export default function Dashboard() {
     if (filters.ragScore !== 'all' && caseItem.ragScore !== filters.ragScore) {
       return false;
     }
-    // Text search (from header search context)
-    if (searchQuery) {
-      const searchTerm = searchQuery.toLowerCase();
+    // Text search - check BOTH header search and case filters search
+    const combinedSearchTerm = (searchQuery || filters.search || '').toLowerCase().trim();
+    if (combinedSearchTerm) {
       const searchableText = [
         caseItem.ticketId,
         caseItem.workerName,
@@ -364,7 +364,7 @@ export default function Dashboard() {
         caseItem.company
       ].join(' ').toLowerCase();
       
-      if (!searchableText.includes(searchTerm)) {
+      if (!searchableText.includes(combinedSearchTerm)) {
         return false;
       }
     }
