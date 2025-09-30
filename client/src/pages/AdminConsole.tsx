@@ -33,6 +33,7 @@ import SystemStatsTab from "@/components/admin/SystemStatsTab";
 import CrossTenantAnalyticsTab from "@/components/admin/CrossTenantAnalyticsTab";
 import UnmatchedEmailsTab from "@/components/admin/UnmatchedEmailsTab";
 import AdminCasesTab from "@/components/admin/AdminCasesTab";
+import CompaniesTab from "@/components/admin/CompaniesTab";
 import { FreshdeskTab } from "@/components/admin/FreshdeskTab";
 
 // Database Migration Card Component
@@ -182,10 +183,14 @@ export default function AdminConsole() {
 
       {/* Admin Console Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className={`grid w-full ${mockUser.permissions?.includes('superuser') ? 'grid-cols-10' : 'grid-cols-9'}`}>
+        <TabsList className={`grid w-full ${mockUser.permissions?.includes('superuser') ? 'grid-cols-11' : 'grid-cols-10'}`}>
           <TabsTrigger value="overview" className="flex items-center gap-2" data-testid="tab-overview">
             <BarChart3 className="h-4 w-4" />
             Overview
+          </TabsTrigger>
+          <TabsTrigger value="companies" className="flex items-center gap-2" data-testid="tab-companies">
+            <Building className="h-4 w-4" />
+            Companies
           </TabsTrigger>
           <TabsTrigger value="cases" className="flex items-center gap-2" data-testid="tab-cases">
             <FileText className="h-4 w-4" />
@@ -229,6 +234,10 @@ export default function AdminConsole() {
 
         <TabsContent value="overview" className="space-y-6">
           <SystemStatsTab />
+        </TabsContent>
+
+        <TabsContent value="companies" className="space-y-6">
+          <CompaniesTab />
         </TabsContent>
 
         <TabsContent value="cases" className="space-y-6">
