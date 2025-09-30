@@ -1,0 +1,534 @@
+# XGBoost + SHAP Machine Learning Integration for Case Management System
+
+## OBJECTIVE
+Integrate XGBoost machine learning models with SHAP explainability into an existing case management system to provide intelligent predictions and insights for fraud detection, return-to-work timelines, and case escalation risk.
+
+---
+
+## SYSTEM ARCHITECTURE
+
+### Components Needed:
+1. **Python ML Service** (Flask) - Separate microservice for predictions
+2. **Node.js/TypeScript Backend** - Existing backend that calls ML service
+3. **React Frontend** - UI components to display predictions
+4. **PostgreSQL Database** - Store predictions and training data
+5. **Model Storage** - Persist trained XGBoost models
+
+### Three ML Models:
+1. **Fraud Detection Model** - Binary classification (fraudulent vs legitimate claims)
+2. **RTW Prediction Model** - Regression (predict days until return to work)
+3. **Escalation Risk Model** - Binary classification (will case escalate?)
+
+---
+
+## PROJECT STRUCTURE
+
+```
+project-root/
+├── ml-service/                 # Python ML microservice
+│   ├── main.py                 # Flask app entry point
+│   ├── requirements.txt        # Python dependencies
+│   ├── config.py              # Configuration
+│   ├── services/
+│   │   ├── prediction_service.py    # Core prediction logic
+│   │   ├── feature_engineering.py   # Feature extraction
+│   │   └── model_manager.py         # Model save/load
+│   ├── routes/
+│   │   ├── prediction_routes.py     # Prediction endpoints
+│   │   └── training_routes.py       # Training endpoints
+│   ├── utils/
+│   │   ├── db_connector.py          # Database connection
+│   │   └── logger.py                # Logging setup
+│   ├── models/                      # Saved model files (.joblib)
+│   └── .env                         # Environment variables
+│
+├── server/                     # Node.js backend
+│   ├── mlServiceClient.ts      # Client to call Python ML service
+│   ├── caseRoutes.ts          # Add ML prediction endpoints
+│   └── migrations/
+│       └── add_ml_predictions_table.sql
+│
+└── client/                     # React frontend
+    └── src/components/
+        └── MLPredictions.tsx   # UI component for predictions
+```
+
+---
+
+## IMPLEMENTATION REQUIREMENTS
+
+### 1. PYTHON ML SERVICE
+
+#### Dependencies (requirements.txt):
+- flask==2.3.0
+- flask-cors==4.0.0
+- xgboost==2.0.0
+- shap==0.42.0
+- pandas==2.0.0
+- numpy==1.24.0
+- scikit-learn==1.3.0
+- psycopg2-binary==2.9.6
+- python-dotenv==1.0.0
+- joblib==1.3.0
+
+#### Core Functionality:
+
+**PredictionService Class** should:
+- Load trained XGBoost models from disk
+- Extract features from case data
+- Make predictions using XGBoost
+- Generate SHAP explanations (feature importance)
+- Interpret results in natural language
+- Store predictions in database
+
+**FeatureEngineer Class** should:
+- Extract 25+ features from case data including:
+  - **Fraud features**: claim duration, medical cert count, doctor changes, response rate, social media flags
+  - **RTW features**: injury severity, age, job physical demand, employer RTW program score
+  - **Escalation features**: disputes, lawyer involvement, insurer rejections, communication breakdown
+- Train XGBoost models with proper train/test split
+- Return trained models with performance metrics
+
+**ModelManager Class** should:
+- Save trained models to disk (using joblib)
+- Load models on service startup
+- Track model versions
+- Provide model health status
+
+#### API Endpoints:
+
+```
+GET  /health                  - Service health check
+POST /predict/fraud          - Predict fraud risk
+POST /predict/rtw            - Predict RTW timeline
+POST /predict/escalation     - Predict escalation risk
+POST /predict/all            - Get all predictions at once
+POST /train/fraud            - Train fraud model
+POST /train/rtw              - Train RTW model
+POST /train/escalation       - Train escalation model
+```
+
+#### Prediction Response Format:
+
+**Fraud Detection:**
+```json
+{
+  "case_id": 123,
+  "fraud_probability": 0.75,
+  "fraud_risk_level": "HIGH",
+  "confidence": 0.88,
+  "top_factors": [
+    {
+      "feature": "Multiple doctor changes",
+      "impact": "increases fraud risk",
+      "magnitude": 0.25
+    }
+  ],
+  "interpretation": "High fraud risk due to multiple doctor changes...",
+  "shap_explanation": {...},
+  "model_version": "v1.0"
+}
+```
+
+**RTW Prediction:**
+```json
+{
+  "case_id": 123,
+  "predicted_rtw_days": 45,
+  "confidence_interval": {"min": 35, "max": 55},
+  "probability_long_term": 0.15,
+  "top_factors": [...],
+  "interpretation": "Expected RTW in 45 days...",
+  "model_version": "v1.0"
+}
+```
+
+**Escalation Prediction:**
+```json
+{
+  "case_id": 123,
+  "escalation_probability": 0.65,
+  "escalation_risk_level": "MEDIUM",
+  "top_factors": [...],
+  "interpretation": "Moderate escalation risk...",
+  "model_version": "v1.0"
+}
+```
+
+---
+
+### 2. SHAP INTEGRATION
+
+For each prediction, generate SHAP (SHapley Additive exPlanations) values:
+
+1. Calculate SHAP values using `shap.TreeExplainer(model)`
+2. Identify top 5 most influential features
+3. Determine if feature increases or decreases risk
+4. Calculate magnitude of impact
+5. Generate human-readable interpretation
+
+Example SHAP interpretation logic:
+- If SHAP value > 0.15: "significantly increases risk"
+- If SHAP value > 0.05: "moderately increases risk"
+- If SHAP value < -0.15: "significantly decreases risk"
+
+Convert feature names to human-readable:
+- `claim_duration_days` → "Extended claim duration"
+- `doctor_changes` → "Multiple doctor changes"
+- `worker_engagement_score` → "Low worker engagement"
+
+---
+
+### 3. DATABASE SCHEMA
+
+#### Create `ml_predictions` table:
+```sql
+CREATE TABLE ml_predictions (
+  id SERIAL PRIMARY KEY,
+  case_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE,
+  prediction_type VARCHAR(50) NOT NULL,
+  prediction_value FLOAT NOT NULL,
+  prediction_category VARCHAR(20),
+  shap_explanation JSONB,
+  model_version VARCHAR(20),
+  confidence_score FLOAT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+#### Create `training_labels` table:
+```sql
+CREATE TABLE training_labels (
+  id SERIAL PRIMARY KEY,
+  case_id INTEGER REFERENCES tickets(id) ON DELETE CASCADE,
+  is_fraudulent BOOLEAN,
+  required_escalation BOOLEAN,
+  actual_rtw_days INTEGER,
+  labeled_by INTEGER REFERENCES users(id),
+  labeled_at TIMESTAMP DEFAULT NOW(),
+  notes TEXT,
+  UNIQUE(case_id)
+);
+```
+
+#### Add ML feature columns to existing `tickets` table:
+- medical_cert_count INTEGER
+- suitable_duties_rejected INTEGER
+- doctor_changes INTEGER
+- social_media_flags INTEGER
+- certificate_vagueness_score INTEGER
+- claim_disputes INTEGER
+- insurer_rejections INTEGER
+- communication_breakdown BOOLEAN
+- medical_opinion_conflicts INTEGER
+- claim_value_estimate DECIMAL
+
+---
+
+### 4. NODE.JS BACKEND INTEGRATION
+
+#### Create MLServiceClient:
+A TypeScript class that:
+- Makes HTTP requests to Python ML service
+- Handles errors gracefully (fallback if ML service down)
+- Provides health check functionality
+- Has methods for each prediction type
+
+#### Add API Endpoints to Express:
+```typescript
+GET  /api/cases/:id/predictions      - Get stored predictions
+POST /api/cases/:id/predict          - Trigger new prediction
+GET  /api/ml/health                  - Check ML service status
+```
+
+#### Integration Points:
+- Call ML service when case is updated
+- Store predictions in database
+- Display predictions to case managers
+- Use predictions to prioritize cases
+
+---
+
+### 5. REACT FRONTEND COMPONENTS
+
+#### MLPredictions Component:
+A comprehensive React component that displays:
+
+**Fraud Risk Card:**
+- Risk level badge (HIGH/MEDIUM/LOW)
+- Probability bar chart
+- Top risk factors list
+- Natural language interpretation
+- Color coding (red for high, yellow for medium, green for low)
+
+**RTW Prediction Card:**
+- Predicted days (large number)
+- Confidence interval range
+- Long-term probability
+- Influential factors
+- Timeline visualization
+
+**Escalation Risk Card:**
+- Risk level badge
+- Probability bar
+- Escalation drivers list
+- Recommended actions
+- Alert styling for high risk
+
+**Features:**
+- Loading states with spinner
+- Error handling with user-friendly messages
+- Refresh button to get updated predictions
+- Responsive design with Tailwind CSS
+- Icons from lucide-react
+
+---
+
+### 6. FEATURE ENGINEERING DETAILS
+
+#### Feature Categories:
+
+**Demographic Features:**
+- Worker age
+- Previous claim history
+- Job physical demand level
+
+**Temporal Features:**
+- Claim duration (days)
+- Days to first treatment
+- Time between medical certificates
+
+**Medical Features:**
+- Injury severity (1-4 scale)
+- Number of medical certificates
+- Doctor changes
+- Medical opinion conflicts
+- Comorbidities count
+
+**Behavioral Features:**
+- Communication response rate (0-1)
+- Worker engagement score (0-10)
+- RTW plan compliance
+- Missed appointments
+
+**Claim Characteristics:**
+- Suitable duties rejected
+- Claim disputes
+- Insurer rejections
+- Lawyer involvement
+- Claim value estimate
+
+**Risk Indicators:**
+- Social media flags
+- Certificate vagueness score
+- Communication breakdown
+- Manager frustration score
+- Case complexity score
+
+#### Feature Extraction Logic:
+- Calculate duration from timestamps
+- Count related records (medical certs, disputes)
+- Encode categorical variables (severity: minor=1, severe=4)
+- Derive scores from multiple fields
+- Handle missing values with sensible defaults
+
+---
+
+### 7. MODEL TRAINING WORKFLOW
+
+#### Initial Training:
+1. Generate synthetic training data if no historical data exists
+2. Extract features from case data
+3. Split into train/test sets (80/20)
+4. Train XGBoost with hyperparameters:
+   - n_estimators: 100
+   - max_depth: 5
+   - learning_rate: 0.1
+5. Evaluate on test set (accuracy, AUC, MAE)
+6. Save model with version number
+7. Store performance metrics
+
+#### Retraining Strategy:
+- Retrain monthly with new labeled data
+- Evaluate performance degradation
+- A/B test new models before deployment
+- Keep last 3 model versions
+- Log all retraining events
+
+---
+
+### 8. DEPLOYMENT STRATEGY
+
+#### Development Setup:
+1. Start PostgreSQL database
+2. Run database migrations
+3. Start Python ML service on port 5000
+4. Start Node.js backend on port 3000
+5. Start React frontend
+
+#### Production Deployment:
+- Use Docker Compose with 3 services:
+  - postgres (database)
+  - ml-service (Python Flask)
+  - backend (Node.js + React)
+- Environment variables for all secrets
+- Volume mount for model persistence
+- Health checks for all services
+- Reverse proxy (nginx) for routing
+
+#### Environment Variables:
+```
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+ML_SERVICE_URL=http://ml-service:5000
+ML_SERVICE_PORT=5000
+```
+
+---
+
+### 9. ERROR HANDLING & FALLBACKS
+
+#### ML Service Unavailable:
+- Log error but don't block case operations
+- Show "Predictions temporarily unavailable" message
+- Queue prediction request for retry
+- Use cached predictions if available
+
+#### Model Not Trained:
+- Return helpful error message
+- Prompt admin to train models
+- Provide synthetic data generation option
+
+#### Invalid Features:
+- Use default values for missing features
+- Log data quality issues
+- Continue with prediction (graceful degradation)
+
+---
+
+### 10. TESTING STRATEGY
+
+#### Unit Tests:
+- Test feature extraction logic
+- Test SHAP interpretation
+- Test model save/load
+- Test database operations
+
+#### Integration Tests:
+- Test end-to-end prediction flow
+- Test Node.js → Python communication
+- Test database storage and retrieval
+
+#### Manual Testing:
+- Create test cases with known outcomes
+- Verify predictions make sense
+- Check SHAP explanations are accurate
+- Test UI components with various risk levels
+
+---
+
+### 11. MONITORING & MAINTENANCE
+
+#### Logging:
+- Log all predictions with timestamps
+- Log model performance metrics
+- Log API errors and failures
+- Track prediction latency
+
+#### Metrics to Track:
+- Prediction accuracy over time
+- Model drift indicators
+- API response times
+- Error rates
+- Usage patterns
+
+#### Alerts:
+- Model accuracy drops below threshold
+- ML service down for > 5 minutes
+- Prediction latency exceeds 5 seconds
+- Database connection failures
+
+---
+
+## IMPLEMENTATION CHECKLIST
+
+### Phase 1: Core ML Service
+- [ ] Set up Python project structure
+- [ ] Install dependencies
+- [ ] Implement FeatureEngineer class
+- [ ] Implement ModelManager class
+- [ ] Implement PredictionService with SHAP
+- [ ] Create Flask app with routes
+- [ ] Test predictions locally
+
+### Phase 2: Database Integration
+- [ ] Create database migrations
+- [ ] Implement DatabaseConnector
+- [ ] Test data storage and retrieval
+
+### Phase 3: Backend Integration
+- [ ] Create MLServiceClient in Node.js
+- [ ] Add prediction endpoints to Express
+- [ ] Test backend → Python communication
+
+### Phase 4: Frontend
+- [ ] Create MLPredictions React component
+- [ ] Style with Tailwind CSS
+- [ ] Add to case detail page
+- [ ] Test UI with various predictions
+
+### Phase 5: Training & Deployment
+- [ ] Generate synthetic training data
+- [ ] Train initial models
+- [ ] Set up Docker Compose
+- [ ] Deploy to production environment
+- [ ] Set up monitoring
+
+---
+
+## SUCCESS CRITERIA
+
+✅ **Functional Requirements:**
+- All three models make accurate predictions
+- SHAP explanations are clear and helpful
+- Predictions display correctly in UI
+- System handles ML service downtime gracefully
+
+✅ **Performance Requirements:**
+- Predictions complete in < 2 seconds
+- ML service handles 100+ requests/minute
+- Models load on startup in < 10 seconds
+
+✅ **User Experience:**
+- Predictions are easy to understand
+- Risk levels are clearly indicated
+- Top factors are actionable
+- No technical jargon in explanations
+
+---
+
+## FUTURE ENHANCEMENTS
+
+1. **Active Learning**: Flag cases for expert review to improve training data
+2. **Real-time Updates**: Update predictions as case data changes
+3. **What-if Analysis**: Show how changing factors affects predictions
+4. **Recommendation Engine**: Suggest actions based on predictions
+5. **Batch Predictions**: Score all open cases nightly
+6. **Model Comparison**: A/B test different model versions
+7. **Automated Retraining**: Trigger retraining when performance drops
+
+---
+
+## NOTES FOR IMPLEMENTATION
+
+- Start with synthetic data if no historical labels exist
+- Train models with at least 100 samples per class
+- Use cross-validation to prevent overfitting
+- Keep SHAP explanations simple and non-technical
+- Test with edge cases (missing data, extreme values)
+- Make predictions optional (graceful degradation)
+- Version all models for rollback capability
+- Document all feature engineering decisions
+
+---
+
+This guide provides complete specifications for integrating XGBoost and SHAP into your case management system. All components work together to provide intelligent, explainable predictions that help case managers make better decisions.
