@@ -127,7 +127,7 @@ export default function CaseCard({
   };
 
   return (
-    <Card className="hover-elevate cursor-pointer" onClick={handleViewCase} data-testid={`card-case-${ticketId}`}>
+    <Card className="hover-elevate" data-testid={`card-case-${ticketId}`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
