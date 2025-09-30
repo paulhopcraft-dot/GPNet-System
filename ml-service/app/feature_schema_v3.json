@@ -1,0 +1,426 @@
+{
+  "version": "3.0",
+  "description": "Unified feature schema for all 13 ML use cases",
+  "features": [
+    {
+      "name": "days_open",
+      "type": "int",
+      "description": "Days since case was opened",
+      "use_cases": ["UC1", "UC2", "UC13"]
+    },
+    {
+      "name": "sla_breaches",
+      "type": "int",
+      "description": "Number of SLA breaches",
+      "use_cases": ["UC1"]
+    },
+    {
+      "name": "channel_email",
+      "type": "bool",
+      "description": "Primary channel is email",
+      "use_cases": ["UC1", "UC5", "UC6"]
+    },
+    {
+      "name": "channel_whatsapp",
+      "type": "bool",
+      "description": "Primary channel is WhatsApp",
+      "use_cases": ["UC1"]
+    },
+    {
+      "name": "channel_web",
+      "type": "bool",
+      "description": "Primary channel is web form",
+      "use_cases": ["UC1", "UC3"]
+    },
+    {
+      "name": "sentiment_compound",
+      "type": "float",
+      "description": "Overall sentiment score (-1 to 1)",
+      "use_cases": ["UC1", "UC2", "UC5", "UC6", "UC13"]
+    },
+    {
+      "name": "anger_score",
+      "type": "float",
+      "description": "Anger emotion score (0 to 1)",
+      "use_cases": ["UC2", "UC6", "UC13"]
+    },
+    {
+      "name": "fear_score",
+      "type": "float",
+      "description": "Fear emotion score (0 to 1)",
+      "use_cases": ["UC2"]
+    },
+    {
+      "name": "text_length",
+      "type": "int",
+      "description": "Character count of text",
+      "use_cases": ["UC1", "UC5", "UC6", "UC8"]
+    },
+    {
+      "name": "question_density",
+      "type": "float",
+      "description": "Question marks per 100 chars",
+      "use_cases": ["UC6"]
+    },
+    {
+      "name": "caps_ratio",
+      "type": "float",
+      "description": "Uppercase character ratio",
+      "use_cases": ["UC6", "UC8"]
+    },
+    {
+      "name": "keyword_doctor",
+      "type": "int",
+      "description": "Mentions of doctor/medical professional",
+      "use_cases": ["UC1", "UC7", "UC13"]
+    },
+    {
+      "name": "keyword_claim",
+      "type": "int",
+      "description": "Mentions of claim/compensation",
+      "use_cases": ["UC13"]
+    },
+    {
+      "name": "keyword_lawyer",
+      "type": "int",
+      "description": "Mentions of lawyer/legal",
+      "use_cases": ["UC13"]
+    },
+    {
+      "name": "injury_terms_count",
+      "type": "int",
+      "description": "Count of injury-related terms",
+      "use_cases": ["UC1", "UC3", "UC9"]
+    },
+    {
+      "name": "checkin_completion_rate",
+      "type": "float",
+      "description": "Percentage of check-ins completed",
+      "use_cases": ["UC2", "UC12"]
+    },
+    {
+      "name": "avg_response_latency_mins",
+      "type": "float",
+      "description": "Average response time in minutes",
+      "use_cases": ["UC12"]
+    },
+    {
+      "name": "missed_appts_7d",
+      "type": "int",
+      "description": "Missed appointments in last 7 days",
+      "use_cases": ["UC12"]
+    },
+    {
+      "name": "missed_appts_30d",
+      "type": "int",
+      "description": "Missed appointments in last 30 days",
+      "use_cases": ["UC12"]
+    },
+    {
+      "name": "consecutive_missed_appts",
+      "type": "int",
+      "description": "Consecutive missed appointments",
+      "use_cases": ["UC12"]
+    },
+    {
+      "name": "refused_duties_flag",
+      "type": "bool",
+      "description": "Has refused suitable duties",
+      "use_cases": ["UC2", "UC12", "UC13"]
+    },
+    {
+      "name": "cert_late_days",
+      "type": "int",
+      "description": "Days late submitting medical certificate",
+      "use_cases": ["UC4", "UC12"]
+    },
+    {
+      "name": "incident_logged",
+      "type": "bool",
+      "description": "Incident was formally logged",
+      "use_cases": ["UC3", "UC11"]
+    },
+    {
+      "name": "injury_register_logged",
+      "type": "bool",
+      "description": "Injury appears in register",
+      "use_cases": ["UC3", "UC11"]
+    },
+    {
+      "name": "witness_present",
+      "type": "bool",
+      "description": "Witness to incident exists",
+      "use_cases": ["UC3", "UC11"]
+    },
+    {
+      "name": "report_delay_days",
+      "type": "int",
+      "description": "Days between incident and report",
+      "use_cases": ["UC3", "UC11"]
+    },
+    {
+      "name": "injury_type_back",
+      "type": "bool",
+      "description": "Back injury",
+      "use_cases": ["UC9", "UC10"]
+    },
+    {
+      "name": "injury_type_shoulder",
+      "type": "bool",
+      "description": "Shoulder injury",
+      "use_cases": ["UC9", "UC10"]
+    },
+    {
+      "name": "injury_type_knee",
+      "type": "bool",
+      "description": "Knee injury",
+      "use_cases": ["UC9"]
+    },
+    {
+      "name": "injury_type_psychological",
+      "type": "bool",
+      "description": "Psychological injury",
+      "use_cases": ["UC9", "UC13"]
+    },
+    {
+      "name": "injury_severity_scale",
+      "type": "int",
+      "description": "Severity scale 1-4 (minor to severe)",
+      "use_cases": ["UC9", "UC10", "UC13"]
+    },
+    {
+      "name": "comorbidities_count",
+      "type": "int",
+      "description": "Number of pre-existing conditions",
+      "use_cases": ["UC9"]
+    },
+    {
+      "name": "treatment_sessions_total",
+      "type": "int",
+      "description": "Total treatment sessions completed",
+      "use_cases": ["UC9"]
+    },
+    {
+      "name": "imaging_delay_days",
+      "type": "int",
+      "description": "Days to get imaging (X-ray, MRI)",
+      "use_cases": ["UC9", "UC13"]
+    },
+    {
+      "name": "restrictions_lift_kg",
+      "type": "int",
+      "description": "Current lifting restriction in kg",
+      "use_cases": ["UC10"]
+    },
+    {
+      "name": "restrictions_stand_hours",
+      "type": "float",
+      "description": "Standing restriction in hours",
+      "use_cases": ["UC10"]
+    },
+    {
+      "name": "cognitive_restrict_flag",
+      "type": "bool",
+      "description": "Has cognitive restrictions",
+      "use_cases": ["UC10"]
+    },
+    {
+      "name": "role_lift_req_kg",
+      "type": "int",
+      "description": "Role requires lifting (kg)",
+      "use_cases": ["UC10"]
+    },
+    {
+      "name": "role_stand_req_hours",
+      "type": "float",
+      "description": "Role requires standing (hours)",
+      "use_cases": ["UC10"]
+    },
+    {
+      "name": "role_cognitive_load",
+      "type": "int",
+      "description": "Cognitive load scale 1-5",
+      "use_cases": ["UC10"]
+    },
+    {
+      "name": "ocr_text_mismatch_rate",
+      "type": "float",
+      "description": "OCR vs claimed text mismatch",
+      "use_cases": ["UC7"]
+    },
+    {
+      "name": "doc_hash_repeat",
+      "type": "bool",
+      "description": "Document hash seen before",
+      "use_cases": ["UC7"]
+    },
+    {
+      "name": "font_anomaly_flag",
+      "type": "bool",
+      "description": "Font inconsistencies detected",
+      "use_cases": ["UC7"]
+    },
+    {
+      "name": "provider_abn_match",
+      "type": "bool",
+      "description": "Provider ABN matches records",
+      "use_cases": ["UC7"]
+    },
+    {
+      "name": "sender_domain_reputation",
+      "type": "float",
+      "description": "Email sender domain reputation 0-1",
+      "use_cases": ["UC8"]
+    },
+    {
+      "name": "url_count",
+      "type": "int",
+      "description": "Number of URLs in email",
+      "use_cases": ["UC8"]
+    },
+    {
+      "name": "url_reputation_min",
+      "type": "float",
+      "description": "Lowest URL reputation score",
+      "use_cases": ["UC8"]
+    },
+    {
+      "name": "preexisting_same_bodypart",
+      "type": "bool",
+      "description": "Prior injury same body part",
+      "use_cases": ["UC11"]
+    },
+    {
+      "name": "gradual_onset_flag",
+      "type": "bool",
+      "description": "Gradual onset vs acute event",
+      "use_cases": ["UC11"]
+    },
+    {
+      "name": "neg_sentiment_trend_7d",
+      "type": "float",
+      "description": "Negative sentiment trend past 7 days",
+      "use_cases": ["UC13"]
+    },
+    {
+      "name": "diagnostic_delay_flag",
+      "type": "bool",
+      "description": "Diagnosis significantly delayed",
+      "use_cases": ["UC13"]
+    },
+    {
+      "name": "prior_escalations",
+      "type": "int",
+      "description": "Number of prior escalations",
+      "use_cases": ["UC1"]
+    },
+    {
+      "name": "pain_delta",
+      "type": "float",
+      "description": "Change in pain score",
+      "use_cases": ["UC2"]
+    },
+    {
+      "name": "fatigue_delta",
+      "type": "float",
+      "description": "Change in fatigue score",
+      "use_cases": ["UC2"]
+    },
+    {
+      "name": "sleep_decline_flag",
+      "type": "bool",
+      "description": "Sleep quality declining",
+      "use_cases": ["UC2"]
+    },
+    {
+      "name": "has_medical_cert",
+      "type": "bool",
+      "description": "Valid medical certificate exists",
+      "use_cases": ["UC4"]
+    },
+    {
+      "name": "has_incident_report",
+      "type": "bool",
+      "description": "Incident report exists",
+      "use_cases": ["UC4"]
+    },
+    {
+      "name": "has_imaging_referral",
+      "type": "bool",
+      "description": "Imaging referral exists",
+      "use_cases": ["UC4"]
+    },
+    {
+      "name": "complaint_keywords_count",
+      "type": "int",
+      "description": "Count of complaint-related keywords",
+      "use_cases": ["UC5", "UC6"]
+    },
+    {
+      "name": "prior_human_overrides",
+      "type": "int",
+      "description": "Times human overrode ML decision",
+      "use_cases": ["UC5"]
+    },
+    {
+      "name": "thread_depth",
+      "type": "int",
+      "description": "Email thread depth",
+      "use_cases": ["UC5", "UC6"]
+    },
+    {
+      "name": "accusatory_phrase_count",
+      "type": "int",
+      "description": "Accusatory language count",
+      "use_cases": ["UC6"]
+    },
+    {
+      "name": "worker_age",
+      "type": "int",
+      "description": "Worker age in years",
+      "use_cases": ["UC9"]
+    },
+    {
+      "name": "psychosocial_flags_count",
+      "type": "int",
+      "description": "Psychosocial risk factors",
+      "use_cases": ["UC9", "UC13"]
+    },
+    {
+      "name": "rtw_attempts_count",
+      "type": "int",
+      "description": "Previous RTW attempts",
+      "use_cases": ["UC10"]
+    },
+    {
+      "name": "progress_weeks",
+      "type": "int",
+      "description": "Weeks in current recovery",
+      "use_cases": ["UC10"]
+    },
+    {
+      "name": "cctv_available",
+      "type": "bool",
+      "description": "CCTV footage available",
+      "use_cases": ["UC11"]
+    },
+    {
+      "name": "cert_wording_nonoccupational",
+      "type": "bool",
+      "description": "Certificate indicates non-occupational",
+      "use_cases": ["UC11"]
+    },
+    {
+      "name": "doctor_changes_count",
+      "type": "int",
+      "description": "Number of times changed doctors",
+      "use_cases": ["UC7", "UC13"]
+    },
+    {
+      "name": "communication_breakdown_flag",
+      "type": "bool",
+      "description": "Communication has broken down",
+      "use_cases": ["UC12", "UC13"]
+    }
+  ]
+}

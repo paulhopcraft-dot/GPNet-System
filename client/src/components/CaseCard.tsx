@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Clock, User, Building, Eye, CheckCircle, ArrowRight } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { MLAlertBadge } from "./MLAlertBadge";
 
 interface CaseCardProps {
   ticketId: string;

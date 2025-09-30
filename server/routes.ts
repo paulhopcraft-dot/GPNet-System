@@ -44,6 +44,7 @@ import { freshdeskRoutes } from "./freshdeskRoutes";
 import ragRoutes from "./ragRoutes";
 import { reportRoutes } from "./reportRoutes";
 import { freshdeskBackfillService } from './freshdeskBackfillService.js';
+import { mlRoutes } from "./mlRoutes.js";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -1306,6 +1307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/admin', adminRoutes);
   app.use('/api/freshdesk', freshdeskRoutes);
   app.use('/api/rag', ragRoutes);
+  app.use('/api/ml', mlRoutes);
 
   // ===========================================
   // SERVER CREATION
