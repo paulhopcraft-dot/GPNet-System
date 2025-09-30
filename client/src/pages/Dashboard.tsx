@@ -35,6 +35,7 @@ interface DashboardStats {
 
 interface DashboardCase {
   ticketId: string;
+  fdId?: number | null;
   workerId?: string;
   caseType: "pre_employment" | "injury";
   claimType?: string | null;
@@ -552,6 +553,7 @@ export default function Dashboard() {
                     <CaseCard
                       key={caseItem.ticketId}
                       ticketId={caseItem.ticketId}
+                      fdId={caseItem.fdId}
                       workerId={caseItem.workerId}
                       caseType={caseItem.caseType}
                       claimType={caseItem.claimType}

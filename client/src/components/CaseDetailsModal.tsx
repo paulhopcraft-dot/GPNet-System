@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface CaseDetails {
   ticketId: string;
+  fdId?: number | null;
   workerName: string;
   email: string;
   phone: string;
@@ -161,7 +162,7 @@ export default function CaseDetailsModal({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
-            <span>Case #{caseDetails.ticketId.substring(0, 8).toUpperCase()}</span>
+            <span>Case #{caseDetails.fdId || caseDetails.ticketId.substring(0, 8).toUpperCase()}</span>
             <Badge variant="outline" data-testid="badge-modal-status">
               {caseDetails.status}
             </Badge>

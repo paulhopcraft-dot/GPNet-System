@@ -221,6 +221,7 @@ router.get('/', requireAuth, async (req, res) => {
       
       return {
         ticketId: ticket.id,
+        fdId: ticket.fdId || null,
         workerId: ticket.workerId,
         caseType: ticket.caseType || 'pre_employment',
         claimType: ticket.claimType,
@@ -329,6 +330,7 @@ router.get('/:ticketId', requireAuth, async (req, res) => {
     const caseDetails = {
       // Core case information
       ticketId: ticket.id,
+      fdId: ticket.fdId || null,
       caseType: ticket.caseType || 'pre_employment',
       claimType: ticket.claimType,
       status: ticket.status,
