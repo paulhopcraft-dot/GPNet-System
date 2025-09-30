@@ -268,7 +268,7 @@ export function ReportGenerator({ ticketId, "data-testid": testId }: ReportGener
     );
   }
 
-  if (!reportTypesData || reportTypesData.reportTypes.length === 0) {
+  if (!reportTypesData || !reportTypesData.reportTypes || reportTypesData.reportTypes.length === 0) {
     return (
       <Card data-testid={testId}>
         <CardHeader>
