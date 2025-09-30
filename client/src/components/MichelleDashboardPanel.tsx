@@ -135,7 +135,7 @@ export default function MichelleDashboardPanel({
       if (currentStats.new > 0) {
         newSuggestions.push({
           id: "new-submissions",
-          text: `${currentStats.new} new submissions to process`,
+          text: `${currentStats.new} new pre-employment checks to review`,
           action: "view_new",
           icon: FileText,
           priority: "medium",
@@ -208,6 +208,12 @@ export default function MichelleDashboardPanel({
   }, [stats, michelleContext, michelleMode]);
 
   const handleSuggestionClick = (action: string) => {
+    // Scroll to cases section and apply filters
+    const casesSection = document.querySelector('[data-testid="cases-section"]');
+    if (casesSection) {
+      casesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    
     // Handle different actions
     switch (action) {
       case "review_cases":
@@ -274,23 +280,6 @@ export default function MichelleDashboardPanel({
                 <MessageCircle className="inline-block w-5 h-5 mr-2" />
                 {getGreeting()}, {userName}!
               </CardTitle>
-              {michelleMode && (
-                <Badge 
-                  variant={michelleMode.mode === 'universal' ? 'default' : 'secondary'}
-                  className={`text-xs ${
-                    michelleMode.mode === 'universal' 
-                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' 
-                      : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                  }`}
-                  data-testid={`badge-michelle-mode-${michelleMode.mode}`}
-                >
-                  {michelleMode.mode === 'universal' ? (
-                    <><Shield className="w-3 h-3 mr-1" />Universal</>
-                  ) : (
-                    <><Building className="w-3 h-3 mr-1" />Client-Scoped</>
-                  )}
-                </Badge>
-              )}
             </div>
             <p className="text-blue-700 dark:text-blue-200 mt-1">
               I'm Michelle, your personal case manager. {michelleMode?.mode === 'universal' 
