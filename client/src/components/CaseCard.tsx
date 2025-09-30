@@ -22,6 +22,8 @@ interface CaseCardProps {
   assignedTo?: string | null;
   onViewCase?: () => void;
   onWorkerClick?: (workerId: string) => void;
+  onCompanyClick?: (organizationId: string, companyName: string) => void;
+  organizationId?: string;
 }
 
 const statusConfig = {
@@ -101,16 +103,26 @@ export default function CaseCard({
   assignedTo,
   onViewCase,
   onWorkerClick,
+  onCompanyClick,
+  organizationId,
 }: CaseCardProps) {
   const handleViewCase = () => {
-    console.log(`Viewing case ${ticketId}`);
     onViewCase?.();
   };
   
   const handleWorkerClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     if (workerId && onWorkerClick) {
       onWorkerClick(workerId);
+    }
+  };
+  
+  const handleCompanyClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (organizationId && onCompanyClick && company) {
+      onCompanyClick(organizationId, company);
     }
   };
 
@@ -178,7 +190,13 @@ export default function CaseCard({
             {company && (
               <div className="flex items-center gap-1">
                 <Building className="h-4 w-4" />
-                <span data-testid={`text-company-${ticketId}`}>{company}</span>
+                <span 
+                  className={`${organizationId && onCompanyClick ? 'text-primary hover:underline cursor-pointer' : ''}`}
+                  onClick={organizationId && onCompanyClick ? handleCompanyClick : undefined}
+                  data-testid={`text-company-${ticketId}`}
+                >
+                  {company}
+                </span>
               </div>
             )}
           </div>

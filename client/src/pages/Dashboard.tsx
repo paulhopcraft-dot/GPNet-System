@@ -6,6 +6,7 @@ import CaseCard from "@/components/CaseCard";
 import CaseDetailsModal from "@/components/CaseDetailsModal";
 import AdvancedCaseFilters from "@/components/AdvancedCaseFilters";
 import MichelleDashboardPanel from "@/components/MichelleDashboardPanel";
+import PersonProfilePanel from "@/components/PersonProfilePanel";
 import PreEmploymentInvitationForm from "@/components/PreEmploymentInvitationForm";
 import PreEmploymentReviewModal from "@/components/PreEmploymentReviewModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -36,6 +37,7 @@ interface DashboardStats {
 
 interface DashboardCase {
   ticketId: string;
+  workerId?: string;
   caseType: "pre_employment" | "injury";
   claimType?: string | null;
   priority?: string | null;
@@ -82,6 +84,8 @@ export default function Dashboard() {
   const { user } = useUser(); // Get user context
   const { searchQuery } = useSearch(); // Get search context
   const [selectedCase, setSelectedCase] = useState<DashboardCase | null>(null);
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
+  const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
   
   // Show navigation buttons at the top
   const NavigationPanel = () => (
@@ -154,6 +158,13 @@ export default function Dashboard() {
   const handleCheckTypeSelect = (checkType: string) => {
     setSelectedCheckType(checkType);
     setShowInvitationForm(true);
+  };
+  
+  // Handle worker click to open profile panel
+  const handleWorkerClick = (workerId: string) => {
+    console.log("Opening worker profile:", workerId);
+    setSelectedWorkerId(workerId);
+    setIsProfilePanelOpen(true);
   };
   
   // Advanced filter state (search is now handled by SearchContext)
@@ -561,6 +572,7 @@ export default function Dashboard() {
                     <CaseCard
                       key={caseItem.ticketId}
                       ticketId={caseItem.ticketId}
+                      workerId={caseItem.workerId}
                       caseType={caseItem.caseType}
                       claimType={caseItem.claimType}
                       priority={caseItem.priority}
@@ -575,6 +587,7 @@ export default function Dashboard() {
                       lastStepCompletedAt={caseItem.lastStepCompletedAt}
                       assignedTo={caseItem.assignedTo}
                       onViewCase={() => handleViewCase(caseItem)}
+                      onWorkerClick={handleWorkerClick}
                     />
                   ))}
                 </div>
@@ -616,6 +629,13 @@ export default function Dashboard() {
           onClose={handleCloseReviewModal}
         />
       )}
+      
+      {/* Person Profile Panel */}
+      <PersonProfilePanel
+        workerId={selectedWorkerId}
+        open={isProfilePanelOpen}
+        onOpenChange={setIsProfilePanelOpen}
+      />
     </div>
   );
 }
