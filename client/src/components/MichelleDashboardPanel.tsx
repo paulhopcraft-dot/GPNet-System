@@ -111,10 +111,10 @@ export default function MichelleDashboardPanel({
       if (currentStats.awaiting > 0) {
         newSuggestions.push({
           id: "review-cases",
-          text: `${currentStats.awaiting} cases need your review`,
+          text: `${currentStats.awaiting} cases awaiting your review`,
           action: "review_cases",
           icon: Clock,
-          priority: "high",
+          priority: "medium",
           count: currentStats.awaiting
         });
       }
@@ -128,18 +128,6 @@ export default function MichelleDashboardPanel({
           icon: AlertTriangle,
           priority: "high",
           count: currentStats.flagged
-        });
-      }
-
-      // Medium priority: New submissions
-      if (currentStats.new > 0) {
-        newSuggestions.push({
-          id: "new-submissions",
-          text: `${currentStats.new} new cases to review`,
-          action: "view_new",
-          icon: FileText,
-          priority: "medium",
-          count: currentStats.new
         });
       }
 
