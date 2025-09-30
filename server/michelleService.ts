@@ -13,8 +13,8 @@ function createFreshOpenAIClient() {
   delete process.env.OPENAI_API_KEY;
   
   // Re-read from environment
-  const freshKey = process.env.OPENAI_API_KEY;
-  console.log('🔄 Forced env refresh - key format:', freshKey?.substring(0, 15) + '...');
+  const freshKey: string | undefined = process.env.OPENAI_API_KEY;
+  console.log('🔄 Forced env refresh - key format:', freshKey ? freshKey.substring(0, 15) + '...' : 'undefined');
   
   // Also check if Replit has set the key in a different location
   const allKeys = Object.keys(process.env).filter(k => k.toLowerCase().includes('openai'));
