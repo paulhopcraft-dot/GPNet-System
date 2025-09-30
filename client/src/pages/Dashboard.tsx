@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import Header from "@/components/Header";
-import StatusBoard from "@/components/StatusBoard";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
 import CaseCard from "@/components/CaseCard";
 import CaseDetailsModal from "@/components/CaseDetailsModal";
@@ -21,8 +20,7 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
-import { Plus, Download, Loader2, BarChart3, Grid3X3, Settings, Briefcase, ChevronDown, UserCheck, AlertTriangle, Shield, Heart, Brain, DoorOpen } from "lucide-react";
-import { Link } from "wouter";
+import { Plus, Download, Loader2, BarChart3, Grid3X3, ChevronDown, UserCheck, AlertTriangle, Shield, Heart, Brain, DoorOpen } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -87,26 +85,6 @@ export default function Dashboard() {
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
   const [isProfilePanelOpen, setIsProfilePanelOpen] = useState(false);
   
-  // Show navigation buttons at the top
-  const NavigationPanel = () => (
-    <div className="mb-8 p-6 bg-card rounded-lg border">
-      <h2 className="text-xl font-semibold mb-4">Quick Access</h2>
-      <div className="flex gap-4">
-        <Link href="/admin">
-          <Button size="lg" className="flex items-center gap-2" data-testid="button-admin-access">
-            <Settings className="h-5 w-5" />
-            Admin Console
-          </Button>
-        </Link>
-        <Link href="/manager">
-          <Button size="lg" variant="outline" className="flex items-center gap-2" data-testid="button-company-access">
-            <Briefcase className="h-5 w-5" />
-            Manager Dashboard
-          </Button>
-        </Link>
-      </div>
-    </div>
-  );
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showInvitationForm, setShowInvitationForm] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -459,18 +437,6 @@ export default function Dashboard() {
             stats={stats}
             recentCases={cases.slice(0, 5)} // Pass top 5 recent cases
             userName={user?.name || "there"}
-          />
-        </div>
-
-        {/* Navigation Panel */}
-        <NavigationPanel />
-
-        {/* Status Board */}
-        <div className="mb-8">
-          <StatusBoard 
-            stats={stats || { total: 0, new: 0, inProgress: 0, awaiting: 0, complete: 0, flagged: 0 }}
-            todayCount={8}
-            weeklyGrowth={15}
           />
         </div>
 
