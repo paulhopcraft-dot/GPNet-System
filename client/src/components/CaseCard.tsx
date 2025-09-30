@@ -173,6 +173,7 @@ export default function CaseCard({
                 {ragConfig[ragScore]?.label || ragScore || 'Unknown'}
               </Badge>
             )}
+            <MLAlertBadge ticketId={ticketId} />
             <Button 
               size="icon" 
               variant="ghost" 
