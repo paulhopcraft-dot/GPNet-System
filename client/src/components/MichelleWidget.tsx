@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, X, Send, Loader2 } from "lucide-react";
@@ -281,7 +282,7 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
                   data-testid={`message-${message.role}-${index}`}
                 >
                   <div
-                    className={`rounded-lg px-3 py-2 text-sm break-words overflow-hidden ${
+                    className={`rounded-lg px-3 py-2 text-sm ${
                       message.role === 'user'
                         ? 'bg-blue-600 text-white'
                         : 'bg-muted text-muted-foreground'
@@ -290,21 +291,14 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
                       maxWidth: isMobile 
                         ? (message.role === 'user' ? '280px' : '310px')
                         : (message.role === 'user' ? '85%' : '95%'),
-                      overflowWrap: 'anywhere !important',
-                      wordBreak: 'break-word !important',
+                      overflowWrap: 'break-word',
+                      wordBreak: 'break-word',
                       hyphens: 'auto',
-                      minWidth: '0 !important',
-                      width: 'fit-content !important',
-                      display: 'inline-block !important'
+                      width: 'fit-content'
                     }}
                   >
                     <div 
-                      className="whitespace-pre-wrap leading-relaxed overflow-hidden"
-                      style={{
-                        maxWidth: '100% !important',
-                        overflowWrap: 'anywhere !important',
-                        wordBreak: 'break-word !important'
-                      }}
+                      className="whitespace-pre-wrap leading-relaxed"
                     >
                       {message.content}
                     </div>
@@ -352,14 +346,15 @@ export function MichelleWidget({ context }: MichelleWidgetProps) {
             <div ref={messagesEndRef} />
           </ScrollArea>
           
-          <div className="flex gap-2 flex-shrink-0">
-            <Input
+          <div className="flex gap-2 flex-shrink-0 items-end">
+            <Textarea
               placeholder="Ask Michelle about health matters..."
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
               disabled={chatMutation.isPending}
-              className="flex-1 text-sm"
+              className="flex-1 text-sm resize-none min-h-[80px]"
+              rows={3}
               data-testid="input-michelle-message"
             />
             <Button
