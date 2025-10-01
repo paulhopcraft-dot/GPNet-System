@@ -1657,6 +1657,47 @@ export const documentProcessingLogs = pgTable("document_processing_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull()
 });
 
+// Case restrictions (physical, functional, mental health)
+export const restrictions = pgTable("restrictions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id),
+  category: text("category").notNull(), // "physical", "functional", "mental_health"
+  description: text("description").notNull(),
+  sourceDocId: varchar("source_doc_id"), // Link to source document if applicable
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Treatment plans (care providers and schedules)
+export const treatmentPlans = pgTable("treatment_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id),
+  providerType: text("provider_type").notNull(), // "GP", "Physio", "Psych", "Specialist"
+  providerName: text("provider_name"),
+  frequency: text("frequency"), // "2x/week", "weekly", "fortnightly"
+  nextAppointment: timestamp("next_appointment"),
+  notes: text("notes"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull()
+});
+
+// Activity timeline (unified event log for case drawer)
+export const activityTimeline = pgTable("activity_timeline", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull().references(() => tickets.id),
+  source: text("source").notNull(), // "michelle", "manual", "email", "system", "form"
+  eventType: text("event_type").notNull(), // "note", "call", "certificate", "appointment", "status_change"
+  summary: text("summary").notNull(),
+  details: jsonb("details"),
+  performedBy: varchar("performed_by"),
+  timestamp: timestamp("timestamp").defaultNow().notNull()
+}, (table) => ({
+  ticketIdx: index("activity_timeline_ticket_idx").on(table.ticketId),
+  timestampIdx: index("activity_timeline_timestamp_idx").on(table.timestamp)
+}));
+
 // Schema definitions for new tables
 export const insertLegislationDocumentSchema = createInsertSchema(legislationDocuments).omit({
   id: true,
@@ -1947,6 +1988,33 @@ export type DocumentProcessingJob = typeof documentProcessingJobs.$inferSelect;
 
 export type InsertDocumentProcessingLog = z.infer<typeof insertDocumentProcessingLogSchema>;
 export type DocumentProcessingLog = typeof documentProcessingLogs.$inferSelect;
+
+// Case drawer schemas
+export const insertRestrictionSchema = createInsertSchema(restrictions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTreatmentPlanSchema = createInsertSchema(treatmentPlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertActivityTimelineSchema = createInsertSchema(activityTimeline).omit({
+  id: true,
+  timestamp: true,
+});
+
+export type InsertRestriction = z.infer<typeof insertRestrictionSchema>;
+export type Restriction = typeof restrictions.$inferSelect;
+
+export type InsertTreatmentPlan = z.infer<typeof insertTreatmentPlanSchema>;
+export type TreatmentPlan = typeof treatmentPlans.$inferSelect;
+
+export type InsertActivityTimeline = z.infer<typeof insertActivityTimelineSchema>;
+export type ActivityTimeline = typeof activityTimeline.$inferSelect;
 
 // Document kinds enumeration
 export const DocumentKind = {
