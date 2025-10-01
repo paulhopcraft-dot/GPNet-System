@@ -4,6 +4,26 @@
 
 GPNet is a comprehensive pre-employment health check system designed to automate and streamline the process of medical assessments for job candidates. The system captures candidate health information through structured forms, performs automated risk analysis using RAG scoring (Red/Amber/Green), generates fit classification reports, and integrates with Freshdesk for case management. The primary goal is to help employers identify potential health risks before hiring to prevent costly WorkCover claims and ensure workplace safety.
 
+## Recent Changes (October 1, 2025)
+
+### Case Card Eye Panel Feature
+- **Completed**: 8-tab case drawer interface accessible via eye icon on case cards
+- **Schema Updates**: Added `restrictions`, `treatmentPlans`, and `activityTimeline` tables for comprehensive case data
+- **UI Components**: 
+  - CaseDrawer sheet component with Summary, Restrictions, Treatment, Reports, Analysis, Emails, Michelle, and Actions tabs
+  - Integrated with Dashboard page - opens via eye icon click
+  - Worker header with avatar, role, employer, and risk badge
+  - Timeline visualization showing case history
+  - Next Steps checklist with toggle functionality
+  - ML predictions display (claim progression risk, healing ETA)
+- **Backend**: GET `/api/case-drawer/:ticketId` endpoint with mock data (pending DB integration)
+- **Testing**: Playwright tests passing - all tabs functional, data displays correctly
+- **Follow-up Work Needed**:
+  - Add authentication middleware to routes (security issue)
+  - Replace mock data with actual DB queries from new tables
+  - Implement PATCH `/api/case-drawer/:ticketId/steps/:stepId` endpoint
+  - Add error UI for failed queries/mutations
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
