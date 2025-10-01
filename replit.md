@@ -17,16 +17,16 @@ GPNet is a comprehensive pre-employment health check system designed to automate
   - Next Steps checklist with toggle functionality
   - ML predictions display (claim progression risk, healing ETA)
 - **Backend**: 
-  - GET `/api/case-drawer/:ticketId` endpoint now fetches **real Freshdesk emails** from database
+  - GET `/api/case-drawer/:ticketId` endpoint now fetches **only real Freshdesk data** from database
   - Added `storage.getEmailsByTicket()` method with DESC sorting by sentAt
-  - Falls back to mock emails for injury cases (demo purposes) when no real emails exist
+  - All mock/test data removed - displays only live Freshdesk emails, restrictions, and treatment plans
   - Real Freshdesk data: 55 tickets synced, 7 emails stored for 3 tickets
 - **Testing**: Playwright tests passing with real Freshdesk ticket cfdcfa6d (3 emails displayed)
 - **Security Notes**:
   - ✅ XSS safe: Email bodies rendered as plain text (React auto-escapes)
   - ✅ Authentication: Route protected with requireAuth middleware
 - **Follow-up Work Needed**:
-  - Replace mock restrictions/treatment/timeline with actual DB queries (tables exist, not yet populated by Freshdesk sync)
+  - Populate restrictions/treatment/timeline tables from Freshdesk sync (tables exist but not yet populated)
   - Implement PATCH `/api/case-drawer/:ticketId/steps/:stepId` endpoint
   - Add error UI for failed queries/mutations
 
