@@ -8,6 +8,7 @@ import MichelleDashboardPanel from "@/components/MichelleDashboardPanel";
 import PersonProfilePanel from "@/components/PersonProfilePanel";
 import PreEmploymentInvitationForm from "@/components/PreEmploymentInvitationForm";
 import PreEmploymentReviewModal from "@/components/PreEmploymentReviewModal";
+import { CaseDrawer } from "@/components/CaseDrawer";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useUser } from "@/components/UserContext";
 import { useSearch } from "@/contexts/SearchContext";
@@ -92,6 +93,10 @@ export default function Dashboard() {
   const [reviewTicketId, setReviewTicketId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedCheckType, setSelectedCheckType] = useState<string>("pre_employment");
+  
+  // Case drawer state
+  const [drawerTicketId, setDrawerTicketId] = useState<string | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Health check types configuration
   const healthCheckTypes = [
@@ -271,9 +276,9 @@ export default function Dashboard() {
   };
 
   const handleViewCase = (caseData: DashboardCase) => {
-    console.log("Opening case details for:", caseData.ticketId);
-    setSelectedCase(caseData);
-    setIsModalOpen(true);
+    console.log("Opening case drawer for:", caseData.ticketId);
+    setDrawerTicketId(caseData.ticketId);
+    setIsDrawerOpen(true);
   };
 
   const handleStatusUpdate = (ticketId: string, newStatus: string) => {
@@ -617,6 +622,13 @@ export default function Dashboard() {
         workerId={selectedWorkerId}
         open={isProfilePanelOpen}
         onOpenChange={setIsProfilePanelOpen}
+      />
+
+      {/* Case Drawer */}
+      <CaseDrawer
+        ticketId={drawerTicketId}
+        open={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
       />
     </div>
   );
