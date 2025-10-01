@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { storage } from './storage.js';
+import { requireAuth } from './authRoutes.js';
 
 const router = Router();
 
 // GET /api/case-drawer/:ticketId - Get all case drawer data
-router.get('/:ticketId', async (req, res) => {
+router.get('/:ticketId', requireAuth, async (req, res) => {
   try {
     const { ticketId } = req.params;
     

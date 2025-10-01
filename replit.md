@@ -24,9 +24,8 @@ GPNet is a comprehensive pre-employment health check system designed to automate
 - **Testing**: Playwright tests passing with real Freshdesk ticket cfdcfa6d (3 emails displayed)
 - **Security Notes**:
   - ✅ XSS safe: Email bodies rendered as plain text (React auto-escapes)
-  - ❌ IDOR vulnerability: Route lacks authentication middleware (CRITICAL)
+  - ✅ Authentication: Route protected with requireAuth middleware
 - **Follow-up Work Needed**:
-  - **CRITICAL**: Add authentication middleware to `/api/case-drawer` route (requireAuth)
   - Replace mock restrictions/treatment/timeline with actual DB queries (tables exist, not yet populated by Freshdesk sync)
   - Implement PATCH `/api/case-drawer/:ticketId/steps/:stepId` endpoint
   - Add error UI for failed queries/mutations
