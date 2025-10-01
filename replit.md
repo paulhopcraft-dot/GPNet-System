@@ -6,7 +6,7 @@ GPNet is a comprehensive pre-employment health check system designed to automate
 
 ## Recent Changes (October 1, 2025)
 
-### Case Card Eye Panel Feature
+### Case Card Eye Panel Feature - Live Freshdesk Integration
 - **Completed**: 8-tab case drawer interface accessible via eye icon on case cards
 - **Schema Updates**: Added `restrictions`, `treatmentPlans`, and `activityTimeline` tables for comprehensive case data
 - **UI Components**: 
@@ -16,11 +16,18 @@ GPNet is a comprehensive pre-employment health check system designed to automate
   - Timeline visualization showing case history
   - Next Steps checklist with toggle functionality
   - ML predictions display (claim progression risk, healing ETA)
-- **Backend**: GET `/api/case-drawer/:ticketId` endpoint with mock data (pending DB integration)
-- **Testing**: Playwright tests passing - all tabs functional, data displays correctly
+- **Backend**: 
+  - GET `/api/case-drawer/:ticketId` endpoint now fetches **real Freshdesk emails** from database
+  - Added `storage.getEmailsByTicket()` method with DESC sorting by sentAt
+  - Falls back to mock emails for injury cases (demo purposes) when no real emails exist
+  - Real Freshdesk data: 55 tickets synced, 7 emails stored for 3 tickets
+- **Testing**: Playwright tests passing with real Freshdesk ticket cfdcfa6d (3 emails displayed)
+- **Security Notes**:
+  - ✅ XSS safe: Email bodies rendered as plain text (React auto-escapes)
+  - ❌ IDOR vulnerability: Route lacks authentication middleware (CRITICAL)
 - **Follow-up Work Needed**:
-  - Add authentication middleware to routes (security issue)
-  - Replace mock data with actual DB queries from new tables
+  - **CRITICAL**: Add authentication middleware to `/api/case-drawer` route (requireAuth)
+  - Replace mock restrictions/treatment/timeline with actual DB queries (tables exist, not yet populated by Freshdesk sync)
   - Implement PATCH `/api/case-drawer/:ticketId/steps/:stepId` endpoint
   - Add error UI for failed queries/mutations
 
