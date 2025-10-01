@@ -13,13 +13,21 @@ router.get('/:ticketId', async (req, res) => {
       return res.status(404).json({ error: 'Case not found' });
     }
 
-    const [worker, analysis] = await Promise.all([
+    const [worker, analysis, dbEmails] = await Promise.all([
       ticket.workerId ? storage.getWorker(ticket.workerId) : null,
-      storage.getAnalysisByTicket(ticketId)
+      storage.getAnalysisByTicket(ticketId),
+      storage.getEmailsByTicket(ticketId)
     ]);
 
-    // Mock emails for now - comprehensive thread for injury cases
-    const emails: any[] = ticket.caseType === 'injury' ? [
+    // Use real emails from database, or fallback to mock emails for demo if none exist
+    const emails: any[] = dbEmails.length > 0 ? dbEmails.map(e => ({
+      id: e.id,
+      subject: e.subject || 'No subject',
+      sentAt: e.sentAt,
+      from: e.senderEmail || e.senderName || 'Unknown',
+      to: worker?.email || 'Unknown',
+      body: e.body || ''
+    })) : (ticket.caseType === 'injury' ? [
       {
         id: 'email-1',
         subject: 'Pre-employment check submission received',
@@ -52,7 +60,7 @@ router.get('/:ticketId', async (req, res) => {
         to: ticket.companyName || 'employer@example.com',
         body: 'Worker cleared with restrictions. Treatment plan in progress.'
       }
-    ] : [];
+    ] : []);
 
     // Mock restrictions - comprehensive for injury cases
     const restrictions = {
