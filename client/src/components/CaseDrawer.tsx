@@ -47,6 +47,8 @@ interface CaseData {
     name: string;
     frequency: string;
     nextAppt: string;
+    contact?: string;
+    notes?: string;
   }>;
   timeline: Array<{
     timestamp: string;
@@ -64,6 +66,14 @@ interface CaseData {
     claimProgressionProb: number;
     healingEtaDays: number;
   };
+  emails?: Array<{
+    id: string;
+    subject: string;
+    sentAt: string;
+    from: string;
+    to: string;
+    body: string;
+  }>;
   emailsCount: number;
   reportsCount: number;
 }
@@ -266,6 +276,18 @@ export function CaseDrawer({ ticketId, open, onOpenChange }: CaseDrawerProps) {
                       <p className="text-sm text-muted-foreground">No functional restrictions</p>
                     )}
                   </div>
+                  <div>
+                    <h4 className="font-semibold mb-3">Mental Health Considerations</h4>
+                    {caseData.restrictions.mentalHealth.length > 0 ? (
+                      <ul className="space-y-2">
+                        {caseData.restrictions.mentalHealth.map((r, i) => (
+                          <li key={i} className="text-sm p-2 bg-muted/30 rounded" data-testid={`restriction-mentalhealth-${i}`}>{r}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No mental health considerations</p>
+                    )}
+                  </div>
                 </TabsContent>
 
                 <TabsContent value="treatment" className="p-6 space-y-4 mt-0">
@@ -275,9 +297,15 @@ export function CaseDrawer({ ticketId, open, onOpenChange }: CaseDrawerProps) {
                       {caseData.treatmentPlan.map((plan, i) => (
                         <div key={i} className="p-4 border rounded-md" data-testid={`treatment-plan-${i}`}>
                           <div className="flex items-start justify-between">
-                            <div>
+                            <div className="flex-1">
                               <p className="font-medium">{plan.type}</p>
                               <p className="text-sm text-muted-foreground">{plan.name}</p>
+                              {plan.contact && (
+                                <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                                  <Phone className="h-3 w-3" />
+                                  {plan.contact}
+                                </div>
+                              )}
                             </div>
                             <Badge variant="outline">{plan.frequency}</Badge>
                           </div>
@@ -285,6 +313,9 @@ export function CaseDrawer({ ticketId, open, onOpenChange }: CaseDrawerProps) {
                             <Clock className="h-3 w-3" />
                             Next: {new Date(plan.nextAppt).toLocaleDateString()}
                           </div>
+                          {plan.notes && (
+                            <p className="text-sm text-muted-foreground mt-2 pt-2 border-t">{plan.notes}</p>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -327,8 +358,35 @@ export function CaseDrawer({ ticketId, open, onOpenChange }: CaseDrawerProps) {
                   <p className="text-sm text-muted-foreground">No reports available</p>
                 </TabsContent>
 
-                <TabsContent value="emails" className="p-6 mt-0">
-                  <p className="text-sm text-muted-foreground">Email thread coming soon</p>
+                <TabsContent value="emails" className="p-6 space-y-3 mt-0">
+                  {caseData.emails && caseData.emails.length > 0 ? (
+                    <>
+                      <h4 className="font-semibold">Email Thread ({caseData.emails.length})</h4>
+                      <div className="space-y-3">
+                        {caseData.emails.map((email) => (
+                          <div key={email.id} className="p-4 border rounded-md" data-testid={`email-${email.id}`}>
+                            <div className="flex items-start justify-between mb-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{email.subject}</p>
+                                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                                  <span className="truncate">From: {email.from}</span>
+                                  <span>•</span>
+                                  <span className="truncate">To: {email.to}</span>
+                                </div>
+                              </div>
+                              <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                                {new Date(email.sentAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <Separator className="my-2" />
+                            <p className="text-sm text-muted-foreground">{email.body}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No emails in thread</p>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="michelle" className="p-6 mt-0">
