@@ -6,6 +6,25 @@ GPNet is a comprehensive pre-employment health check system designed to automate
 
 ## Recent Changes (October 1, 2025)
 
+### Freshdesk Organization Integration - COMPLETED
+- **Schema Updates**: 
+  - Added `freshdeskCompanyId` (BIGINT), `domains`, and `description` fields to organizations table
+  - Added `fdCompanyId` (BIGINT) to tickets table for company linkage
+  - Storage methods: `findTicketByFreshdeskId()` and `findOrganizationByFreshdeskId()`
+- **Data Migration**: 
+  - Successfully imported 30 Freshdesk companies as organizations
+  - Linked 62 Freshdesk tickets to their respective organizations
+  - Organization distribution: Lower Murray Water (12 tickets), Symmetry (9), Cobild (6), Marley Spoon (4), Norton Gates (2), Attard Group (1), Princes Group (1)
+  - 26 tickets unmapped (personal/individual cases without company associations)
+- **Import Service Updates**:
+  - Auto-creates organizations from Freshdesk companies with unique slug generation
+  - Updates existing tickets with organization linkage when company data changes
+  - Populates `fdCompanyId` field for all Freshdesk-sourced tickets
+- **API Integration**: 
+  - POST `/api/freshdesk/import` successfully syncs companies and tickets
+  - Automatic organization mapping based on Freshdesk company IDs
+  - Nightly sync job (2 AM) keeps data current
+
 ### Case Card Eye Panel Feature - Live Freshdesk Integration
 - **Completed**: 8-tab case drawer interface accessible via eye icon on case cards
 - **Schema Updates**: Added `restrictions`, `treatmentPlans`, and `activityTimeline` tables for comprehensive case data
@@ -20,7 +39,7 @@ GPNet is a comprehensive pre-employment health check system designed to automate
   - GET `/api/case-drawer/:ticketId` endpoint now fetches **only real Freshdesk data** from database
   - Added `storage.getEmailsByTicket()` method with DESC sorting by sentAt
   - All mock/test data removed - displays only live Freshdesk emails, restrictions, and treatment plans
-  - Real Freshdesk data: 55 tickets synced, 7 emails stored for 3 tickets
+  - Real Freshdesk data: 62 tickets synced, 7 emails stored for 3 tickets
 - **Testing**: Playwright tests passing with real Freshdesk ticket cfdcfa6d (3 emails displayed)
 - **Security Notes**:
   - ✅ XSS safe: Email bodies rendered as plain text (React auto-escapes)

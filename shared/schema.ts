@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, jsonb, boolean, unique, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, boolean, unique, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -26,6 +26,7 @@ export const tickets = pgTable("tickets", {
   
   // Freshdesk integration fields (new - nullable for incremental migration)
   fdId: integer("fd_id").unique(), // Freshdesk ticket ID
+  fdCompanyId: bigint("fd_company_id", { mode: 'number' }), // Freshdesk company ID for linking to organizations
   subject: text("subject"), // Ticket subject from Freshdesk
   workCoverBool: boolean("workcover_bool").default(false),
   requesterId: varchar("requester_id"), // Freshdesk requester ID
@@ -257,6 +258,9 @@ export const organizations = pgTable("organizations", {
   primaryContactName: text("primary_contact_name"),
   primaryContactEmail: text("primary_contact_email"),
   primaryContactPhone: text("primary_contact_phone"),
+  freshdeskCompanyId: bigint("freshdesk_company_id", { mode: 'number' }).unique(),
+  domains: jsonb("domains"),
+  description: text("description"),
   isArchived: boolean("is_archived").default(false),
   archivedAt: timestamp("archived_at"),
   archivedBy: varchar("archived_by"),
