@@ -1,0 +1,155 @@
+Here’s a paste-ready **Replit Agent 3** prompt. It’s written as imperative build instructions the agent can follow end-to-end.
+
+---
+
+**PROJECT:** GPNet — Case Card “Eye” Panel (Side Drawer)
+**GOAL:** Implement a structured, scrollable case detail view with clear tabs and mandatory fields.
+
+**DO THIS NOW**
+
+1. **Create Side Drawer Detail View**
+
+* Trigger: clicking the **eye icon** on a case card opens a right-hand drawer (80% width desktop, full-screen mobile).
+* Default tab: **Summary**.
+* Persist tab + scroll state per caseId so returning to the drawer restores position.
+
+2. **Top Tab Navigation (left→right)**
+
+* Tabs (exact order): **Summary** (default), **Restrictions**, **Treatment Plan**, **Reports**, **Analysis**, **External Emails**, **Michelle**, **Actions**.
+* If a tab has no content, show empty state: “No items yet.”
+
+3. **Summary Tab (Default)**
+
+* Always visible header elements (above the fold):
+
+  * Worker Header: Name, Case ID, Case Type, Employer/Host, Recruiter/Consultant, Case Owner.
+  * Badges: **Status** (At Work / Suitable Duties / Modified Duties / Off Work / Unfit / Part-time), **Risk** (Green/Yellow/Red), **Current Certificate Dates** (From–To).
+  * **Diagnosis** (text) and **Date of Injury (DOI)** (DD Mon YYYY). If missing, show red “Missing critical data” badge with inline **Add now** quick edit.
+* Sections (collapsible, vertical scroll):
+
+  1. **What Happened (Incident Snapshot):** 3–5 line narrative from triage/incident notes.
+  2. **Worker-Submitted Report:** show latest worker form title + date + link **Open the worker’s full report** → deep-link to Reports with Worker Forms filter.
+  3. **Current Status (Timeline):** reverse-chron feed of key events (certificates, contact attempts, appt outcomes, employer updates). Each item: timestamp, source (Michelle/manual/email), 1-line summary, **View details** (opens item in context modal or relevant tab). Use virtualized list/windowing for long timelines.
+  4. **Next Steps** (sticky at bottom of Summary): 3–5 actionable items with quick actions (**Mark Done / Schedule / Assign / Open Template Email**). Always visible while scrolling.
+
+4. **Restrictions Tab**
+
+* Group restrictions into **Physical**, **Functional**, **Mental Health**.
+* Each group is a bullet list; if a linked source document exists, show “View restriction note/report” (opens in Reports).
+* Provide “Update Restrictions” action (Editor+ permission).
+
+5. **Treatment Plan Tab**
+
+* Show active/scheduled care: provider type (GP/Physio/Psych), frequency, next appointment, provider name.
+* If documents exist (GP letters, physio notes), show “View in Reports” deep link.
+* Provide “Update Treatment Plan” action (Editor+).
+
+6. **Reports Tab (Document Center)**
+
+* Table with filters: **Certificates**, **Clinician Letters**, **Employer Docs**, **Worker Forms**, **System Exports**, **Other**.
+* Columns: Title, Type, Date, Source, Actions (**View / Download**).
+* Inline viewer (PDF/image) in drawer or modal without losing context.
+* Downloads create audit log entries.
+
+7. **Analysis Tab**
+
+* **Risk Score** 0–100 w/ Green/Yellow/Red.
+* **Drivers/SHAP-style bullets** (e.g., “Late cert”, “No duties plan on file”).
+* **Predictions** (if available): claim progression likelihood, cannot-meet-inherent-requirements risk, healing ETA window (days), non-participation risk.
+* “Last updated” timestamp + “Refresh analysis” action (if backend supports).
+
+8. **External Emails Tab**
+
+* Thread list of emails linked to the case: subject, from/to, date, snippet, **Open full email** (detail modal).
+* Filters: Incoming / Outgoing / With Attachments. Search across subject/from/body.
+* Email view/download actions log to audit trail.
+* Permission gate: requires email permission.
+
+9. **Michelle Tab**
+
+* Context panel with latest AI suggestions and quick chips (e.g., “Summarize last 14 days”, “Draft manager update”).
+* Show generated drafts with actions: **Insert into Actions** or **Send via Email** (routes to External Emails composer).
+
+10. **Actions Tab**
+
+* Primary actions: **Add Note**, **Log Call**, **Request Certificate**, **Schedule Appointment**, **Email Manager**, **Escalate to Case Manager**, **Close Case**.
+* Secondary: **Assign Owner**, **Change Status**, **Update Restrictions**, **Update Treatment Plan**.
+* Every action appends an entry to **Current Status** timeline and the audit log.
+
+11. **Behavior, Loading, and Permissions**
+
+* Use skeleton loaders per section; never block the whole drawer if one call is slow.
+* All “View details” links preserve current tab + scroll on back.
+* Mobile: tabs collapse to a horizontally scrollable pill list.
+* Permission rules:
+
+  * Emails require email permission.
+  * Editing restrictions/treatment requires Editor+.
+  * Downloads/email sends write audit entries.
+
+12. **Data Contract (example shape)**
+
+```json
+{
+  "caseId": "C-2025-001234",
+  "worker": {"name":"Sarah Jones","dob":"1992-06-04"},
+  "employer": {"name":"Symmetry HR","site":"Laverton DC"},
+  "role":"Picker/Packer",
+  "status":{"work":"Suitable Duties","risk":"Yellow","certificate":{"from":"2025-09-20","to":"2025-10-04"}},
+  "diagnosis":"S5 sacral fracture",
+  "dateOfInjury":"2025-09-18",
+  "restrictions":{
+    "physical":["No lifting > 5kg","No bending/twisting"],
+    "functional":["Max 4hr shifts","Frequent micro-breaks"],
+    "mentalHealth":["Avoid high-stress customer contact"]
+  },
+  "treatmentPlan":[
+    {"type":"Physio","freq":"2x/week","next":"2025-10-03","provider":"ABC Physio"},
+    {"type":"GP review","freq":"14-day","next":"2025-10-05","provider":"Dr Lee"}
+  ],
+  "workerReports":[{"title":"Injury Check","date":"2025-09-22","docId":"doc_891"}],
+  "timeline":[
+    {"ts":"2025-09-29T10:20:00+08:00","source":"email","summary":"Manager confirmed modified duties."},
+    {"ts":"2025-09-27T09:00:00+08:00","source":"report","summary":"Physio note uploaded."}
+  ],
+  "predictions":{
+    "claimProgressionProb":0.42,
+    "inherentRequirementsRisk":0.35,
+    "healingEtaDays":28,
+    "nonParticipationRisk":0.18,
+    "drivers":["Late cert","No duties plan on file"]
+  },
+  "emailsCount":7,
+  "reportsCount":5
+}
+```
+
+13. **Acceptance Criteria (must pass)**
+
+* [ ] Clicking eye opens drawer within 300ms with **Summary** selected; **Diagnosis** and **DOI** visible without scrolling.
+* [ ] **Next Steps** bar is sticky at bottom of Summary and supports quick actions.
+* [ ] **Current Status** timeline is reverse-chron, virtualized, and each item has working **View details**.
+* [ ] **Restrictions** grouped into Physical/Functional/Mental Health with working source links.
+* [ ] **Treatment Plan** shows schedule + next appts; “View in Reports” deep links function.
+* [ ] **Reports** supports filters, inline viewing, and download logging.
+* [ ] **Analysis** shows score, drivers, predictions (if available) and last updated.
+* [ ] **External Emails** respects permissions; search/filters work; opening an email uses a modal.
+* [ ] **Michelle** renders suggestions and drafts; actions route correctly to Actions/Emails.
+* [ ] All actions write to the timeline + audit log; back navigation preserves tab + scroll.
+* [ ] Mobile layout: full-screen drawer; tab pills horizontally scroll.
+
+14. **Tech Notes**
+
+* Componentize: `CaseDrawer`, `SummaryPanel`, `RestrictionsBlock`, `TreatmentBlock`, `TimelineVirtualized`, `NextStepsBar`, `ReportsTable`, `InlineViewer`, `EmailList`, `EmailModal`, `MichellePanel`, `ActionsPanel`.
+* State: `caseDrawerState = { caseId, activeTab, scrollYByTab }`.
+* Data fetching: lazy-load per tab (`getCase`, `getRestrictions`, `getTreatment`, `getReports`, `getAnalysis`, `getEmails`).
+* Use optimistic UI for marking Next Steps done; reconcile with server.
+* Audit helper: `logAudit(caseId, action, meta)`.
+
+**Deliverables**
+
+* UI + state + data hooks implemented.
+* Demo route with JSON fixture (use the example shape).
+* QA checklist above all green.
+
+**Start building now.**
