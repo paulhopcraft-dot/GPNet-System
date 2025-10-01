@@ -95,6 +95,10 @@ export interface IStorage {
   // Emails
   getEmailsByTicket(ticketId: string): Promise<Email[]>;
   
+  // Freshdesk Integration
+  findTicketByFreshdeskId(freshdeskTicketId: number): Promise<Ticket | null>;
+  findOrganizationByFreshdeskId(freshdeskCompanyId: number): Promise<Organization | null>;
+  
   // Dashboard stats
   getDashboardStats(): Promise<{
     total: number;
@@ -751,6 +755,25 @@ export class DatabaseStorage implements IStorage {
       .from(emails)
       .where(eq(emails.ticketId, ticketId))
       .orderBy(desc(emails.sentAt));
+  }
+
+  // Freshdesk Integration
+  async findTicketByFreshdeskId(freshdeskTicketId: number): Promise<Ticket | null> {
+    const [ticket] = await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.fdId, freshdeskTicketId))
+      .limit(1);
+    return ticket || null;
+  }
+
+  async findOrganizationByFreshdeskId(freshdeskCompanyId: number): Promise<Organization | null> {
+    const [org] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.freshdeskCompanyId, freshdeskCompanyId))
+      .limit(1);
+    return org || null;
   }
 
   // Dashboard stats

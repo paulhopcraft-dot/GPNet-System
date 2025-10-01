@@ -173,19 +173,28 @@ export class FreshdeskImportService {
 
     try {
       // Store/update companies in our organizations table
+      const orgMap = new Map<number, string>(); // Freshdesk ID -> GPNet org ID
+      
       for (const company of companies) {
         try {
           // Check if organization already exists by Freshdesk company ID
           const existingOrg = await this.findOrganizationByFreshdeskId(company.id);
           
           if (existingOrg) {
-            // Update existing organization
-            console.log(`Updating existing organization: ${company.name}`);
-            // Note: We'd implement organization update logic here
+            console.log(`Organization already exists: ${company.name}`);
+            orgMap.set(company.id, existingOrg.id);
           } else {
             // Create new organization
             console.log(`Creating new organization: ${company.name}`);
-            // Note: We'd implement organization creation logic here
+            const slug = company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            const newOrg = await this.storage.createOrganization({
+              name: company.name,
+              slug: slug + '-' + company.id, // Ensure uniqueness with Freshdesk ID
+              freshdeskCompanyId: company.id,
+              domains: company.domains || [],
+              description: company.description || null
+            });
+            orgMap.set(company.id, newOrg.id);
           }
         } catch (error) {
           console.error(`Error processing company ${company.name}:`, error);
@@ -199,13 +208,52 @@ export class FreshdeskImportService {
           const existingTicket = await this.findTicketByFreshdeskId(ticket.id);
           
           if (existingTicket) {
-            // Update existing ticket
-            console.log(`Updating existing ticket: ${ticket.id}`);
-            // Note: We'd implement ticket update logic here
+            console.log(`Ticket already exists: ${ticket.id}`);
+            // Update organization linkage if changed
+            const newOrgId = ticket.company_id && orgMap.has(ticket.company_id) 
+              ? orgMap.get(ticket.company_id) 
+              : null;
+            if (newOrgId && existingTicket.organizationId !== newOrgId) {
+              await this.storage.updateTicket(existingTicket.id, { 
+                organizationId: newOrgId,
+                fdCompanyId: ticket.company_id || null,
+                companyName: companies.find((c: any) => c.id === ticket.company_id)?.name || existingTicket.companyName
+              });
+              console.log(`Updated organization for ticket ${ticket.id}`);
+            } else if (!existingTicket.fdCompanyId && ticket.company_id) {
+              // Populate fd_company_id if it's missing
+              await this.storage.updateTicket(existingTicket.id, { 
+                fdCompanyId: ticket.company_id 
+              });
+            }
           } else {
             // Create new ticket
             console.log(`Creating new ticket: ${ticket.id} - ${ticket.subject}`);
-            // Note: We'd implement ticket creation logic here
+            
+            // Map Freshdesk ticket to GPNet ticket
+            const ticketData: any = {
+              fdId: ticket.id,
+              fdCompanyId: ticket.company_id || null,
+              subject: ticket.subject,
+              caseType: 'general', // Default to general, can be updated later
+              status: this.mapFreshdeskStatus(ticket.status),
+              priority: this.mapFreshdeskPriority(ticket.priority),
+              companyName: ticket.company_id && orgMap.has(ticket.company_id) 
+                ? companies.find((c: any) => c.id === ticket.company_id)?.name 
+                : 'Unknown Company',
+              organizationId: ticket.company_id && orgMap.has(ticket.company_id)
+                ? orgMap.get(ticket.company_id)
+                : null,
+              requesterId: ticket.requester_id?.toString(),
+              assigneeId: ticket.responder_id?.toString(),
+              ageDays: FreshdeskService.calculateTicketAge(ticket.created_at),
+              tagsJson: ticket.tags || [],
+              customJson: ticket.custom_fields || {},
+              createdAt: new Date(ticket.created_at),
+              lastUpdateAt: new Date(ticket.updated_at)
+            };
+
+            await this.storage.createTicket(ticketData);
           }
         } catch (error) {
           console.error(`Error processing ticket ${ticket.id}:`, error);
@@ -221,21 +269,43 @@ export class FreshdeskImportService {
   }
 
   /**
+   * Map Freshdesk status to GPNet status
+   */
+  private mapFreshdeskStatus(freshdeskStatus: number): string {
+    switch (freshdeskStatus) {
+      case 2: return 'NEW'; // Open
+      case 3: return 'IN_PROGRESS'; // Pending
+      case 4: return 'AWAITING_REVIEW'; // Resolved
+      case 5: return 'COMPLETE'; // Closed
+      default: return 'NEW';
+    }
+  }
+
+  /**
+   * Map Freshdesk priority to GPNet priority
+   */
+  private mapFreshdeskPriority(freshdeskPriority: number): string {
+    switch (freshdeskPriority) {
+      case 1: return 'low';
+      case 2: return 'medium';
+      case 3: return 'high';
+      case 4: return 'urgent';
+      default: return 'medium';
+    }
+  }
+
+  /**
    * Find organization by Freshdesk company ID
    */
   private async findOrganizationByFreshdeskId(freshdeskCompanyId: number): Promise<any | null> {
-    // This would query our organizations table for matching freshdeskCompanyId
-    // For now, returning null to indicate not found
-    return null;
+    return await this.storage.findOrganizationByFreshdeskId(freshdeskCompanyId);
   }
 
   /**
    * Find ticket by Freshdesk ticket ID
    */
   private async findTicketByFreshdeskId(freshdeskTicketId: number): Promise<any | null> {
-    // This would query our tickets table for matching fdId
-    // For now, returning null to indicate not found
-    return null;
+    return await this.storage.findTicketByFreshdeskId(freshdeskTicketId);
   }
 
   /**
