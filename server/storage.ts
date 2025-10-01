@@ -92,6 +92,9 @@ export interface IStorage {
   updateRtwPlanStatus(id: string, status: string): Promise<RtwPlan>;
   deleteRtwPlan(id: string): Promise<void>;
   
+  // Emails
+  getEmailsByTicket(ticketId: string): Promise<Email[]>;
+  
   // Dashboard stats
   getDashboardStats(): Promise<{
     total: number;
@@ -739,6 +742,15 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(rtwPlans)
       .where(eq(rtwPlans.id, id));
+  }
+
+  // Emails
+  async getEmailsByTicket(ticketId: string): Promise<Email[]> {
+    return await db
+      .select()
+      .from(emails)
+      .where(eq(emails.ticketId, ticketId))
+      .orderBy(desc(emails.sentAt));
   }
 
   // Dashboard stats
