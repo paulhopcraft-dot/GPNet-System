@@ -8,16 +8,18 @@ router.get('/:ticketId', async (req, res) => {
   try {
     const { ticketId } = req.params;
     
-    const [ticket, worker, analysis, emails] = await Promise.all([
-      storage.getTicket(ticketId),
-      storage.getTicket(ticketId).then(t => t?.workerId ? storage.getWorker(t.workerId) : null),
-      storage.getAnalysisByTicket(ticketId),
-      storage.getEmailsByTicket(ticketId)
-    ]);
-
+    const ticket = await storage.getTicket(ticketId);
     if (!ticket) {
       return res.status(404).json({ error: 'Case not found' });
     }
+
+    const [worker, analysis] = await Promise.all([
+      ticket.workerId ? storage.getWorker(ticket.workerId) : null,
+      storage.getAnalysisByTicket(ticketId)
+    ]);
+
+    // Mock emails for now - we'll implement proper email fetching later
+    const emails: any[] = [];
 
     // Mock restrictions for now
     const restrictions = {
