@@ -1387,14 +1387,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const completedCases: any[] = [];
       
       for (const ticket of allTickets) {
-        // Get worker info
-        const worker = await storage.getWorker(ticket.workerId!);
-        if (!worker) continue;
+        // Get worker info (may be null for some tickets)
+        const worker = ticket.workerId ? await storage.getWorker(ticket.workerId) : null;
+        
+        // Use worker name if available, otherwise use ticket subject or "Unknown"
+        const workerName = worker 
+          ? `${worker.firstName} ${worker.lastName}` 
+          : ticket.subject || 'Unknown Worker';
         
         const caseData = {
           ticketId: ticket.id,
-          workerId: worker.id,
-          workerName: `${worker.firstName} ${worker.lastName}`,
+          workerId: worker?.id || null,
+          workerName,
           caseType: ticket.caseType,
           status: ticket.status,
           priority: ticket.priority || 'medium',
