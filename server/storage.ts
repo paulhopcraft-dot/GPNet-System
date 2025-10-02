@@ -1,6 +1,6 @@
 import { 
   tickets, workers, formSubmissions, analyses, emails, attachments,
-  injuries, stakeholders, rtwPlans, riskHistory,
+  injuries, stakeholders, rtwPlans, riskHistory, reports,
   legislationDocuments, rtwWorkflowSteps, complianceAudit, workerParticipationEvents,
   letterTemplates, generatedLetters, freshdeskTickets, freshdeskSyncLogs,
   organizations, clientUsers, adminUsers, auditEvents, archiveIndex,
@@ -10,7 +10,7 @@ import {
   checks, companyAliases, emailDrafts, checkRequests,
   medicalOpinionRequests, organizationSettings, reminderSchedule,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
-  type Injury, type Stakeholder, type RtwPlan, type RiskHistory,
+  type Injury, type Stakeholder, type RtwPlan, type RiskHistory, type Report,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
   type LetterTemplate, type GeneratedLetter, type FreshdeskTicket, type FreshdeskSyncLog,
   type Organization, type ClientUser, type AdminUser, type AuditEvent, type ArchiveIndex,
@@ -19,7 +19,7 @@ import {
   type Check, type CompanyAlias, type EmailDraft, type CheckRequest,
   type MedicalOpinionRequest, type OrganizationSettings, type ReminderSchedule,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
-  type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory,
+  type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory, type InsertReport,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
   type InsertWorkerParticipationEvent, type InsertLetterTemplate, type InsertGeneratedLetter,
   type InsertFreshdeskTicket, type InsertFreshdeskSyncLog,
@@ -94,6 +94,13 @@ export interface IStorage {
   
   // Emails
   getEmailsByTicket(ticketId: string): Promise<Email[]>;
+  
+  // Reports
+  createReport(report: InsertReport): Promise<Report>;
+  getReportByTicket(ticketId: string): Promise<Report | undefined>;
+  getReportById(id: string): Promise<Report | undefined>;
+  updateReport(id: string, updates: Partial<InsertReport>): Promise<Report>;
+  getPendingReportsForEmail(): Promise<Report[]>;
   
   // Freshdesk Integration
   findTicketByFreshdeskId(freshdeskTicketId: number): Promise<Ticket | null>;
@@ -756,6 +763,54 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(emails.sentAt));
   }
 
+  // Reports
+  async createReport(report: InsertReport): Promise<Report> {
+    const [newReport] = await db
+      .insert(reports)
+      .values(report)
+      .returning();
+    return newReport;
+  }
+
+  async getReportByTicket(ticketId: string): Promise<Report | undefined> {
+    const [report] = await db
+      .select()
+      .from(reports)
+      .where(eq(reports.ticketId, ticketId))
+      .orderBy(desc(reports.createdAt))
+      .limit(1);
+    return report;
+  }
+
+  async getReportById(id: string): Promise<Report | undefined> {
+    const [report] = await db
+      .select()
+      .from(reports)
+      .where(eq(reports.id, id));
+    return report;
+  }
+
+  async updateReport(id: string, updates: Partial<InsertReport>): Promise<Report> {
+    const [updatedReport] = await db
+      .update(reports)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(reports.id, id))
+      .returning();
+    return updatedReport;
+  }
+
+  async getPendingReportsForEmail(): Promise<Report[]> {
+    return await db
+      .select()
+      .from(reports)
+      .where(
+        and(
+          eq(reports.status, 'generated'),
+          sql`${reports.emailSentAt} IS NULL`,
+          sql`${reports.createdAt} <= NOW() - INTERVAL '1 hour'`
+        )
+      );
+  }
 
   async findOrganizationByFreshdeskId(freshdeskCompanyId: number): Promise<Organization | null> {
     const [org] = await db
