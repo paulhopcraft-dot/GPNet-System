@@ -28,6 +28,7 @@ import {
 import { z } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { pdfService } from "./pdfService";
+import { reportService } from "./reportService";
 import { EnhancedRiskAssessmentService, type RiskInput } from "./riskAssessmentService";
 import { michelle, type MichelleContext, type ConversationResponse } from "./michelle";
 import { requireAuth } from "./authRoutes";
@@ -618,29 +619,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         console.log(`Generated ${formType} PDF report: ${pdfBuffer.length} bytes`);
         
-        // Email PDF report to employer/manager
-        if (emailService.isAvailable()) {
-          const emailResult = await emailService.sendReportEmail({
-            reportType: reportType,
-            ticketId: ticket.id,
-            recipients: [
-              { 
-                email: process.env.MANAGER_EMAIL || 'manager@company.com',
-                name: 'Site Manager'
-              }
-            ],
-            pdfBuffer: pdfBuffer,
-            includeComplianceNote: true
-          }, storage);
-          
-          if (emailResult.success) {
-            console.log(`${formType} PDF report emailed successfully for ticket ${ticket.id}`);
-          } else {
-            console.warn(`Failed to email ${formType} PDF report: ${emailResult.error}`);
+        // Save PDF report to storage for delayed email delivery (1 hour)
+        try {
+          let companyName = 'Unknown Organization';
+          if (ticket.organizationId) {
+            const org = await storage.getOrganization(ticket.organizationId);
+            if (org) {
+              companyName = org.name;
+            }
           }
-        } else {
-          console.log(`${formType} PDF report generated but email service not configured - would email to manager`);
+          
+          const reportId = await reportService.saveGeneratedReport(
+            ticket.id,
+            reportType,
+            pdfBuffer,
+            {
+              companyName,
+              workerName: `${worker.firstName} ${worker.lastName}`,
+              formType: formType,
+              ragScore: analysisResult.ragScore,
+              fitClassification: analysisResult.fitClassification
+            },
+            'GPNet Automated System'
+          );
+          console.log(`Report saved with ID ${reportId} for delayed email delivery (1 hour)`);
+        } catch (reportError) {
+          console.error(`Failed to save report for delayed delivery:`, reportError);
         }
+        
+        // NOTE: Email delivery now handled by background job after 1-hour delay
+        // Previously: Immediate email to manager (commented out for delayed delivery)
+        // The background job will email reports with status='generated' after 1 hour
         
       } catch (pdfError) {
         console.error(`Failed to generate/email ${formType} PDF report for ticket ${ticket.id}:`, pdfError);
