@@ -183,6 +183,14 @@ router.post('/freshdesk-webhook', async (req, res) => {
       await webhookService.processWebhook(event);
     }
 
+    // POST-IMPORT AUTOMATION: Check for pre-employment form submission
+    // Run assessment and send notifications asynchronously (don't block webhook response)
+    if (importResult.success && importResult.ticketId) {
+      processPreEmploymentSubmission(importResult.ticketId, storage).catch(err => {
+        console.error('Pre-employment automation failed (non-blocking):', err);
+      });
+    }
+
     res.json({ 
       success: true, 
       message: 'Webhook processed successfully',
@@ -199,6 +207,185 @@ router.post('/freshdesk-webhook', async (req, res) => {
     });
   }
 });
+
+/**
+ * Process pre-employment form submission automation
+ * - Runs risk assessment if it's a pre-employment case
+ * - Saves assessment to analyses table
+ * - Sends email notifications to manager and Natalie
+ * - Runs asynchronously without blocking webhook response
+ */
+async function processPreEmploymentSubmission(ticketId: string, storage: any) {
+  try {
+    console.log(`[Pre-Employment Automation] Starting for ticket: ${ticketId}`);
+    
+    // Get the ticket to check if it's a pre-employment case
+    const ticket = await storage.getTicket(ticketId);
+    if (!ticket) {
+      console.log(`[Pre-Employment Automation] Ticket ${ticketId} not found`);
+      return;
+    }
+
+    // Check if this is a pre-employment case
+    const isPreEmployment = ticket.caseType === 'pre_employment' && ticket.formType === 'pre_employment';
+    if (!isPreEmployment) {
+      console.log(`[Pre-Employment Automation] Ticket ${ticketId} is not a pre-employment case (caseType: ${ticket.caseType}, formType: ${ticket.formType})`);
+      return;
+    }
+
+    console.log(`[Pre-Employment Automation] Processing pre-employment submission for ticket: ${ticketId}`);
+
+    // Get form submission data
+    const formSubmission = await storage.getFormSubmissionByTicket(ticketId);
+    if (!formSubmission) {
+      console.log(`[Pre-Employment Automation] No form submission found for ticket: ${ticketId}`);
+      return;
+    }
+
+    // Get worker information
+    const worker = ticket.workerId ? await storage.getWorker(ticket.workerId) : null;
+    const workerName = worker ? `${worker.firstName} ${worker.lastName}` : 'Unknown Worker';
+
+    // STEP 1: Run automated risk assessment
+    const { EnhancedRiskAssessmentService } = await import('./riskAssessmentService.js');
+    const riskAssessmentService = new EnhancedRiskAssessmentService(storage);
+
+    // Normalize form data - handle both JotForm and Freshdesk formats
+    let formData = formSubmission.rawData;
+    
+    // If rawData is a string, try to parse it as JSON
+    if (typeof formData === 'string') {
+      try {
+        formData = JSON.parse(formData);
+      } catch (e) {
+        console.error(`[Pre-Employment Automation] Failed to parse rawData as JSON for ticket: ${ticketId}`);
+        return; // Can't proceed without valid data
+      }
+    }
+    
+    // Ensure formData is an object
+    if (!formData || typeof formData !== 'object') {
+      console.error(`[Pre-Employment Automation] Invalid formData format for ticket: ${ticketId}`, formData);
+      return;
+    }
+
+    const assessmentInput = [{
+      type: 'form' as const,
+      content: formData,
+      timestamp: new Date(),
+      source: 'pre_employment_webhook'
+    }];
+
+    const assessmentResult = await riskAssessmentService.assessRisk(
+      assessmentInput,
+      undefined,
+      ticket.organizationId || undefined
+    );
+
+    console.log(`[Pre-Employment Automation] Assessment complete for ${ticketId}:`, {
+      ragScore: assessmentResult.ragScore,
+      fitClassification: assessmentResult.fitClassification,
+      confidence: assessmentResult.confidence
+    });
+
+    // STEP 2: Save assessment results to analyses table
+    const existingAnalysis = await storage.getAnalysisByTicket(ticketId);
+    
+    if (existingAnalysis) {
+      // Update existing analysis
+      await storage.updateAnalysis(ticketId, {
+        fitClassification: assessmentResult.fitClassification,
+        ragScore: assessmentResult.ragScore,
+        recommendations: assessmentResult.recommendations,
+        lastAssessedAt: new Date()
+      }, {
+        changeSource: 'webhook_automation',
+        changeReason: 'Pre-employment form submitted via Freshdesk',
+        triggeredBy: 'freshdesk_webhook',
+        confidence: assessmentResult.confidence
+      });
+      console.log(`[Pre-Employment Automation] Updated existing analysis for ticket: ${ticketId}`);
+    } else {
+      // Create new analysis
+      await storage.createAnalysis({
+        ticketId,
+        fitClassification: assessmentResult.fitClassification,
+        ragScore: assessmentResult.ragScore,
+        recommendations: assessmentResult.recommendations,
+        lastAssessedAt: new Date()
+      });
+      console.log(`[Pre-Employment Automation] Created new analysis for ticket: ${ticketId}`);
+    }
+
+    // STEP 3: Update ticket with RAG score
+    await storage.updateTicket(ticketId, {
+      status: 'ASSESSED'
+    });
+    console.log(`[Pre-Employment Automation] Updated ticket status to ASSESSED for: ${ticketId}`);
+
+    // STEP 4: Send email notifications
+    const { emailService } = await import('./emailService.js');
+
+    if (!emailService.isAvailable()) {
+      console.warn('[Pre-Employment Automation] Email service not available - skipping notifications');
+    } else {
+      // Get manager email from organization
+      let managerEmail: string | null = null;
+      if (ticket.organizationId) {
+        const organization = await storage.getOrganization(ticket.organizationId);
+        if (organization?.primaryContactEmail) {
+          managerEmail = organization.primaryContactEmail;
+        }
+      }
+
+      const checkType = 'Pre-Employment Health Check';
+
+      // Send notification to manager if email is available
+      if (managerEmail) {
+        try {
+          const managerResult = await emailService.sendManagerNotification(
+            managerEmail,
+            workerName,
+            checkType,
+            ticketId
+          );
+          if (managerResult.success) {
+            console.log(`[Pre-Employment Automation] Manager notification sent to ${managerEmail} for ticket: ${ticketId}`);
+          } else {
+            console.error(`[Pre-Employment Automation] Failed to send manager notification: ${managerResult.error}`);
+          }
+        } catch (emailError) {
+          console.error('[Pre-Employment Automation] Manager notification error:', emailError);
+        }
+      } else {
+        console.warn(`[Pre-Employment Automation] No manager email found for organization, skipping manager notification`);
+      }
+
+      // Send notification to Natalie at support@gpnet.au
+      try {
+        const natalieResult = await emailService.sendManagerNotification(
+          'support@gpnet.au',
+          workerName,
+          checkType,
+          ticketId
+        );
+        if (natalieResult.success) {
+          console.log(`[Pre-Employment Automation] Natalie notification sent for ticket: ${ticketId}`);
+        } else {
+          console.error(`[Pre-Employment Automation] Failed to send Natalie notification: ${natalieResult.error}`);
+        }
+      } catch (emailError) {
+        console.error('[Pre-Employment Automation] Natalie notification error:', emailError);
+      }
+    }
+
+    console.log(`[Pre-Employment Automation] Completed successfully for ticket: ${ticketId}`);
+
+  } catch (error) {
+    // Log error but don't throw - this runs async and shouldn't block webhook
+    console.error('[Pre-Employment Automation] Error processing automation:', error);
+  }
+}
 
 /**
  * POST /api/medical-documents/manual-upload

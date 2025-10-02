@@ -1,5 +1,6 @@
 import { PreEmploymentFormData, InjuryFormData } from "../shared/schema";
 import type { IStorage } from './storage.js';
+import { storage } from './storage.js';
 
 export interface RiskInput {
   type: 'form' | 'email' | 'medical_record' | 'manual_update' | 'follow_up';
@@ -132,21 +133,29 @@ export class EnhancedRiskAssessmentService {
     });
 
     // Check for high risk keywords
+    let hasHighRisk = false;
     this.riskKeywords.high.forEach(keyword => {
       if (content.includes(keyword)) {
         riskKeywords.push(keyword);
-        urgencyLevel = 'high';
+        hasHighRisk = true;
       }
     });
-
-    // Check for medium risk keywords if not already high
-    if (urgencyLevel === 'low') {
+    
+    if (hasHighRisk) {
+      urgencyLevel = 'high';
+    } else {
+      // Check for medium risk keywords if not already high
+      let hasMediumRisk = false;
       this.riskKeywords.medium.forEach(keyword => {
         if (content.includes(keyword)) {
           riskKeywords.push(keyword);
-          urgencyLevel = 'medium';
+          hasMediumRisk = true;
         }
       });
+      
+      if (hasMediumRisk) {
+        urgencyLevel = 'medium';
+      }
     }
 
     // Check for work capacity indicators
@@ -234,36 +243,45 @@ export class EnhancedRiskAssessmentService {
       recommendations.push("Update work capacity assessment based on latest information");
     }
 
+    const managerFlag = this.generateManagerFlag(ragScore, []);
+
     return {
       ragScore,
       fitClassification: this.determineFitClassification(ragScore, riskFactors),
       confidence: 70, // Email analysis is less certain than structured forms
       riskFactors,
       recommendations,
-      triggerReasons: [`Email analysis detected ${analysis.urgencyLevel} urgency level`]
+      triggerReasons: [`Email analysis detected ${analysis.urgencyLevel} urgency level`],
+      managerFlag
     };
   }
 
   private processMedicalRecordInput(medicalData: any): RiskAssessmentResult {
     // Process medical record attachments - simplified for now
+    const managerFlag = this.generateManagerFlag("amber", []);
+    
     return {
       ragScore: "amber",
       fitClassification: "fit_with_restrictions",
       confidence: 85,
       riskFactors: ["Medical documentation received"],
       recommendations: ["Review medical documentation for work restrictions"],
-      triggerReasons: ["Medical record uploaded"]
+      triggerReasons: ["Medical record uploaded"],
+      managerFlag
     };
   }
 
   private processManualUpdate(updateData: { ragScore: "green" | "amber" | "red"; reason: string }): RiskAssessmentResult {
+    const managerFlag = this.generateManagerFlag(updateData.ragScore, []);
+    
     return {
       ragScore: updateData.ragScore,
       fitClassification: this.determineFitClassification(updateData.ragScore, []),
       confidence: 100,
       riskFactors: [`Manual override: ${updateData.reason}`],
       recommendations: [],
-      triggerReasons: [`Manual risk level update: ${updateData.reason}`]
+      triggerReasons: [`Manual risk level update: ${updateData.reason}`],
+      managerFlag
     };
   }
 
@@ -309,13 +327,16 @@ export class EnhancedRiskAssessmentService {
       ragScore = "amber";
     }
 
+    const managerFlag = this.generateManagerFlag(ragScore, []);
+
     return {
       ragScore,
       fitClassification: this.determineFitClassification(ragScore, risks),
       confidence: 95,
       riskFactors: risks,
       recommendations,
-      triggerReasons: ["Pre-employment form analysis completed"]
+      triggerReasons: ["Pre-employment form analysis completed"],
+      managerFlag
     };
   }
 
@@ -336,13 +357,16 @@ export class EnhancedRiskAssessmentService {
       recommendations.push("Modified duties may be required during recovery");
     }
 
+    const managerFlag = this.generateManagerFlag(ragScore, []);
+
     return {
       ragScore,
       fitClassification: this.determineFitClassification(ragScore, risks),
       confidence: 90,
       riskFactors: risks,
       recommendations,
-      triggerReasons: ["Injury form analysis completed"]
+      triggerReasons: ["Injury form analysis completed"],
+      managerFlag
     };
   }
 
@@ -512,4 +536,4 @@ export class EnhancedRiskAssessmentService {
   }
 }
 
-export const riskAssessmentService = new EnhancedRiskAssessmentService();
+export const riskAssessmentService = new EnhancedRiskAssessmentService(storage);

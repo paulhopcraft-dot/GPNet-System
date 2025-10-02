@@ -60,11 +60,13 @@ import { createConsultantAppointmentService } from "./consultantAppointmentServi
 import { createFollowUpScheduler } from "./followUpScheduler";
 import { emailService } from "./emailService";
 import { WorkflowSimulator } from "./workflowSimulator";
+import { EmailDraftingService } from "./emailDraftingService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // Initialize services with storage
   const riskAssessmentService = new EnhancedRiskAssessmentService(storage);
+  const emailDraftingService = new EmailDraftingService();
   
   // Initialize and start schedulers
   const medicalCertScheduler = createMedicalCertificateScheduler(storage);
@@ -300,6 +302,140 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Failed to get external emails for ticket:", error);
       res.status(500).json({ error: "Failed to retrieve external emails" });
+    }
+  });
+
+  // ===========================================
+  // PRE-EMPLOYMENT CHECK INITIATION
+  // ===========================================
+
+  // Initiate pre-employment check - Manager workflow (REQUIRES AUTHENTICATION)
+  app.post("/api/pre-employment/initiate", requireAuth, async (req, res) => {
+    try {
+      console.log("Initiating pre-employment check from manager");
+      
+      // SECURITY: Derive organizationId from authenticated session, ignore client input
+      const user = req.session.user;
+      if (!user || user.userType !== 'client') {
+        return res.status(403).json({ 
+          error: 'Only authenticated managers can initiate pre-employment checks' 
+        });
+      }
+      
+      const organizationId = user.organizationId;
+      if (!organizationId) {
+        return res.status(400).json({ 
+          error: 'Manager must be associated with an organization' 
+        });
+      }
+      
+      const { firstName, lastName, email, phone, dateOfBirth, roleApplied, site } = req.body;
+      
+      // Validate required fields
+      if (!firstName || !lastName || !email || !phone || !dateOfBirth || !roleApplied) {
+        return res.status(400).json({ 
+          error: 'Missing required fields: firstName, lastName, email, phone, dateOfBirth, roleApplied' 
+        });
+      }
+
+      // Get manager's organization ID from session if not provided in body
+      const managerOrgId = organizationId;
+      
+      if (!managerOrgId) {
+        return res.status(400).json({ 
+          error: 'Organization ID is required' 
+        });
+      }
+
+      // Create worker record
+      const worker = await storage.createWorker({
+        organizationId: managerOrgId,
+        firstName,
+        lastName,
+        dateOfBirth,
+        phone,
+        email,
+        roleApplied,
+        site: site || null,
+      });
+      
+      console.log(`Created worker record: ${worker.id}`);
+
+      // Create ticket with status "NEW"
+      const ticket = await storage.createTicket({
+        organizationId: managerOrgId,
+        workerId: worker.id,
+        caseType: "pre_employment",
+        status: "NEW",
+        formType: "pre_employment",
+        nextStep: "Awaiting worker to complete pre-employment health check form",
+      });
+      
+      console.log(`Created ticket: ${ticket.id}`);
+
+      // Get pre-employment check configuration
+      const check = await storage.getCheckByKey("PRE_EMPLOYMENT_CHECK");
+      
+      if (!check) {
+        console.error("PRE_EMPLOYMENT_CHECK configuration not found in checks table");
+        return res.status(500).json({ 
+          error: "Pre-employment check configuration not found. Please contact support." 
+        });
+      }
+
+      try {
+        // Generate email draft with JotForm link
+        const emailDraft = await emailDraftingService.generateEmailDraft({
+          ticketId: ticket.id,
+          workerId: worker.id,
+          checkId: check.id,
+          managerEmail: email, // Using worker email as recipient
+          urgency: 'medium',
+        });
+
+        console.log(`Generated email draft with link: ${emailDraft.checkLink}`);
+
+        // Send email to worker
+        if (emailService.isAvailable()) {
+          await emailService.sendEmail({
+            to: email,
+            subject: emailDraft.subject,
+            html: emailDraft.htmlBody,
+            text: emailDraft.body,
+          });
+          
+          console.log(`Invitation email sent to ${email}`);
+        } else {
+          console.warn("Email service not available - invitation not sent");
+        }
+
+        // Return success response
+        res.json({
+          success: true,
+          ticketId: ticket.id,
+          workerId: worker.id,
+          checkLink: emailDraft.checkLink,
+          message: `Pre-employment check initiated successfully. Invitation sent to ${email}.`,
+        });
+
+      } catch (emailError) {
+        console.error("Error sending invitation email:", emailError);
+        // Still return success since worker/ticket were created
+        res.json({
+          success: true,
+          ticketId: ticket.id,
+          workerId: worker.id,
+          message: `Worker and case created successfully, but email could not be sent. Please contact the worker manually.`,
+          warning: "Email service unavailable"
+        });
+      }
+
+    } catch (error) {
+      console.error('Error initiating pre-employment check:', error);
+      res.status(500).json({ 
+        error: 'Failed to initiate pre-employment check',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
