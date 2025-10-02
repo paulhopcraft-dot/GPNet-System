@@ -316,6 +316,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // SECURITY: Derive organizationId from authenticated session, ignore client input
       const user = req.session.user;
+      console.log(`[PRE-EMP] Session user:`, {
+        id: user?.id,
+        email: user?.email,
+        userType: user?.userType,
+        organizationId: user?.organizationId
+      });
+      
       if (!user || user.userType !== 'client') {
         return res.status(403).json({ 
           error: 'Only authenticated managers can initiate pre-employment checks' 
@@ -328,6 +335,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           error: 'Manager must be associated with an organization' 
         });
       }
+      
+      console.log(`[PRE-EMP] Using organizationId from session: ${organizationId}`);
       
       const { firstName, lastName, email, phone, dateOfBirth, roleApplied, site } = req.body;
       
@@ -362,6 +371,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`Created worker record: ${worker.id}`);
 
       // Create ticket with status "NEW"
+      console.log(`[PRE-EMP] Creating ticket with organizationId: ${managerOrgId}, workerId: ${worker.id}`);
+      
       const ticket = await storage.createTicket({
         organizationId: managerOrgId,
         workerId: worker.id,
@@ -371,7 +382,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         nextStep: "Awaiting worker to complete pre-employment health check form",
       });
       
-      console.log(`Created ticket: ${ticket.id}`);
+      console.log(`[PRE-EMP] Created ticket: ${ticket.id}, organizationId: ${ticket.organizationId}`);
 
       // Get pre-employment check configuration
       const check = await storage.getCheckByKey("PRE_EMPLOYMENT_CHECK");

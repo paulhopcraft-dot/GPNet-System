@@ -305,6 +305,7 @@ export class AuthService {
 
     if (role === 'client') {
       const clientUser = user as ClientUser;
+      baseUser.userType = 'client'; // CRITICAL: Set userType for client users
       baseUser.organizationId = clientUser.organizationId;
     } else {
       const adminUser = user as AdminUser;
