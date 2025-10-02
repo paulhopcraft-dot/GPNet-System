@@ -6,6 +6,40 @@ GPNet is a comprehensive pre-employment health check system designed to automate
 
 ## Recent Changes (October 2, 2025)
 
+### Automated Pre-Employment Report Generation with 1-Hour Delayed Email Delivery - COMPLETED ⚡
+- **Feature**: Fully automated workflow for generating and emailing pre-employment health check reports with enforced 1-hour delay
+- **How It Works**:
+  1. Jotform webhook submission triggers automatic report generation
+  2. Report data consolidated from ticket, worker, form submission, and risk analysis
+  3. PDF generated using existing PDFService and pre-employment.hbs template
+  4. PDF saved to object storage with unique storage key
+  5. Report record created with status='generated' (NOT immediately emailed)
+  6. Background scheduler runs every 15 minutes checking for eligible reports
+  7. Reports older than 1 hour automatically queued for email delivery
+  8. On success: status → 'sent', emailSentAt timestamp set
+  9. On failure: status → 'failed', error details stored in metadata
+- **Benefits**:
+  - **Compliance buffer** - 1-hour delay allows for review/corrections before sending
+  - **Reliable delivery** - Scheduler automatically retries processing every 15 minutes
+  - **Audit trail** - Complete tracking of generation, delivery attempts, and outcomes
+  - **Error resilience** - Failed reports marked with error details, no infinite retry loops
+- **Technical Implementation**:
+  - **Schema**: Added `reports` table with fields: id, ticketId, formSubmissionId, reportType, status, storageKey, emailSentAt, emailRecipient, metadata, createdAt, updatedAt
+  - **Storage**: Added `createReport()`, `updateReport()`, `getReport()`, `getPendingReportsForEmail()` methods
+  - **Service**: `ReportService` consolidates data and generates PDFs using existing templates
+  - **Scheduler**: `ReportDeliveryScheduler` enforces 1-hour delay via SQL: `WHERE status='generated' AND emailSentAt IS NULL AND createdAt <= NOW() - INTERVAL '1 hour'`
+  - **Security**: All `/api/reports/*` endpoints protected with requireAuth middleware
+  - **Testing**: Manual trigger endpoint POST `/api/reports/scheduler/trigger` for admin/testing
+- **API Endpoints**:
+  - GET `/api/reports?ticketId=X` - Query reports by ticket (auth required)
+  - GET `/api/reports/scheduler/status` - Check scheduler status (auth required)
+  - POST `/api/reports/scheduler/trigger` - Manually trigger delivery check (auth required)
+- **Operational Notes**:
+  - Scheduler runs every 15 minutes starting immediately on server startup
+  - Use `MANAGER_EMAIL` environment variable to configure recipient email
+  - Failed reports remain in database with error metadata for debugging
+  - Future enhancement: Add organization-specific manager emails to settings
+
 ### Real-Time Freshdesk Webhook Sync - COMPLETED ⚡
 - **Feature**: Live webhook integration for instant ticket synchronization from Freshdesk to GPNet
 - **How It Works**:
