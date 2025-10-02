@@ -167,12 +167,22 @@ router.post('/freshdesk-webhook', async (req, res) => {
 
     const event: FreshdeskWebhookEvent = validationResult.data;
 
-    // Process the webhook
+    // Real-time sync: Import/update the ticket immediately
+    const { FreshdeskImportService } = await import('./freshdeskImportService.js');
+    const { storage } = await import('./storage.js');
+    const importService = new FreshdeskImportService(storage);
+    
+    const importResult = await importService.importSingleTicket(event.ticket.id);
+    console.log(`Real-time sync result:`, importResult);
+
+    // Process attachments (if any)
     await freshdeskWebhookService.processWebhook(event);
 
     res.json({ 
       success: true, 
       message: 'Webhook processed successfully',
+      ticketSynced: importResult.success,
+      gpnetTicketId: importResult.ticketId,
       processed_attachments: event.ticket.attachments?.length || 0
     });
 

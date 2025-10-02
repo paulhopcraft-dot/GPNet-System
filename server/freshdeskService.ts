@@ -481,6 +481,23 @@ export class FreshdeskService {
   }
 
   /**
+   * Get a single company from Freshdesk by ID
+   */
+  async getCompany(companyId: number): Promise<{ id: number; name: string; domains?: string[]; description?: string } | null> {
+    if (!this.isAvailable()) {
+      throw new Error('Freshdesk integration not available');
+    }
+
+    try {
+      const company = await this.makeRequest<any>(`/companies/${companyId}`);
+      return company;
+    } catch (error) {
+      console.error(`Failed to fetch company ${companyId}:`, error);
+      return null;
+    }
+  }
+
+  /**
    * Fetch all contacts from Freshdesk  
    */
   async fetchAllContacts(): Promise<{ id: number; name: string; email: string; company_id?: number }[]> {
