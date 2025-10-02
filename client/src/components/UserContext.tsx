@@ -33,41 +33,31 @@ interface UserProviderProps {
 }
 
 export function UserProvider({ children }: UserProviderProps) {
-  // TEMPORARY: Mock user for development bypass
-  const [user, setUser] = useState<User | null>({
-    id: 'dev-user',
-    email: 'support@gpnet.au',
-    name: 'Natalie Support',
-    role: 'Administrator',
-    userType: 'admin',
-    permissions: ['admin', 'superuser']
-  });
-  const [isLoading, setIsLoading] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // TEMPORARY: Authentication bypassed for development
-    // Fetch user from authentication API
-    // const fetchUser = async () => {
-    //   try {
-    //     const response = await fetch('/api/auth/me', {
-    //       credentials: 'include' // CRITICAL: Include cookies for session
-    //     });
-    //     if (response.ok) {
-    //       const userData = await response.json();
-    //       setUser(userData);
-    //     } else {
-    //       // User not authenticated, set to null
-    //       setUser(null);
-    //     }
-    //   } catch (error) {
-    //     console.error('Failed to fetch user:', error);
-    //     setUser(null);
-    //   } finally {
-    //     setIsLoading(false);
-    //   }
-    // };
+    const fetchUser = async () => {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include' // CRITICAL: Include cookies for session
+        });
+        if (response.ok) {
+          const userData = await response.json();
+          setUser(userData);
+        } else {
+          // User not authenticated, set to null
+          setUser(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user:', error);
+        setUser(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    // fetchUser();
+    fetchUser();
   }, []);
 
   return (
