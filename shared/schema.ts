@@ -106,6 +106,21 @@ export const documents = pgTable("documents", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Reports table for generated pre-employment and injury reports
+export const reports = pgTable("reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  reportType: text("report_type").notNull(), // "pre_employment", "injury_assessment"
+  status: text("status").notNull().default("pending"), // "pending", "generated", "sent", "failed"
+  storageKey: text("storage_key"), // Object storage key for the PDF
+  dataVersion: text("data_version"), // Hash/version of source data to detect if regeneration needed
+  emailSentAt: timestamp("email_sent_at"),
+  emailRecipient: text("email_recipient"),
+  metadata: jsonb("metadata"), // Additional report metadata
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Events table for audit trail
 export const events = pgTable("events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1776,6 +1791,12 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({
   createdAt: true,
 });
 
+export const insertReportSchema = createInsertSchema(reports).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertEventSchema = createInsertSchema(events).omit({
   id: true,
   occurredAt: true,
@@ -1883,6 +1904,9 @@ export type Case = typeof cases.$inferSelect;
 
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type Document = typeof documents.$inferSelect;
+
+export type InsertReport = z.infer<typeof insertReportSchema>;
+export type Report = typeof reports.$inferSelect;
 
 export type InsertEvent = z.infer<typeof insertEventSchema>;
 export type Event = typeof events.$inferSelect;
