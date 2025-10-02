@@ -291,7 +291,6 @@ export interface IStorage {
   getDocumentProcessingLogsByJob(jobId: string): Promise<DocumentProcessingLog[]>;
   
   // Helper methods for webhook processing
-  findTicketByFreshdeskId(freshdeskId: number): Promise<Ticket | undefined>;
   findWorkerByEmail(email: string): Promise<Worker | undefined>;
   findWorkersByName(name: string): Promise<Worker[]>;
   findCasesByWorkerId(workerId: string): Promise<Ticket[]>;
@@ -757,15 +756,6 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(emails.sentAt));
   }
 
-  // Freshdesk Integration
-  async findTicketByFreshdeskId(freshdeskTicketId: number): Promise<Ticket | null> {
-    const [ticket] = await db
-      .select()
-      .from(tickets)
-      .where(eq(tickets.fdId, freshdeskTicketId))
-      .limit(1);
-    return ticket || null;
-  }
 
   async findOrganizationByFreshdeskId(freshdeskCompanyId: number): Promise<Organization | null> {
     const [org] = await db
@@ -1567,19 +1557,17 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
     
     if (filters) {
-      if (filters.organizationId) conditions.push(eq(auditEvents.companyId, filters.organizationId));
+      if (filters.organizationId) conditions.push(eq(auditEvents.organizationId, filters.organizationId));
       if (filters.actorId) conditions.push(eq(auditEvents.actorId, filters.actorId));
       if (filters.eventType) conditions.push(eq(auditEvents.eventType, filters.eventType));
       // Add date filtering if needed
     }
     
-    let query = db.select().from(auditEvents);
-    
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return await db.select().from(auditEvents).where(and(...conditions)).orderBy(desc(auditEvents.timestamp));
     }
     
-    return await query.orderBy(desc(auditEvents.timestamp));
+    return await db.select().from(auditEvents).orderBy(desc(auditEvents.timestamp));
   }
 
   // Archive Index
@@ -1594,15 +1582,13 @@ export class DatabaseStorage implements IStorage {
   async getArchivedEntities(entityType?: string, organizationId?: string): Promise<ArchiveIndex[]> {
     const conditions = [];
     if (entityType) conditions.push(eq(archiveIndex.entityType, entityType));
-    if (organizationId) conditions.push(eq(archiveIndex.companyId, organizationId));
-    
-    let query = db.select().from(archiveIndex);
+    if (organizationId) conditions.push(eq(archiveIndex.organizationId, organizationId));
     
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return await db.select().from(archiveIndex).where(and(...conditions)).orderBy(desc(archiveIndex.archivedAt));
     }
     
-    return await query.orderBy(desc(archiveIndex.archivedAt));
+    return await db.select().from(archiveIndex).orderBy(desc(archiveIndex.archivedAt));
   }
 
   async restoreArchivedEntity(id: string, restoredBy: string): Promise<ArchiveIndex> {
@@ -1880,19 +1866,23 @@ export class DatabaseStorage implements IStorage {
     priority?: string;
     specialistId?: string;
   }): Promise<Escalation[]> {
-    let query = db.select().from(escalations);
+    const conditions = [];
 
     if (filters?.status) {
-      query = query.where(eq(escalations.status, filters.status));
+      conditions.push(eq(escalations.status, filters.status));
     }
     if (filters?.priority) {
-      query = query.where(eq(escalations.priority, filters.priority));
+      conditions.push(eq(escalations.priority, filters.priority));
     }
     if (filters?.specialistId) {
-      query = query.where(eq(escalations.assignedSpecialistId, filters.specialistId));
+      conditions.push(eq(escalations.assignedSpecialistId, filters.specialistId));
     }
 
-    return query.orderBy(desc(escalations.createdAt));
+    if (conditions.length > 0) {
+      return await db.select().from(escalations).where(and(...conditions)).orderBy(desc(escalations.createdAt));
+    }
+
+    return await db.select().from(escalations).orderBy(desc(escalations.createdAt));
   }
 
   async getEscalationWithContext(escalationId: string): Promise<any> {
@@ -2063,11 +2053,15 @@ export class DatabaseStorage implements IStorage {
 
     return {
       statusCounts: statusCounts.reduce((acc, item) => {
-        acc[item.status] = item.count;
+        if (item.status !== null) {
+          acc[item.status] = item.count;
+        }
         return acc;
       }, {} as Record<string, number>),
       priorityCounts: priorityCounts.reduce((acc, item) => {
-        acc[item.priority] = item.count;
+        if (item.priority !== null) {
+          acc[item.priority] = item.count;
+        }
         return acc;
       }, {} as Record<string, number>),
       recentEscalations,
@@ -2197,12 +2191,12 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Helper methods for webhook processing
-  async findTicketByFreshdeskId(freshdeskId: number): Promise<Ticket | undefined> {
+  async findTicketByFreshdeskId(freshdeskId: number): Promise<Ticket | null> {
     const [ticket] = await db
       .select()
       .from(tickets)
       .where(eq(tickets.fdId, freshdeskId));
-    return ticket || undefined;
+    return ticket || null;
   }
 
   async findWorkerByEmail(email: string): Promise<Worker | undefined> {

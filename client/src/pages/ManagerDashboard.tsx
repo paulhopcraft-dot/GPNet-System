@@ -15,10 +15,12 @@ import {
   Bot,
   FileText,
   Briefcase,
-  TrendingUp
+  TrendingUp,
+  UserPlus
 } from 'lucide-react';
 import EmailForwardingForm from '@/components/EmailForwardingForm';
 import EmailProcessingStatus from '@/components/EmailProcessingStatus';
+import InitiatePreEmploymentDialog from '@/components/InitiatePreEmploymentDialog';
 
 interface ManagerDashboardProps {
   organizationId: string;
@@ -32,6 +34,7 @@ export default function ManagerDashboard({
   managerName 
 }: ManagerDashboardProps) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [initiateDialogOpen, setInitiateDialogOpen] = useState(false);
 
   // Fetch organization summary
   const { data: orgSummary } = useQuery({
@@ -161,6 +164,15 @@ export default function ManagerDashboard({
               </CardHeader>
               <CardContent className="space-y-4">
                 <Button 
+                  className="w-full justify-start" 
+                  onClick={() => setInitiateDialogOpen(true)}
+                  data-testid="button-initiate-pre-employment"
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Initiate Pre-Employment Check
+                </Button>
+                <Button 
+                  variant="outline"
                   className="w-full justify-start" 
                   onClick={() => setActiveTab('forward-email')}
                   data-testid="button-forward-new-email"
@@ -332,6 +344,12 @@ export default function ManagerDashboard({
           </Card>
         </TabsContent>
       </Tabs>
+
+      <InitiatePreEmploymentDialog 
+        open={initiateDialogOpen}
+        onOpenChange={setInitiateDialogOpen}
+        organizationId={organizationId}
+      />
     </div>
   );
 }
