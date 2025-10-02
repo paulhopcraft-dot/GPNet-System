@@ -74,6 +74,35 @@ export class ReportService {
     return report.id;
   }
 
+  async saveGeneratedReport(
+    ticketId: string,
+    reportType: string,
+    pdfBuffer: Buffer,
+    metadata: any = {},
+    generatedBy: string = 'system'
+  ): Promise<string> {
+    const storageKey = `reports/${reportType}-${ticketId}-${Date.now()}.pdf`;
+    const fullPath = path.join(PRIVATE_OBJECT_DIR, storageKey);
+    
+    await fs.mkdir(path.dirname(fullPath), { recursive: true });
+    await fs.writeFile(fullPath, pdfBuffer);
+
+    const reportRecord: InsertReport = {
+      ticketId,
+      reportType,
+      status: 'generated',
+      storageKey,
+      dataVersion: '1.0',
+      metadata: {
+        generatedBy,
+        ...metadata
+      }
+    };
+
+    const report = await storage.createReport(reportRecord);
+    return report.id;
+  }
+
   private extractRecommendations(analysis: any): any[] {
     const recommendations = [];
     
