@@ -59,6 +59,7 @@ import { db } from "./db";
 import { createMedicalCertificateScheduler } from "./medicalCertificateScheduler";
 import { createConsultantAppointmentService } from "./consultantAppointmentService";
 import { createFollowUpScheduler } from "./followUpScheduler";
+import { createReportDeliveryScheduler } from "./reportDeliveryScheduler";
 import { emailService } from "./emailService";
 import { WorkflowSimulator } from "./workflowSimulator";
 import { EmailDraftingService } from "./emailDraftingService";
@@ -73,6 +74,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const medicalCertScheduler = createMedicalCertificateScheduler(storage);
   const consultantAppointmentService = createConsultantAppointmentService(storage);
   const followUpScheduler = createFollowUpScheduler(emailService);
+  const reportDeliveryScheduler = createReportDeliveryScheduler(storage);
   
   // Start background schedulers
   medicalCertScheduler.start();
@@ -81,6 +83,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Start follow-up notification scheduler
   followUpScheduler.start();
   console.log('Follow-up notification scheduler started');
+  
+  // Start report delivery scheduler (1-hour delayed email delivery)
+  reportDeliveryScheduler.start();
+  console.log('Report delivery scheduler started (checks every 15 minutes)');
   
   // Start consultant appointment checking (daily interval like medical certs)
   setInterval(async () => {
