@@ -4,9 +4,26 @@
 
 GPNet is a comprehensive pre-employment health check system designed to automate and streamline the process of medical assessments for job candidates. The system captures candidate health information through structured forms, performs automated risk analysis using RAG scoring (Red/Amber/Green), generates fit classification reports, and integrates with Freshdesk for case management. The primary goal is to help employers identify potential health risks before hiring to prevent costly WorkCover claims and ensure workplace safety.
 
-## Recent Changes (October 1, 2025)
+## Recent Changes (October 2, 2025)
 
-### Freshdesk Organization Integration - COMPLETED
+### Real-Time Freshdesk Webhook Sync - COMPLETED ⚡
+- **Feature**: Live webhook integration for instant ticket synchronization from Freshdesk to GPNet
+- **How It Works**:
+  - Freshdesk sends webhook to `/api/medical-documents/freshdesk-webhook` when tickets are created/updated
+  - System immediately imports/updates the ticket using `freshdeskImportService.importSingleTicket()`
+  - Auto-creates or updates organizations based on Freshdesk company data
+  - Processes attachments in background queue for medical document analysis
+- **Benefits**:
+  - **Instant sync** - No more 24-hour wait for nightly batch import
+  - **Cost efficient** - Webhooks are FREE, uses zero API calls for receiving data
+  - **Automatic alerts** - New submissions appear in GPNet dashboard immediately
+- **Technical Implementation**:
+  - Added `FreshdeskService.getCompany()` method to fetch single company details
+  - Added `FreshdeskImportService.importSingleTicket()` for real-time single-ticket imports
+  - Enhanced webhook endpoint to trigger import before attachment processing
+  - Maintains dual-sync: Real-time webhooks (primary) + Nightly sync at 2 AM (backup)
+
+### Freshdesk Organization Integration - COMPLETED (October 1, 2025)
 - **Schema Updates**: 
   - Added `freshdeskCompanyId` (BIGINT), `domains`, and `description` fields to organizations table
   - Added `fdCompanyId` (BIGINT) to tickets table for company linkage

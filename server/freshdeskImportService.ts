@@ -309,6 +309,102 @@ export class FreshdeskImportService {
   }
 
   /**
+   * Import a single ticket from Freshdesk webhook (real-time sync)
+   */
+  async importSingleTicket(freshdeskTicketId: number): Promise<{ success: boolean; ticketId?: string; error?: string }> {
+    try {
+      console.log(`🔄 Real-time sync: Importing Freshdesk ticket ${freshdeskTicketId}`);
+
+      if (!freshdeskService.isAvailable()) {
+        throw new Error('Freshdesk integration not configured');
+      }
+
+      // Fetch the specific ticket from Freshdesk
+      const ticket = await freshdeskService.getTicket(freshdeskTicketId);
+      if (!ticket) {
+        return { success: false, error: 'Ticket not found in Freshdesk' };
+      }
+
+      // Fetch company if ticket has one
+      let company = null;
+      let orgId = null;
+      
+      if (ticket.company_id) {
+        try {
+          company = await freshdeskService.getCompany(ticket.company_id);
+          
+          // Find or create organization
+          const existingOrg = await this.findOrganizationByFreshdeskId(ticket.company_id);
+          if (existingOrg) {
+            orgId = existingOrg.id;
+          } else if (company) {
+            // Create new organization
+            const slug = company.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            const newOrg = await this.storage.createOrganization({
+              name: company.name,
+              slug: slug + '-' + company.id,
+              freshdeskCompanyId: company.id,
+              domains: company.domains || [],
+              description: company.description || null
+            });
+            orgId = newOrg.id;
+            console.log(`Created organization: ${company.name}`);
+          }
+        } catch (error) {
+          console.warn(`Could not fetch/create company ${ticket.company_id}:`, error);
+        }
+      }
+
+      // Check if ticket already exists
+      const existingTicket = await this.findTicketByFreshdeskId(ticket.id);
+      
+      if (existingTicket) {
+        // Update existing ticket
+        await this.storage.updateTicket(existingTicket.id, {
+          organizationId: orgId,
+          fdCompanyId: ticket.company_id || null,
+          companyName: company?.name || existingTicket.companyName,
+          subject: ticket.subject,
+          status: this.mapFreshdeskStatus(ticket.status),
+          priority: this.mapFreshdeskPriority(ticket.priority),
+          lastUpdateAt: new Date(ticket.updated_at)
+        });
+        console.log(`✅ Updated ticket ${existingTicket.id} from Freshdesk ticket ${freshdeskTicketId}`);
+        return { success: true, ticketId: existingTicket.id };
+      } else {
+        // Create new ticket
+        const ticketData: any = {
+          fdId: ticket.id,
+          fdCompanyId: ticket.company_id || null,
+          subject: ticket.subject,
+          caseType: 'general',
+          status: this.mapFreshdeskStatus(ticket.status),
+          priority: this.mapFreshdeskPriority(ticket.priority),
+          companyName: company?.name || 'Unknown Company',
+          organizationId: orgId,
+          requesterId: ticket.requester_id?.toString(),
+          assigneeId: ticket.responder_id?.toString(),
+          ageDays: FreshdeskService.calculateTicketAge(ticket.created_at),
+          tagsJson: ticket.tags || [],
+          customJson: ticket.custom_fields || {},
+          createdAt: new Date(ticket.created_at),
+          lastUpdateAt: new Date(ticket.updated_at)
+        };
+
+        const newTicket = await this.storage.createTicket(ticketData);
+        console.log(`✅ Created new ticket ${newTicket.id} from Freshdesk ticket ${freshdeskTicketId}`);
+        return { success: true, ticketId: newTicket.id };
+      }
+    } catch (error) {
+      console.error(`❌ Failed to import Freshdesk ticket ${freshdeskTicketId}:`, error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      };
+    }
+  }
+
+  /**
    * Get Freshdesk connection status
    */
   static getConnectionStatus(): { connected: boolean; domain?: string; error?: string } {
