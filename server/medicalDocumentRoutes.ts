@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { freshdeskWebhookService, type FreshdeskWebhookEvent } from './freshdeskWebhookService.js';
+import { type FreshdeskWebhookEvent } from './freshdeskWebhookService.js';
 import { documentProcessingService } from './documentProcessingService.js';
 import { ocrService } from './ocrService.js';
 import { requireAdmin } from './adminRoutes.js';
@@ -170,13 +170,18 @@ router.post('/freshdesk-webhook', async (req, res) => {
     // Real-time sync: Import/update the ticket immediately
     const { FreshdeskImportService } = await import('./freshdeskImportService.js');
     const { storage } = await import('./storage.js');
+    const { initFreshdeskWebhookService } = await import('./freshdeskWebhookService.js');
+    
     const importService = new FreshdeskImportService(storage);
+    const webhookService = initFreshdeskWebhookService(storage);
     
     const importResult = await importService.importSingleTicket(event.ticket.id);
     console.log(`Real-time sync result:`, importResult);
 
-    // Process attachments (if any)
-    await freshdeskWebhookService.processWebhook(event);
+    // Process attachments (if any) - only if import succeeded
+    if (importResult.success && event.ticket.attachments && event.ticket.attachments.length > 0) {
+      await webhookService.processWebhook(event);
+    }
 
     res.json({ 
       success: true, 
