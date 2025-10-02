@@ -88,6 +88,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   reportDeliveryScheduler.start();
   console.log('Report delivery scheduler started (checks every 15 minutes)');
   
+  // Wire up scheduler instance for status endpoint
+  const { setSchedulerInstance } = await import('./reportRoutes');
+  setSchedulerInstance(reportDeliveryScheduler);
+  
   // Start consultant appointment checking (daily interval like medical certs)
   setInterval(async () => {
     try {

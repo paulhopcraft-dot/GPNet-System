@@ -1,11 +1,73 @@
 import { Router, type Request, type Response } from 'express';
 import { db } from './db';
-import { tickets, workers, formSubmissions, analyses, injuries, rtwPlans, stakeholders, externalEmails, emailAttachments } from '@shared/schema';
+import { tickets, workers, formSubmissions, analyses, injuries, rtwPlans, stakeholders, externalEmails, emailAttachments, reports } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { pdfService } from './pdfService';
 import { requireAuth } from './authRoutes';
 
 const router = Router();
+
+// Store scheduler instance reference (will be set from routes.ts)
+let schedulerInstance: any = null;
+export function setSchedulerInstance(scheduler: any) {
+  schedulerInstance = scheduler;
+}
+
+// Query reports by ticketId (requires authentication)
+router.get('/', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { ticketId } = req.query;
+    
+    if (!ticketId || typeof ticketId !== 'string') {
+      return res.status(400).json({ error: 'ticketId query parameter required' });
+    }
+    
+    const ticketReports = await db.query.reports.findMany({
+      where: eq(reports.ticketId, ticketId)
+    });
+    
+    res.json(ticketReports);
+  } catch (error) {
+    console.error('Error querying reports:', error);
+    res.status(500).json({ error: 'Failed to query reports' });
+  }
+});
+
+// Get scheduler status (requires authentication)
+router.get('/scheduler/status', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (!schedulerInstance) {
+      return res.status(503).json({ error: 'Scheduler not initialized' });
+    }
+    
+    const status = schedulerInstance.getStatus();
+    res.json(status);
+  } catch (error) {
+    console.error('Error getting scheduler status:', error);
+    res.status(500).json({ error: 'Failed to get scheduler status' });
+  }
+});
+
+// Manually trigger scheduler check (requires authentication)
+router.post('/scheduler/trigger', requireAuth, async (req: Request, res: Response) => {
+  try {
+    if (!schedulerInstance) {
+      return res.status(503).json({ error: 'Scheduler not initialized' });
+    }
+    
+    console.log('Manual scheduler trigger requested');
+    await schedulerInstance.triggerManualCheck();
+    
+    res.json({ 
+      success: true, 
+      message: 'Scheduler check triggered successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error triggering scheduler:', error);
+    res.status(500).json({ error: 'Failed to trigger scheduler' });
+  }
+});
 
 router.get('/:ticketId/types', requireAuth, async (req: Request, res: Response) => {
   try {
