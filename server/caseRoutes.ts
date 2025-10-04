@@ -213,6 +213,15 @@ router.get('/', requireAuth, async (req, res) => {
       // Get worker info
       const worker = ticket.workerId ? await storage.getWorker(ticket.workerId) : null;
       
+      // Get organization name if available
+      let companyName = ticket.companyName || 'Unknown Company';
+      if (!ticket.companyName && ticket.organizationId) {
+        const org = await storage.getOrganization(ticket.organizationId);
+        if (org) {
+          companyName = org.name;
+        }
+      }
+      
       // Get analysis for RAG score and fit classification
       const analysis = await storage.getAnalysisByTicket(ticket.id);
       
@@ -243,7 +252,7 @@ router.get('/', requireAuth, async (req, res) => {
         email: worker?.email || '',
         phone: worker?.phone || '',
         roleApplied: worker?.roleApplied || '',
-        company: ticket.companyName || 'Unknown Company',
+        company: companyName,
         ragScore: analysis?.ragScore || 'green',
         fitClassification: analysis?.fitClassification || 'pending',
         recommendations: analysis?.recommendations ? 
