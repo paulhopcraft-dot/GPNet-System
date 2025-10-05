@@ -538,7 +538,7 @@ export default function Dashboard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">
-                  Cases ({totalCases} total, {filteredCases.length} shown)
+                  Cases ({filteredCases.length} {searchQuery || filters.search || getActiveFilterCount() > 0 ? 'matching' : 'total'})
                 </h2>
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" data-testid="button-export">
