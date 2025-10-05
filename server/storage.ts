@@ -30,7 +30,7 @@ import {
   type InsertMedicalOpinionRequest, type InsertOrganizationSettings, type InsertReminderSchedule
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, sql, asc } from "drizzle-orm";
+import { eq, desc, and, sql, asc, isNotNull } from "drizzle-orm";
 
 // Storage interface for GPNet operations
 export interface IStorage {
@@ -407,7 +407,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllTickets(): Promise<Ticket[]> {
-    return await db.select().from(tickets).orderBy(desc(tickets.createdAt));
+    return await db
+      .select()
+      .from(tickets)
+      .where(isNotNull(tickets.workerId))
+      .orderBy(desc(tickets.createdAt));
   }
 
   async updateTicketStatus(id: string, status: string): Promise<Ticket> {
@@ -1663,7 +1667,10 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(tickets)
-      .where(eq(tickets.organizationId, organizationId))
+      .where(and(
+        eq(tickets.organizationId, organizationId),
+        isNotNull(tickets.workerId)
+      ))
       .orderBy(desc(tickets.createdAt));
   }
 
