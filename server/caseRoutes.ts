@@ -18,6 +18,43 @@ const UpdateRiskLevelSchema = z.object({
   ragScore: z.enum(['green', 'amber', 'red'])
 });
 
+// Helper function to extract worker name from ticket subject
+function extractWorkerNameFromSubject(subject: string | null): string | null {
+  if (!subject) return null;
+  
+  // Common patterns in Freshdesk ticket subjects:
+  // "Symmetry- Stuart Barclay"
+  // "Symmetry- Melad Hussaini"
+  // "Symmetry-Walter Zrnic & Alex Zmura"
+  // "Stuart Barclay"
+  // "FW: Stuart Barclay -Worcover form"
+  
+  // Remove common prefixes
+  let cleaned = subject
+    .replace(/^(FW:|RE:|Automatic reply:)/i, '')
+    .trim();
+  
+  // Pattern 1: "Company- Name" or "Company-Name"
+  const companyNamePattern = /^[^-]+-\s*(.+?)(?:\s*-.*)?$/;
+  const match1 = cleaned.match(companyNamePattern);
+  if (match1) {
+    const name = match1[1].trim();
+    // Check if it looks like a name (not a description)
+    if (!/^(Update|Request|Reimbursement|Workplace|Form|Certificate)/i.test(name)) {
+      return name;
+    }
+  }
+  
+  // Pattern 2: Just a name at the start (before any special chars or description words)
+  const namePattern = /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:\s*[-–,]|$)/;
+  const match2 = cleaned.match(namePattern);
+  if (match2) {
+    return match2[1].trim();
+  }
+  
+  return null;
+}
+
 // Helper functions for enhanced case detail analysis
 function determineWorkStatus(ticket: any, analysis: any, formData: any): 'at_work' | 'partial_duties' | 'off_work' | 'unknown' {
   // Check form data for work status indicators
