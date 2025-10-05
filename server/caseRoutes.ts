@@ -252,6 +252,7 @@ router.get('/', requireAuth, async (req, res) => {
       
       // Determine worker name with smart extraction from subject
       let workerName = 'Unknown Worker';
+      let isNameExtracted = false;
       if (worker) {
         const fullName = `${worker.firstName} ${worker.lastName}`.trim();
         // Check if it's a placeholder name (e.g., "Worker-44521 Worker")
@@ -259,15 +260,18 @@ router.get('/', requireAuth, async (req, res) => {
         
         if (!isPlaceholder && fullName !== 'Worker') {
           workerName = fullName;
+          isNameExtracted = false;
         } else {
           // Try to extract name from ticket subject
           const extractedName = extractWorkerNameFromSubject(ticket.subject);
           workerName = extractedName || ticket.subject || 'Unknown Worker';
+          isNameExtracted = true;
         }
       } else {
         // No worker assigned - try to extract from subject
         const extractedName = extractWorkerNameFromSubject(ticket.subject);
         workerName = extractedName || ticket.subject || 'Unknown Worker';
+        isNameExtracted = true;
       }
       
       // Get organization name if available
@@ -306,6 +310,7 @@ router.get('/', requireAuth, async (req, res) => {
         createdAt: ticket.createdAt?.toISOString() || new Date().toISOString(),
         updatedAt: ticket.updatedAt?.toISOString(),
         workerName,
+        workerNameIsExtracted: isNameExtracted,
         email: worker?.email || '',
         phone: worker?.phone || '',
         roleApplied: worker?.roleApplied || '',

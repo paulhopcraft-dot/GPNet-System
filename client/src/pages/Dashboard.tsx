@@ -45,6 +45,7 @@ interface DashboardCase {
   createdAt: string;
   updatedAt?: string;
   workerName: string;
+  workerNameIsExtracted?: boolean;
   email: string;
   phone: string;
   roleApplied: string;
@@ -564,6 +565,7 @@ export default function Dashboard() {
                       claimType={caseItem.claimType}
                       priority={caseItem.priority}
                       workerName={caseItem.workerName}
+                      workerNameIsExtracted={caseItem.workerNameIsExtracted}
                       roleApplied={caseItem.roleApplied}
                       company={caseItem.company}
                       status={caseItem.status as any}
