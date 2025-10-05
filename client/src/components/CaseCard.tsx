@@ -13,6 +13,7 @@ interface CaseCardProps {
   claimType?: string | null;
   priority?: string | null;
   workerName: string;
+  workerNameIsExtracted?: boolean;
   roleApplied: string;
   company?: string;
   status: "NEW" | "ANALYSING" | "AWAITING_REVIEW" | "REVISIONS_REQUIRED" | "READY_TO_SEND" | "COMPLETE";
@@ -95,6 +96,7 @@ export default function CaseCard({
   claimType,
   priority,
   workerName,
+  workerNameIsExtracted,
   roleApplied,
   company,
   status,
@@ -116,7 +118,7 @@ export default function CaseCard({
   const handleWorkerClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    if (workerId && onWorkerClick) {
+    if (workerId && onWorkerClick && !workerNameIsExtracted) {
       onWorkerClick(workerId);
     }
   };
@@ -157,8 +159,8 @@ export default function CaseCard({
               )}
             </div>
             <h3 
-              className={`font-semibold text-lg ${workerId && onWorkerClick ? 'text-primary hover:underline cursor-pointer' : ''}`}
-              onClick={workerId && onWorkerClick ? handleWorkerClick : undefined}
+              className={`font-semibold text-lg ${workerId && onWorkerClick && !workerNameIsExtracted ? 'text-primary hover:underline cursor-pointer' : ''}`}
+              onClick={workerId && onWorkerClick && !workerNameIsExtracted ? handleWorkerClick : undefined}
               data-testid={`text-worker-name-${ticketId}`}
             >
               {workerName}
