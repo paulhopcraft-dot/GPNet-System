@@ -84,20 +84,21 @@ export default function Header() {
           
           {/* Impersonation Indicator */}
           {user?.isImpersonating && (
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs bg-orange-100 text-orange-800 border-orange-300">
-                <UserCheck className="h-3 w-3 mr-1" />
-                Impersonating
+            <div className="flex items-center gap-3 px-4 py-2 bg-orange-50 dark:bg-orange-950 border border-orange-300 dark:border-orange-700 rounded-lg">
+              <Badge variant="outline" className="text-sm bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 border-orange-300 dark:border-orange-600">
+                <UserCheck className="h-4 w-4 mr-1" />
+                Viewing as Default Organization
               </Badge>
               <Button 
-                size="sm" 
-                variant="outline" 
+                size="default" 
+                variant="destructive" 
                 onClick={handleStopImpersonation}
                 disabled={stopImpersonationMutation.isPending}
                 data-testid="button-stop-impersonation"
+                className="font-semibold"
               >
-                <LogOut className="h-3 w-3 mr-1" />
-                {stopImpersonationMutation.isPending ? "Stopping..." : "Stop"}
+                <LogOut className="h-4 w-4 mr-2" />
+                {stopImpersonationMutation.isPending ? "Stopping..." : "Exit to Admin View"}
               </Button>
             </div>
           )}
