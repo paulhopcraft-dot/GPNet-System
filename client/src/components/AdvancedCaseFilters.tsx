@@ -46,6 +46,7 @@ const caseTypeOptions = [
   { value: "all", label: "All Case Types" },
   { value: "pre_employment", label: "Pre-Employment" },
   { value: "injury", label: "Workplace Injury" },
+  { value: "general", label: "General" },
 ];
 
 const claimTypeOptions = [
