@@ -47,10 +47,10 @@ export class FreshdeskImportService {
     }
 
     try {
-      // Fetch all data from Freshdesk
+      // Fetch all data from Freshdesk (including resolved tickets to ensure complete sync)
       console.log('Fetching tickets from Freshdesk...');
       const [tickets, companies] = await Promise.all([
-        freshdeskService.fetchAllTickets(),
+        freshdeskService.fetchAllTickets(undefined, true), // Include resolved tickets
         freshdeskService.fetchAllCompanies()
       ]);
 
