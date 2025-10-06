@@ -388,13 +388,15 @@ export class FreshdeskService {
     const allTickets: FreshdeskTicketResponse[] = [];
     const ticketIds = new Set<number>(); // Deduplicate tickets
     
-    // Fetch tickets in 30-day windows going back 120 days (4 months)
+    // Fetch tickets in 30-day windows going back 180 days (6 months)
     const now = new Date();
     const windows = [
       { days: 0, label: 'last 30 days' },
       { days: 30, label: '30-60 days ago' },
       { days: 60, label: '60-90 days ago' },
       { days: 90, label: '90-120 days ago' },
+      { days: 120, label: '120-150 days ago' },
+      { days: 150, label: '150-180 days ago' },
     ];
     
     console.log(`Fetching tickets in historical windows to capture older unresolved tickets...`);
@@ -440,17 +442,19 @@ export class FreshdeskService {
         }
       }
       
-      // Deduplicate and add to results
+      // Filter to only unresolved tickets (status 2,3,6,7) and deduplicate
+      // Status codes: 2=Open, 3=Pending, 6=Waiting on Customer, 7=Waiting on Third Party
+      const unresolvedStatuses = [2, 3, 6, 7];
       let newTickets = 0;
       for (const ticket of tickets) {
-        if (!ticketIds.has(ticket.id)) {
+        if (!ticketIds.has(ticket.id) && unresolvedStatuses.includes(ticket.status)) {
           ticketIds.add(ticket.id);
           allTickets.push(ticket);
           newTickets++;
         }
       }
       
-      console.log(`Fetched ${tickets.length} tickets from ${window.label}, ${newTickets} new (total unique: ${allTickets.length})`);
+      console.log(`Fetched ${tickets.length} tickets from ${window.label}, ${newTickets} new unresolved (total unique: ${allTickets.length})`);
     }
     
     console.log(`\nSuccessfully fetched ${allTickets.length} unique tickets from Freshdesk`);

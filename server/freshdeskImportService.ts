@@ -279,6 +279,8 @@ export class FreshdeskImportService {
       case 3: return 'IN_PROGRESS'; // Pending
       case 4: return 'AWAITING_REVIEW'; // Resolved
       case 5: return 'COMPLETE'; // Closed
+      case 6: return 'NEW'; // Waiting on Customer (unresolved)
+      case 7: return 'NEW'; // Waiting on Third Party (unresolved)
       default: return 'NEW';
     }
   }
