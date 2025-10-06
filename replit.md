@@ -4,6 +4,32 @@
 
 GPNet is a comprehensive occupational health case management system designed to automate and streamline various workplace health assessments and injury management processes. The system handles multiple case types including pre-employment checks, injury assessments, mental health evaluations, return-to-work planning, and exit health checks. It captures health information through structured forms, performs automated risk analysis using RAG scoring (Red/Amber/Green), generates assessment reports, and integrates with Freshdesk for comprehensive case management. The primary goal is to help employers manage workplace health risks, support injured workers, and ensure regulatory compliance.
 
+## Recent Changes (October 6, 2025)
+
+### Unresolved Tickets Only Filtering - COMPLETED ⚡
+- **Feature**: Freshdesk import now filters to show only unresolved (active) tickets matching the Freshdesk UI's "unresolved" view
+- **How It Works**:
+  - Fetches tickets in 30-day historical windows going back 180 days (6 months)
+  - Filters to only include unresolved ticket statuses: 2 (Open), 3 (Pending), 6 (Waiting on Customer), 7 (Waiting on Third Party)
+  - Excludes resolved (4) and closed (5) tickets from import
+  - Deduplicates tickets across multiple time windows
+- **Benefits**:
+  - **Clean dashboard** - Only shows active cases requiring attention
+  - **Accurate counts** - Matches Freshdesk UI's unresolved ticket view
+  - **Historical completeness** - Captures older unresolved tickets beyond 30-day API default
+- **Technical Implementation**:
+  - **Fetch Strategy**: 6 overlapping 30-day windows (0-30, 30-60, 60-90, 90-120, 120-150, 150-180 days ago)
+  - **Status Filtering**: `unresolvedStatuses = [2, 3, 6, 7]` applied during fetch deduplication
+  - **Status Mapping**: Added explicit mappings for status 6 (Waiting on Customer) → 'NEW' and status 7 (Waiting on Third Party) → 'NEW'
+  - **API Limitation**: Freshdesk List API only returns tickets updated in last 30 days without `updated_since` parameter
+- **Current Results**:
+  - Importing 43 total unresolved tickets (down from 227 total when including resolved)
+  - 19 unresolved Symmetry tickets (user expects 23 - 4-ticket gap likely due to tickets older than 180 days)
+- **Operational Notes**:
+  - Removed spam and deleted ticket imports to keep dashboard clean
+  - Nightly sync at 2 AM continues to refresh unresolved tickets
+  - Very old unresolved tickets (>180 days) may not be captured - extend window if needed
+
 ## Recent Changes (October 2, 2025)
 
 ### Automated Pre-Employment Report Generation with 1-Hour Delayed Email Delivery - COMPLETED ⚡
