@@ -414,7 +414,7 @@ export default function Dashboard() {
               GPNet Case Dashboard
             </h1>
             <p className="text-muted-foreground mt-1">
-              Manage and review pre-employment health assessments and workplace injury cases
+              Manage your workforce Health and Wellbeing
             </p>
           </div>
           <div className="flex items-center gap-3">
