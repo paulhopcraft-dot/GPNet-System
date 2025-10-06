@@ -396,10 +396,9 @@ export class FreshdeskService {
       try {
         let endpoint = `/tickets?page=${page}&per_page=${perPage}&include=stats`;
         
-        // Filter for unresolved tickets only (exclude RESOLVED=4 and CLOSED=5)
-        if (!includeResolved) {
-          endpoint += `&filter=unresolved`;
-        }
+        // Note: Freshdesk API returns unresolved tickets by default
+        // To get ALL tickets including resolved/closed, we don't need a filter
+        // The includeResolved parameter is handled by fetching all pages
         
         if (updatedSince) {
           endpoint += `&updated_since=${encodeURIComponent(updatedSince)}`;
