@@ -190,25 +190,6 @@ export default function CaseCard({
 
       <CardContent className="pt-0">
         <div className="space-y-3">
-          <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <User className="h-4 w-4" />
-              <span data-testid={`text-role-${ticketId}`}>{roleApplied}</span>
-            </div>
-            {company && (
-              <div className="flex items-center gap-1">
-                <Building className="h-4 w-4" />
-                <span 
-                  className={`${organizationId && onCompanyClick ? 'text-primary hover:underline cursor-pointer' : ''}`}
-                  onClick={organizationId && onCompanyClick ? handleCompanyClick : undefined}
-                  data-testid={`text-company-${ticketId}`}
-                >
-                  {company}
-                </span>
-              </div>
-            )}
-          </div>
-          
           {/* Show claim type for injury cases */}
           {caseType === "injury" && claimType && (
             <div className="flex items-center gap-2">
