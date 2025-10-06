@@ -151,10 +151,10 @@ export default function CaseCard({
               </Badge>
               {priority && priority !== "medium" && (
                 <Badge 
-                  {...priorityConfig[priority as keyof typeof priorityConfig]} 
+                  {...(priorityConfig[priority as keyof typeof priorityConfig] || { variant: "secondary" as const })} 
                   data-testid={`badge-priority-${priority}`}
                 >
-                  {priorityConfig[priority as keyof typeof priorityConfig].label}
+                  {priorityConfig[priority as keyof typeof priorityConfig]?.label || priority}
                 </Badge>
               )}
             </div>
