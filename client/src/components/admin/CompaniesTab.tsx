@@ -152,6 +152,12 @@ export default function CompaniesTab() {
                 <CardTitle className="flex items-center gap-2">
                   <Building className="h-5 w-5" />
                   {orgOverview?.organization.name}
+                  {(orgOverview?.stats?.redFlags ?? 0) > 0 && (
+                    <Badge variant="destructive" className="ml-2">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      {orgOverview?.stats?.redFlags} Red Flag{(orgOverview?.stats?.redFlags ?? 0) > 1 ? 's' : ''}
+                    </Badge>
+                  )}
                 </CardTitle>
                 <CardDescription>
                   Viewing all cases for this company
