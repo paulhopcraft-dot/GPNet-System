@@ -443,6 +443,82 @@ export class FreshdeskService {
   }
 
   /**
+   * Fetch spam tickets from Freshdesk
+   */
+  async fetchSpamTickets(): Promise<FreshdeskTicketResponse[]> {
+    if (!this.isAvailable()) {
+      throw new Error('Freshdesk integration not available');
+    }
+
+    const tickets: FreshdeskTicketResponse[] = [];
+    let page = 1;
+    const perPage = 100;
+    
+    console.log('Fetching spam tickets from Freshdesk...');
+    
+    while (true) {
+      try {
+        const endpoint = `/tickets?filter=spam&page=${page}&per_page=${perPage}&include=stats`;
+        const pageTickets = await this.makeRequest<FreshdeskTicketResponse[]>(endpoint);
+        
+        if (pageTickets.length === 0) break;
+        
+        tickets.push(...pageTickets);
+        console.log(`Fetched ${pageTickets.length} spam tickets from page ${page}. Total: ${tickets.length}`);
+        
+        if (pageTickets.length < perPage) break;
+        
+        page++;
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (error) {
+        console.error(`Error fetching spam tickets page ${page}:`, error);
+        break; // Don't throw, just stop fetching spam
+      }
+    }
+    
+    console.log(`Successfully fetched ${tickets.length} spam tickets`);
+    return tickets;
+  }
+
+  /**
+   * Fetch deleted tickets from Freshdesk
+   */
+  async fetchDeletedTickets(): Promise<FreshdeskTicketResponse[]> {
+    if (!this.isAvailable()) {
+      throw new Error('Freshdesk integration not available');
+    }
+
+    const tickets: FreshdeskTicketResponse[] = [];
+    let page = 1;
+    const perPage = 100;
+    
+    console.log('Fetching deleted tickets from Freshdesk...');
+    
+    while (true) {
+      try {
+        const endpoint = `/tickets?filter=deleted&page=${page}&per_page=${perPage}&include=stats`;
+        const pageTickets = await this.makeRequest<FreshdeskTicketResponse[]>(endpoint);
+        
+        if (pageTickets.length === 0) break;
+        
+        tickets.push(...pageTickets);
+        console.log(`Fetched ${pageTickets.length} deleted tickets from page ${page}. Total: ${tickets.length}`);
+        
+        if (pageTickets.length < perPage) break;
+        
+        page++;
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (error) {
+        console.error(`Error fetching deleted tickets page ${page}:`, error);
+        break; // Don't throw, just stop fetching deleted
+      }
+    }
+    
+    console.log(`Successfully fetched ${tickets.length} deleted tickets`);
+    return tickets;
+  }
+
+  /**
    * Fetch all companies from Freshdesk
    */
   async fetchAllCompanies(): Promise<{ id: number; name: string; domains?: string[] }[]> {
