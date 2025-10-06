@@ -377,8 +377,9 @@ export class FreshdeskService {
 
   /**
    * Fetch all tickets from Freshdesk with pagination and rate limiting
+   * By default, only fetches unresolved tickets (status 2, 3, 6, 7)
    */
-  async fetchAllTickets(updatedSince?: string): Promise<FreshdeskTicketResponse[]> {
+  async fetchAllTickets(updatedSince?: string, includeResolved: boolean = false): Promise<FreshdeskTicketResponse[]> {
     if (!this.isAvailable()) {
       throw new Error('Freshdesk integration not available. Please configure FRESHDESK_API_KEY and FRESHDESK_DOMAIN.');
     }
@@ -387,13 +388,19 @@ export class FreshdeskService {
     let page = 1;
     const perPage = 100; // Maximum allowed by Freshdesk API
     
-    console.log('Starting to fetch all tickets from Freshdesk...');
+    console.log(`Starting to fetch ${includeResolved ? 'all' : 'unresolved'} tickets from Freshdesk...`);
     
     while (true) {
       console.log(`Fetching tickets page ${page}...`);
       
       try {
         let endpoint = `/tickets?page=${page}&per_page=${perPage}&include=stats`;
+        
+        // Filter for unresolved tickets only (exclude RESOLVED=4 and CLOSED=5)
+        if (!includeResolved) {
+          endpoint += `&filter=unresolved`;
+        }
+        
         if (updatedSince) {
           endpoint += `&updated_since=${encodeURIComponent(updatedSince)}`;
         }
