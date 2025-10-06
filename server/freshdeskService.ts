@@ -377,69 +377,84 @@ export class FreshdeskService {
 
   /**
    * Fetch all tickets from Freshdesk with pagination and rate limiting
-   * By default, only fetches unresolved tickets (status 2, 3, 6, 7)
+   * Fetches tickets in 30-day windows going back 120 days to capture older unresolved tickets
+   * (Freshdesk List API only returns tickets updated in last 30 days without updated_since)
    */
   async fetchAllTickets(updatedSince?: string, includeResolved: boolean = false): Promise<FreshdeskTicketResponse[]> {
     if (!this.isAvailable()) {
       throw new Error('Freshdesk integration not available. Please configure FRESHDESK_API_KEY and FRESHDESK_DOMAIN.');
     }
 
-    const tickets: FreshdeskTicketResponse[] = [];
-    let page = 1;
-    const perPage = 100; // Maximum allowed by Freshdesk API
+    const allTickets: FreshdeskTicketResponse[] = [];
+    const ticketIds = new Set<number>(); // Deduplicate tickets
     
-    console.log(`Starting to fetch ${includeResolved ? 'all' : 'unresolved'} tickets from Freshdesk...`);
+    // Fetch tickets in 30-day windows going back 120 days (4 months)
+    const now = new Date();
+    const windows = [
+      { days: 0, label: 'last 30 days' },
+      { days: 30, label: '30-60 days ago' },
+      { days: 60, label: '60-90 days ago' },
+      { days: 90, label: '90-120 days ago' },
+    ];
     
-    while (true) {
-      console.log(`Fetching tickets page ${page}...`);
+    console.log(`Fetching tickets in historical windows to capture older unresolved tickets...`);
+    
+    for (const window of windows) {
+      const windowStart = new Date(now);
+      windowStart.setDate(windowStart.getDate() - window.days - 30);
+      const updatedSinceDate = windowStart.toISOString();
       
-      try {
-        let endpoint = `/tickets?page=${page}&per_page=${perPage}&include=stats`;
-        
-        // Note: Freshdesk API returns unresolved tickets by default
-        // To get ALL tickets including resolved/closed, we don't need a filter
-        // The includeResolved parameter is handled by fetching all pages
-        
-        if (updatedSince) {
-          endpoint += `&updated_since=${encodeURIComponent(updatedSince)}`;
+      console.log(`\nFetching tickets from ${window.label} (updated_since: ${updatedSinceDate})...`);
+      
+      const tickets: FreshdeskTicketResponse[] = [];
+      let page = 1;
+      const perPage = 100;
+      
+      while (true) {
+        try {
+          let endpoint = `/tickets?page=${page}&per_page=${perPage}&include=stats&updated_since=${encodeURIComponent(updatedSinceDate)}`;
+          
+          const pageTickets = await this.makeRequest<FreshdeskTicketResponse[]>(endpoint);
+          
+          if (pageTickets.length === 0) {
+            break;
+          }
+          
+          tickets.push(...pageTickets);
+          
+          if (pageTickets.length < perPage) {
+            break;
+          }
+          
+          page++;
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+        } catch (error) {
+          console.error(`Error fetching page ${page}:`, error);
+          if (error instanceof Error && error.message.includes('429')) {
+            console.log('Rate limit hit, waiting 60 seconds...');
+            await new Promise(resolve => setTimeout(resolve, 60000));
+            continue;
+          }
+          throw error;
         }
-        
-        const pageTickets = await this.makeRequest<FreshdeskTicketResponse[]>(endpoint);
-        
-        if (pageTickets.length === 0) {
-          console.log(`No more tickets found on page ${page}`);
-          break; // No more tickets
-        }
-        
-        tickets.push(...pageTickets);
-        console.log(`Fetched ${pageTickets.length} tickets from page ${page}. Total so far: ${tickets.length}`);
-        
-        if (pageTickets.length < perPage) {
-          console.log('Last page reached (fewer tickets than per_page limit)');
-          break; // Last page
-        }
-        
-        page++;
-        
-        // Rate limiting: small delay between requests to respect API limits
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-      } catch (error) {
-        console.error(`Error fetching page ${page}:`, error);
-        
-        // If we hit rate limits, wait longer and retry
-        if (error instanceof Error && error.message.includes('429')) {
-          console.log('Rate limit hit, waiting 60 seconds before retry...');
-          await new Promise(resolve => setTimeout(resolve, 60000));
-          continue; // Retry the same page
-        }
-        
-        throw error; // Re-throw other errors
       }
+      
+      // Deduplicate and add to results
+      let newTickets = 0;
+      for (const ticket of tickets) {
+        if (!ticketIds.has(ticket.id)) {
+          ticketIds.add(ticket.id);
+          allTickets.push(ticket);
+          newTickets++;
+        }
+      }
+      
+      console.log(`Fetched ${tickets.length} tickets from ${window.label}, ${newTickets} new (total unique: ${allTickets.length})`);
     }
     
-    console.log(`Successfully fetched ${tickets.length} total tickets from Freshdesk`);
-    return tickets;
+    console.log(`\nSuccessfully fetched ${allTickets.length} unique tickets from Freshdesk`);
+    return allTickets;
   }
 
   /**
