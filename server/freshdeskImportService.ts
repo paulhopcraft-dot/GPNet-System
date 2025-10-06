@@ -47,10 +47,10 @@ export class FreshdeskImportService {
     }
 
     try {
-      // Fetch active tickets only (no spam/deleted tickets)
-      console.log('Fetching active tickets from Freshdesk...');
+      // Fetch unresolved tickets only (statuses 2, 3, 6, 7)
+      console.log('Fetching unresolved tickets from Freshdesk...');
       const [tickets, companies] = await Promise.all([
-        freshdeskService.fetchAllTickets(undefined, true), // Include resolved tickets
+        freshdeskService.fetchAllTickets(undefined, false), // Only unresolved tickets
         freshdeskService.fetchAllCompanies()
       ]);
       
