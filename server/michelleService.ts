@@ -317,6 +317,72 @@ async function getRealOpenAIResponse(
       systemData = "System data temporarily unavailable.\n";
     }
 
+    // STEP 1.5: Worker lookup by name (if message contains a name query)
+    let workerLookupContext = "";
+    try {
+      // Extract potential worker names from the message
+      const namePatterns = message.match(/\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g);
+      
+      if (namePatterns && namePatterns.length > 0) {
+        console.log(`🔍 Potential worker names detected: ${namePatterns.join(', ')}`);
+        
+        const { workers } = await import('@shared/schema.js');
+        const { ilike, or, and } = await import('drizzle-orm');
+        
+        for (const namePattern of namePatterns) {
+          const [firstName, lastName] = namePattern.split(' ');
+          
+          // Search for worker in database
+          const worker = await db.select().from(workers)
+            .where(
+              or(
+                and(ilike(workers.firstName, `%${firstName}%`), ilike(workers.lastName, `%${lastName}%`)),
+                and(ilike(workers.firstName, `%${lastName}%`), ilike(workers.lastName, `%${firstName}%`))
+              )
+            )
+            .limit(1);
+          
+          if (worker.length > 0) {
+            const workerData = worker[0];
+            console.log(`✅ Worker found: ${workerData.firstName} ${workerData.lastName}`);
+            
+            // Get their cases
+            const workerCases = await db.select().from(tickets)
+              .where(eq(tickets.workerId, workerData.id));
+            
+            workerLookupContext += `**WORKER LOOKUP RESULT for ${workerData.firstName} ${workerData.lastName}:**
+- Worker ID: ${workerData.id}
+- Email: ${workerData.email}
+- Phone: ${workerData.phone}
+- Role Applied: ${workerData.roleApplied}
+- Date of Birth: ${workerData.dateOfBirth}
+- Number of Cases: ${workerCases.length}
+`;
+            
+            if (workerCases.length > 0) {
+              workerLookupContext += "\n**Cases for this worker:**\n";
+              for (const ticket of workerCases) {
+                workerLookupContext += `- Case ID: ${ticket.id}
+  Type: ${ticket.caseType}
+  Status: ${ticket.status}
+  Next Step: ${ticket.nextStep || 'Not set'}
+  Last Step: ${ticket.lastStep || 'Not started'}
+  Created: ${ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : 'Unknown'}
+`;
+              }
+            } else {
+              workerLookupContext += "\n**No cases found for this worker.** They exist in the system but haven't had any health assessments or workplace injury cases yet.\n";
+            }
+            workerLookupContext += "\n";
+            
+            break; // Only process first match
+          }
+        }
+      }
+    } catch (lookupError) {
+      console.warn('⚠️ Worker lookup failed:', lookupError);
+    }
+
     // STEP 2: Get RAG context from conversation history (PARALLELIZED for speed)
     let ragContext = "";
     
@@ -477,6 +543,8 @@ ${empathyContext}
 
 REAL-TIME SYSTEM DATA:
 ${systemData}
+
+${workerLookupContext ? `WORKER LOOKUP RESULTS:\n${workerLookupContext}` : ''}
 
 RELEVANT CASE CONTEXT:
 ${ragContext || 'No specific case context available.'}
