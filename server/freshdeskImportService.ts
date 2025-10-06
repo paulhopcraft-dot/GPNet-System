@@ -47,18 +47,14 @@ export class FreshdeskImportService {
     }
 
     try {
-      // Fetch all data from Freshdesk (active, spam, deleted, resolved)
-      console.log('Fetching ALL tickets from Freshdesk (active, spam, deleted)...');
-      const [activeTickets, spamTickets, deletedTickets, companies] = await Promise.all([
+      // Fetch active tickets only (no spam/deleted tickets)
+      console.log('Fetching active tickets from Freshdesk...');
+      const [tickets, companies] = await Promise.all([
         freshdeskService.fetchAllTickets(undefined, true), // Include resolved tickets
-        freshdeskService.fetchSpamTickets(),
-        freshdeskService.fetchDeletedTickets(),
         freshdeskService.fetchAllCompanies()
       ]);
       
-      // Combine all tickets
-      const tickets = [...activeTickets, ...spamTickets, ...deletedTickets];
-      console.log(`Total tickets: ${tickets.length} (${activeTickets.length} active, ${spamTickets.length} spam, ${deletedTickets.length} deleted)`);
+      console.log(`Total active tickets: ${tickets.length}`);
 
       console.log(`Fetched ${tickets.length} tickets and ${companies.length} companies from Freshdesk`);
 
