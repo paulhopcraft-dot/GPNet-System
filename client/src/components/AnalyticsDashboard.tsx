@@ -35,17 +35,27 @@ export default function AnalyticsDashboard() {
   const [trendPeriod, setTrendPeriod] = useState("30");
 
   // Fetch trend analytics
-  const { data: trendData, isLoading: trendsLoading } = useQuery<TrendAnalytics>({
+  const { data: trendData, isLoading: trendsLoading, error: trendsError } = useQuery<TrendAnalytics>({
     queryKey: ["/api/analytics/trends", trendPeriod],
     queryFn: async () => {
       const response = await fetch(`/api/analytics/trends?days=${trendPeriod}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch trend analytics');
+      }
       return response.json();
     },
   });
 
   // Fetch performance metrics
-  const { data: performanceData, isLoading: performanceLoading } = useQuery<PerformanceMetrics>({
+  const { data: performanceData, isLoading: performanceLoading, error: performanceError } = useQuery<PerformanceMetrics>({
     queryKey: ["/api/analytics/performance"],
+    queryFn: async () => {
+      const response = await fetch('/api/analytics/performance');
+      if (!response.ok) {
+        throw new Error('Failed to fetch performance metrics');
+      }
+      return response.json();
+    },
   });
 
   if (trendsLoading || performanceLoading) {
@@ -54,6 +64,19 @@ export default function AnalyticsDashboard() {
         <CardContent className="p-6">
           <div className="flex items-center justify-center">
             <div className="animate-pulse">Loading analytics...</div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (trendsError || performanceError) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+            <AlertTriangle className="h-8 w-8" />
+            <p>Failed to load analytics data</p>
           </div>
         </CardContent>
       </Card>

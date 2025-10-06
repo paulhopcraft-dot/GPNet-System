@@ -48,6 +48,7 @@ import { freshdeskBackfillService } from './freshdeskBackfillService.js';
 import { mlRoutes } from "./mlRoutes.js";
 import { caseDrawerRoutes } from "./caseDrawerRoutes.js";
 import { medicalDocumentRoutes } from "./medicalDocumentRoutes.js";
+import { analyticsRoutes } from "./analyticsRoutes.js";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -1473,6 +1474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/auto-allocation', autoAllocationRoutes);
   app.use('/api/cases', caseRoutes);
   app.use('/api/reports', reportRoutes);
+  app.use('/api/analytics', analyticsRoutes);
   
   // Mount critical missing routes for Michele and Admin
   app.use('/api/michelle', michelleRoutes);
