@@ -1,8 +1,8 @@
-# GPNet Pre-Employment Check System
+# GPNet Case Management System
 
 ## Overview
 
-GPNet is a comprehensive pre-employment health check system designed to automate and streamline the process of medical assessments for job candidates. The system captures candidate health information through structured forms, performs automated risk analysis using RAG scoring (Red/Amber/Green), generates fit classification reports, and integrates with Freshdesk for case management. The primary goal is to help employers identify potential health risks before hiring to prevent costly WorkCover claims and ensure workplace safety.
+GPNet is a comprehensive occupational health case management system designed to automate and streamline various workplace health assessments and injury management processes. The system handles multiple case types including pre-employment checks, injury assessments, mental health evaluations, return-to-work planning, and exit health checks. It captures health information through structured forms, performs automated risk analysis using RAG scoring (Red/Amber/Green), generates assessment reports, and integrates with Freshdesk for comprehensive case management. The primary goal is to help employers manage workplace health risks, support injured workers, and ensure regulatory compliance.
 
 ## Recent Changes (October 2, 2025)
 
@@ -144,10 +144,11 @@ Preferred communication style: Simple, everyday language.
 - **Recommendation Engine**: Contextual recommendations based on identified risks
 
 ### Case Management Integration
-- **Ticket System**: Each pre-employment check creates a tracked case with status progression
+- **Ticket System**: Each health assessment (pre-employment, injury, mental health, RTW, etc.) creates a tracked case with status progression
+- **Case Types**: Supports multiple assessment types including pre-employment checks, injury reports, mental health assessments, return-to-work planning, exit checks, and general health screenings
 - **Status Flow**: NEW → ANALYSING → AWAITING_REVIEW → READY_TO_SEND → COMPLETE
-- **Thread Management**: Email correspondence linked to tickets for audit trail
-- **Dashboard Analytics**: Real-time statistics and case monitoring
+- **Thread Management**: Email correspondence linked to tickets for complete audit trail
+- **Dashboard Analytics**: Real-time statistics and case monitoring across all case types
 
 ## External Dependencies
 
