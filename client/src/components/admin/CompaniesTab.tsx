@@ -77,10 +77,13 @@ export default function CompaniesTab() {
   const { 
     data: orgOverview, 
     isLoading: isLoadingOverview,
-    error: overviewError 
+    error: overviewError,
+    refetch: refetchOverview
   } = useQuery<OrganizationOverview>({ 
     queryKey: [`/api/organizations/${selectedOrganizationId}/overview`],
-    enabled: !!selectedOrganizationId
+    enabled: !!selectedOrganizationId,
+    staleTime: 0, // Always fetch fresh data
+    gcTime: 0 // Don't cache old data
   });
 
   const organizations = organizationsData?.organizations || [];
