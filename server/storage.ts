@@ -1667,10 +1667,7 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(tickets)
-      .where(and(
-        eq(tickets.organizationId, organizationId),
-        isNotNull(tickets.workerId)
-      ))
+      .where(eq(tickets.organizationId, organizationId))
       .orderBy(desc(tickets.createdAt));
   }
 
