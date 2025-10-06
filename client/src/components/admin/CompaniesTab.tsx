@@ -132,15 +132,6 @@ export default function CompaniesTab() {
     }
 
     const allCases = [...(orgOverview?.activeCases || []), ...(orgOverview?.completedCases || [])];
-    
-    // Debug logging
-    console.log('=== COMPANIES TAB DEBUG ===');
-    console.log('orgOverview:', orgOverview);
-    console.log('activeCases count:', orgOverview?.activeCases?.length);
-    console.log('completedCases count:', orgOverview?.completedCases?.length);
-    console.log('allCases count:', allCases.length);
-    console.log('stats:', orgOverview?.stats);
-    console.log('=== END DEBUG ===');
 
     return (
       <div className="space-y-6">
