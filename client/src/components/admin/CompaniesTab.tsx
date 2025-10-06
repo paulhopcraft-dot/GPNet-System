@@ -132,6 +132,14 @@ export default function CompaniesTab() {
     }
 
     const allCases = [...(orgOverview?.activeCases || []), ...(orgOverview?.completedCases || [])];
+    
+    // Sort cases by risk level: red (high) -> amber (medium) -> green (low)
+    const ragPriority: Record<string, number> = { red: 1, amber: 2, green: 3 };
+    const sortedCases = [...allCases].sort((a, b) => {
+      const priorityA = ragPriority[a.ragScore || ''] || 999;
+      const priorityB = ragPriority[b.ragScore || ''] || 999;
+      return priorityA - priorityB;
+    });
 
     return (
       <div className="space-y-6">
@@ -182,7 +190,7 @@ export default function CompaniesTab() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {allCases.map((caseItem) => (
+                {sortedCases.map((caseItem) => (
                   <CaseCard
                     key={caseItem.ticketId}
                     ticketId={caseItem.ticketId}
