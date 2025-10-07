@@ -139,23 +139,37 @@ export default function CaseCard({
         credentials: 'include'
       });
       if (!response.ok) {
-        throw new Error('Failed to analyze next step');
+        const errorData = await response.json().catch(() => ({ message: 'Failed to analyze' }));
+        throw new Error(errorData.message || 'Failed to analyze next step');
       }
       return response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/cases'] });
+      
+      const analysis = data.analysis;
+      const nextStepText = analysis?.nextStep || "Successfully analyzed case";
+      const priority = analysis?.priority ? `Priority: ${analysis.priority}` : '';
+      const urgency = analysis?.urgency ? `Urgency: ${analysis.urgency}` : '';
+      
+      let description = nextStepText;
+      if (priority || urgency) {
+        description = `${nextStepText}\n${[priority, urgency].filter(Boolean).join(' • ')}`;
+      }
+      
       toast({
-        title: "Next step updated",
-        description: data.analysis?.nextStep || "Successfully analyzed case",
+        title: "✨ Next step updated",
+        description,
+        duration: 5000,
       });
       setIsAnalyzing(false);
     },
     onError: (error: Error) => {
       toast({
-        title: "Analysis failed",
-        description: error.message,
+        title: "❌ Analysis failed",
+        description: error.message || "Unable to analyze case. Please try again.",
         variant: "destructive",
+        duration: 5000,
       });
       setIsAnalyzing(false);
     }
