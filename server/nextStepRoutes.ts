@@ -18,9 +18,9 @@ router.post('/analyze/:ticketId', requireAuth, async (req, res) => {
     const analysis = await nextStepService.analyzeAndUpdateNextStep(ticketId, fdId);
     
     if (!analysis) {
-      return res.status(500).json({ 
-        error: 'Failed to analyze next step',
-        message: 'AI analysis service unavailable'
+      return res.status(503).json({ 
+        error: 'Analysis unavailable',
+        message: 'Unable to analyze next step at this time. Please try again later.'
       });
     }
 
@@ -31,8 +31,8 @@ router.post('/analyze/:ticketId', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Next step analysis error:', error);
     res.status(500).json({ 
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Analysis failed',
+      message: 'An error occurred while analyzing the case. Please try again.'
     });
   }
 });
@@ -76,10 +76,19 @@ router.get('/preview/:ticketId', requireAuth, async (req, res) => {
     const { ticketId } = req.params;
     const fdId = req.query.fdId ? parseInt(req.query.fdId as string) : undefined;
 
-    // This would need a preview-only method in the service
-    // For now, just return current next step
     const { storage } = await import('./storage');
-    const ticket = await storage.getTicket(ticketId);
+    
+    // Get ticket with error handling
+    let ticket;
+    try {
+      ticket = await storage.getTicket(ticketId);
+    } catch (dbError) {
+      console.error('Database error fetching ticket:', dbError);
+      return res.status(503).json({ 
+        error: 'Database unavailable',
+        message: 'Unable to fetch ticket information. Please try again later.'
+      });
+    }
     
     if (!ticket) {
       return res.status(404).json({ error: 'Ticket not found' });
@@ -93,8 +102,8 @@ router.get('/preview/:ticketId', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Next step preview error:', error);
     res.status(500).json({ 
-      error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Preview failed',
+      message: 'Unable to retrieve case information. Please try again.'
     });
   }
 });
