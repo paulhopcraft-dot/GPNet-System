@@ -40,15 +40,27 @@ export class NextStepService {
     }
 
     try {
-      // Get ticket details
-      const ticket = await storage.getTicket(ticketId);
-      if (!ticket) {
-        console.error(`Ticket ${ticketId} not found`);
+      // Get ticket details with error handling
+      let ticket;
+      try {
+        ticket = await storage.getTicket(ticketId);
+        if (!ticket) {
+          console.error(`Ticket ${ticketId} not found`);
+          return null;
+        }
+      } catch (dbError) {
+        console.error(`Database error fetching ticket ${ticketId}:`, dbError);
         return null;
       }
 
-      // Build conversation context
-      const conversationContext = await this.buildConversationContext(ticketId, fdId);
+      // Build conversation context with error handling
+      let conversationContext;
+      try {
+        conversationContext = await this.buildConversationContext(ticketId, fdId);
+      } catch (contextError) {
+        console.error(`Error building context for ticket ${ticketId}:`, contextError);
+        conversationContext = '';
+      }
       
       if (!conversationContext || conversationContext.length === 0) {
         console.log(`No conversation data for ticket ${ticketId}, using default next step`);
@@ -65,8 +77,13 @@ export class NextStepService {
       
       // Update ticket with intelligent next step
       if (analysis) {
-        await storage.updateTicketStep(ticketId, analysis.nextStep, analysis.assignedTo);
-        console.log(`✅ Updated next step for ticket ${ticketId}: ${analysis.nextStep}`);
+        try {
+          await storage.updateTicketStep(ticketId, analysis.nextStep, analysis.assignedTo);
+          console.log(`✅ Updated next step for ticket ${ticketId}: ${analysis.nextStep}`);
+        } catch (updateError) {
+          console.error(`Failed to update ticket ${ticketId}:`, updateError);
+          // Return analysis even if update fails
+        }
       }
 
       return analysis;
@@ -107,7 +124,7 @@ export class NextStepService {
       }
     }
 
-    // Get internal emails
+    // Get internal emails with robust error handling
     try {
       const emails = await db
         .select()
@@ -126,7 +143,8 @@ export class NextStepService {
         });
       }
     } catch (error) {
-      console.error('Failed to fetch emails:', error);
+      console.error('Failed to fetch emails (database may be unavailable):', error);
+      // Continue without emails - don't throw the error
     }
 
     return contextParts.join('\n');
