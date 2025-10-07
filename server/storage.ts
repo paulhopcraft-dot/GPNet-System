@@ -9,6 +9,7 @@ import {
   medicalDocuments, documentProcessingJobs, documentProcessingLogs, documentEmbeddings,
   checks, companyAliases, emailDrafts, checkRequests,
   medicalOpinionRequests, organizationSettings, reminderSchedule,
+  workerInfoSheets, caseFeedback, modelTrainingRuns,
   type Ticket, type Worker, type FormSubmission, type Analysis, type Email, type Attachment,
   type Injury, type Stakeholder, type RtwPlan, type RiskHistory, type Report,
   type LegislationDocument, type RtwWorkflowStep, type ComplianceAudit, type WorkerParticipationEvent,
@@ -18,6 +19,7 @@ import {
   type MedicalDocument, type DocumentProcessingJob, type DocumentProcessingLog, type DocumentEmbedding,
   type Check, type CompanyAlias, type EmailDraft, type CheckRequest,
   type MedicalOpinionRequest, type OrganizationSettings, type ReminderSchedule,
+  type WorkerInfoSheet, type CaseFeedback, type ModelTrainingRun,
   type InsertTicket, type InsertWorker, type InsertFormSubmission, type InsertAnalysis, type InsertEmail,
   type InsertInjury, type InsertStakeholder, type InsertRtwPlan, type InsertRiskHistory, type InsertReport,
   type InsertLegislationDocument, type InsertRtwWorkflowStep, type InsertComplianceAudit,
@@ -27,7 +29,8 @@ import {
   type InsertSpecialist, type InsertEscalation, type InsertSpecialistAssignment,
   type InsertMedicalDocument, type InsertDocumentProcessingJob, type InsertDocumentProcessingLog, type InsertDocumentEmbedding,
   type InsertCheck, type InsertCompanyAlias, type InsertEmailDraft, type InsertCheckRequest,
-  type InsertMedicalOpinionRequest, type InsertOrganizationSettings, type InsertReminderSchedule
+  type InsertMedicalOpinionRequest, type InsertOrganizationSettings, type InsertReminderSchedule,
+  type InsertWorkerInfoSheet, type InsertCaseFeedback, type InsertModelTrainingRun
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, sql, asc, isNotNull } from "drizzle-orm";
@@ -389,6 +392,51 @@ export interface IStorage {
   // Helper methods for Freshdesk integration
   getAllTicketsWithFreshdeskIds(): Promise<Ticket[]>;
   getDocumentProcessingLogs(documentId: string): Promise<DocumentProcessingLog[]>;
+
+  // ===============================================
+  // CASE CONSOLE - RULE ENGINE & ML SYSTEM
+  // ===============================================
+  
+  // Worker Info Sheets (14-day escalation chain: Zora → Wayne → Michelle)
+  createWorkerInfoSheet(data: InsertWorkerInfoSheet): Promise<WorkerInfoSheet>;
+  getWorkerInfoSheet(id: string): Promise<WorkerInfoSheet | undefined>;
+  getWorkerInfoSheetByWorkerId(workerId: string): Promise<WorkerInfoSheet | undefined>;
+  getWorkerInfoSheetByTicketId(ticketId: string): Promise<WorkerInfoSheet | undefined>;
+  updateWorkerInfoSheet(id: string, updates: Partial<InsertWorkerInfoSheet>): Promise<WorkerInfoSheet>;
+  getPendingWorkerInfoSheets(): Promise<WorkerInfoSheet[]>; // For escalation job
+  markWorkerInfoSheetReturned(id: string): Promise<WorkerInfoSheet>;
+  escalateWorkerInfoSheet(id: string): Promise<WorkerInfoSheet>;
+  
+  // Case Feedback (ML training feedback loop)
+  createCaseFeedback(data: InsertCaseFeedback): Promise<CaseFeedback>;
+  getCaseFeedbackByTicket(ticketId: string): Promise<CaseFeedback[]>;
+  getAllCaseFeedback(): Promise<CaseFeedback[]>; // For ML model training
+  getCaseFeedbackForTraining(limit?: number): Promise<CaseFeedback[]>;
+  
+  // Model Training Runs (XGBoost tracking with SHAP)
+  createModelTrainingRun(data: InsertModelTrainingRun): Promise<ModelTrainingRun>;
+  getModelTrainingRun(id: string): Promise<ModelTrainingRun | undefined>;
+  getLatestModelTrainingRun(): Promise<ModelTrainingRun | undefined>;
+  getAllModelTrainingRuns(): Promise<ModelTrainingRun[]>;
+  updateModelTrainingRun(id: string, updates: Partial<InsertModelTrainingRun>): Promise<ModelTrainingRun>;
+  
+  // Update ticket with rule engine fields
+  updateTicketRuleEngineFields(id: string, data: {
+    riskLevel?: string;
+    currentStatus?: string;
+    nextStepsJson?: any;
+    escalationLevel?: number;
+  }): Promise<Ticket>;
+  
+  // Update worker with case console fields
+  updateWorkerStatus(id: string, data: {
+    statusOffWork?: boolean;
+    rtwPlanPresent?: boolean;
+    dateOfInjury?: Date;
+    expectedRecoveryDate?: Date;
+    managerName?: string;
+    company?: string;
+  }): Promise<Worker>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2739,6 +2787,207 @@ export class DatabaseStorage implements IStorage {
 
   async getDocumentProcessingLogs(documentId: string): Promise<DocumentProcessingLog[]> {
     return await this.getDocumentProcessingLogsByDocument(documentId);
+  }
+
+  // ===============================================
+  // CASE CONSOLE - RULE ENGINE & ML SYSTEM
+  // ===============================================
+  
+  // Worker Info Sheets
+  async createWorkerInfoSheet(data: InsertWorkerInfoSheet): Promise<WorkerInfoSheet> {
+    const [sheet] = await db
+      .insert(workerInfoSheets)
+      .values(data)
+      .returning();
+    return sheet;
+  }
+
+  async getWorkerInfoSheet(id: string): Promise<WorkerInfoSheet | undefined> {
+    const [sheet] = await db
+      .select()
+      .from(workerInfoSheets)
+      .where(eq(workerInfoSheets.id, id));
+    return sheet || undefined;
+  }
+
+  async getWorkerInfoSheetByWorkerId(workerId: string): Promise<WorkerInfoSheet | undefined> {
+    const [sheet] = await db
+      .select()
+      .from(workerInfoSheets)
+      .where(eq(workerInfoSheets.workerId, workerId));
+    return sheet || undefined;
+  }
+
+  async getWorkerInfoSheetByTicketId(ticketId: string): Promise<WorkerInfoSheet | undefined> {
+    const [sheet] = await db
+      .select()
+      .from(workerInfoSheets)
+      .where(eq(workerInfoSheets.ticketId, ticketId));
+    return sheet || undefined;
+  }
+
+  async updateWorkerInfoSheet(id: string, updates: Partial<InsertWorkerInfoSheet>): Promise<WorkerInfoSheet> {
+    const [sheet] = await db
+      .update(workerInfoSheets)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(workerInfoSheets.id, id))
+      .returning();
+    return sheet;
+  }
+
+  async getPendingWorkerInfoSheets(): Promise<WorkerInfoSheet[]> {
+    return await db
+      .select()
+      .from(workerInfoSheets)
+      .where(
+        and(
+          eq(workerInfoSheets.status, 'pending'),
+          sql`${workerInfoSheets.returnedAt} IS NULL`
+        )
+      )
+      .orderBy(asc(workerInfoSheets.requestedAt));
+  }
+
+  async markWorkerInfoSheetReturned(id: string): Promise<WorkerInfoSheet> {
+    const [sheet] = await db
+      .update(workerInfoSheets)
+      .set({ 
+        returnedAt: new Date(),
+        status: 'returned',
+        updatedAt: new Date()
+      })
+      .where(eq(workerInfoSheets.id, id))
+      .returning();
+    return sheet;
+  }
+
+  async escalateWorkerInfoSheet(id: string): Promise<WorkerInfoSheet> {
+    const current = await this.getWorkerInfoSheet(id);
+    if (!current) throw new Error('Worker Info Sheet not found');
+    
+    const newLevel = (current.escalationLevel || 0) + 1;
+    const [sheet] = await db
+      .update(workerInfoSheets)
+      .set({ 
+        escalationLevel: newLevel,
+        lastEscalatedAt: new Date(),
+        status: 'escalated',
+        updatedAt: new Date()
+      })
+      .where(eq(workerInfoSheets.id, id))
+      .returning();
+    return sheet;
+  }
+
+  // Case Feedback
+  async createCaseFeedback(data: InsertCaseFeedback): Promise<CaseFeedback> {
+    const [feedback] = await db
+      .insert(caseFeedback)
+      .values(data)
+      .returning();
+    return feedback;
+  }
+
+  async getCaseFeedbackByTicket(ticketId: string): Promise<CaseFeedback[]> {
+    return await db
+      .select()
+      .from(caseFeedback)
+      .where(eq(caseFeedback.ticketId, ticketId))
+      .orderBy(desc(caseFeedback.createdAt));
+  }
+
+  async getAllCaseFeedback(): Promise<CaseFeedback[]> {
+    return await db
+      .select()
+      .from(caseFeedback)
+      .orderBy(desc(caseFeedback.createdAt));
+  }
+
+  async getCaseFeedbackForTraining(limit?: number): Promise<CaseFeedback[]> {
+    const query = db
+      .select()
+      .from(caseFeedback)
+      .orderBy(desc(caseFeedback.createdAt));
+    
+    if (limit) {
+      return await query.limit(limit);
+    }
+    return await query;
+  }
+
+  // Model Training Runs
+  async createModelTrainingRun(data: InsertModelTrainingRun): Promise<ModelTrainingRun> {
+    const [run] = await db
+      .insert(modelTrainingRuns)
+      .values(data)
+      .returning();
+    return run;
+  }
+
+  async getModelTrainingRun(id: string): Promise<ModelTrainingRun | undefined> {
+    const [run] = await db
+      .select()
+      .from(modelTrainingRuns)
+      .where(eq(modelTrainingRuns.id, id));
+    return run || undefined;
+  }
+
+  async getLatestModelTrainingRun(): Promise<ModelTrainingRun | undefined> {
+    const [run] = await db
+      .select()
+      .from(modelTrainingRuns)
+      .where(eq(modelTrainingRuns.status, 'completed'))
+      .orderBy(desc(modelTrainingRuns.finishedAt))
+      .limit(1);
+    return run || undefined;
+  }
+
+  async getAllModelTrainingRuns(): Promise<ModelTrainingRun[]> {
+    return await db
+      .select()
+      .from(modelTrainingRuns)
+      .orderBy(desc(modelTrainingRuns.startedAt));
+  }
+
+  async updateModelTrainingRun(id: string, updates: Partial<InsertModelTrainingRun>): Promise<ModelTrainingRun> {
+    const [run] = await db
+      .update(modelTrainingRuns)
+      .set(updates)
+      .where(eq(modelTrainingRuns.id, id))
+      .returning();
+    return run;
+  }
+
+  // Update ticket with rule engine fields
+  async updateTicketRuleEngineFields(id: string, data: {
+    riskLevel?: string;
+    currentStatus?: string;
+    nextStepsJson?: any;
+    escalationLevel?: number;
+  }): Promise<Ticket> {
+    const [ticket] = await db
+      .update(tickets)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(tickets.id, id))
+      .returning();
+    return ticket;
+  }
+
+  // Update worker with case console fields
+  async updateWorkerStatus(id: string, data: {
+    statusOffWork?: boolean;
+    rtwPlanPresent?: boolean;
+    dateOfInjury?: Date;
+    expectedRecoveryDate?: Date;
+    managerName?: string;
+    company?: string;
+  }): Promise<Worker> {
+    const [worker] = await db
+      .update(workers)
+      .set(data)
+      .where(eq(workers.id, id))
+      .returning();
+    return worker;
   }
 }
 
