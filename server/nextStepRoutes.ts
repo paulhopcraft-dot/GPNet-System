@@ -118,8 +118,8 @@ router.get('/summary/:ticketId', requireAuth, async (req, res) => {
 
     const { storage } = await import('./storage');
     const { db } = await import('./db');
-    const { medicalCertificates, stepHistory } = await import('@shared/schema');
-    const { eq, desc } = await import('drizzle-orm');
+    const { medicalDocuments, events } = await import('@shared/schema');
+    const { eq, desc, and } = await import('drizzle-orm');
     
     // Get ticket with error handling
     let ticket;
@@ -142,36 +142,39 @@ router.get('/summary/:ticketId', requireAuth, async (req, res) => {
     try {
       const certs = await db
         .select()
-        .from(medicalCertificates)
-        .where(eq(medicalCertificates.ticketId, ticketId))
-        .orderBy(desc(medicalCertificates.expiryDate))
+        .from(medicalDocuments)
+        .where(and(
+          eq(medicalDocuments.ticketId, ticketId),
+          eq(medicalDocuments.kind, 'medical_certificate')
+        ))
+        .orderBy(desc(medicalDocuments.validTo))
         .limit(1);
       
       if (certs.length > 0) {
         const cert = certs[0];
         latestCertificate = {
-          status: cert.status || 'Active',
-          expiryDate: cert.expiryDate?.toISOString() || new Date().toISOString(),
-          issuedBy: cert.issuedBy || 'Unknown'
+          status: cert.fitStatus || 'Active',
+          expiryDate: cert.validTo || new Date().toISOString(),
+          issuedBy: cert.doctorName || cert.clinicName || 'Unknown'
         };
       }
     } catch (error) {
       console.error('Error fetching medical certificates:', error);
     }
 
-    // Get recent steps
+    // Get recent steps from events
     let recentSteps: Array<{step: string, completedAt: string}> = [];
     try {
-      const steps = await db
+      const stepEvents = await db
         .select()
-        .from(stepHistory)
-        .where(eq(stepHistory.ticketId, ticketId))
-        .orderBy(desc(stepHistory.completedAt))
+        .from(events)
+        .where(eq(events.caseId, ticketId))
+        .orderBy(desc(events.occurredAt))
         .limit(3);
       
-      recentSteps = steps.map(s => ({
-        step: s.step,
-        completedAt: s.completedAt?.toISOString() || new Date().toISOString()
+      recentSteps = stepEvents.map(e => ({
+        step: (e.payloadJson as any)?.description || e.kind || 'Event',
+        completedAt: e.occurredAt?.toISOString() || new Date().toISOString()
       }));
     } catch (error) {
       console.error('Error fetching step history:', error);
@@ -183,13 +186,32 @@ router.get('/summary/:ticketId', requireAuth, async (req, res) => {
       fdId ? parseInt(fdId as string) : ticket.fdId ?? undefined
     );
 
+    // Get worker name if available
+    let workerName = 'Unknown';
+    if (ticket.workerId) {
+      try {
+        const { workers } = await import('@shared/schema');
+        const workerResult = await db
+          .select()
+          .from(workers)
+          .where(eq(workers.id, ticket.workerId))
+          .limit(1);
+        if (workerResult.length > 0) {
+          const worker = workerResult[0];
+          workerName = `${worker.firstName || ''} ${worker.lastName || ''}`.trim() || 'Unknown';
+        }
+      } catch (error) {
+        console.error('Error fetching worker:', error);
+      }
+    }
+
     const summary = {
       ticketId: ticket.id,
       caseType: ticket.caseType,
-      workerName: ticket.workerName || 'Unknown',
+      workerName,
       company: ticket.companyName || 'Unknown',
-      dateOfInjury: ticket.dateOfInjury?.toISOString(),
-      injuryStatus: ticket.injuryDetails?.status,
+      dateOfInjury: undefined, // Will be populated if available in worker data
+      injuryStatus: undefined, // Will be populated if available
       latestCertificate,
       recentSteps,
       suggestedNextStep: {

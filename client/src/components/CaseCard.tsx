@@ -8,6 +8,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { CaseSummaryDialog } from "./CaseSummaryDialog";
 
 interface CaseCardProps {
   ticketId: string;
@@ -117,6 +118,8 @@ export default function CaseCard({
 }: CaseCardProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [summaryData, setSummaryData] = useState<any>(null);
   
   const handleViewCase = () => {
     onViewCase?.();
@@ -132,10 +135,8 @@ export default function CaseCard({
 
   const analyzeNextStepMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/next-step/analyze/${ticketId}`, {
-        method: 'POST',
-        body: JSON.stringify({ fdId }),
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch(`/api/next-step/summary/${ticketId}?fdId=${fdId || ''}`, {
+        method: 'GET',
         credentials: 'include'
       });
       if (!response.ok) {
@@ -146,22 +147,8 @@ export default function CaseCard({
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/cases'] });
-      
-      const analysis = data.analysis;
-      const nextStepText = analysis?.nextStep || "Successfully analyzed case";
-      const priority = analysis?.priority ? `Priority: ${analysis.priority}` : '';
-      const urgency = analysis?.urgency ? `Urgency: ${analysis.urgency}` : '';
-      
-      let description = nextStepText;
-      if (priority || urgency) {
-        description = `${nextStepText}\n${[priority, urgency].filter(Boolean).join(' • ')}`;
-      }
-      
-      toast({
-        title: "✨ Next step updated",
-        description,
-        duration: 5000,
-      });
+      setSummaryData(data);
+      setDialogOpen(true);
       setIsAnalyzing(false);
     },
     onError: (error: Error) => {
@@ -190,6 +177,7 @@ export default function CaseCard({
   };
 
   return (
+    <>
     <Card className="hover-elevate" data-testid={`card-case-${ticketId}`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
@@ -321,5 +309,13 @@ export default function CaseCard({
         </div>
       </CardContent>
     </Card>
+    
+    <CaseSummaryDialog
+      open={dialogOpen}
+      onOpenChange={setDialogOpen}
+      data={summaryData}
+      isLoading={isAnalyzing || analyzeNextStepMutation.isPending}
+    />
+    </>
   );
 }
