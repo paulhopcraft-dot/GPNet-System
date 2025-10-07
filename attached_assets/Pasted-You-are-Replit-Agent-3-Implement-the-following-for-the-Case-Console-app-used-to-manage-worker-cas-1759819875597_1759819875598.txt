@@ -1,0 +1,244 @@
+You are Replit Agent 3. Implement the following for the “Case Console” app used to manage worker cases for Symmetry. The stack is TypeScript, Node, React, Postgres. Integrations: Freshdesk API for tickets and notes. Aim for clean architecture, test coverage, and a small, composable rule engine.
+
+What is not working now
+
+Workers who are off work are being shown as Low Risk.
+
+The UI “eye” icon that should open the latest certificates does not work.
+
+The “Current status” is wrong. It shows “new” or generic text. It does not summarize the last few emails or the true situation.
+
+“Next step” shows only one suggestion and it can be irrelevant or outdated.
+
+There is no inline update box to add notes that sync back to Freshdesk as a private note.
+
+There is no clear display of Date of Injury, Manager Name, Expected Recovery Date, or obvious meaning for “26 days ago.”
+
+Worker Information Sheet chase logic is manual. No automatic escalation if the sheet is not returned.
+
+We cannot “teach” the system. There is no feedback loop when a suggestion is wrong.
+
+Stuart Barkley has already done an injury check and has a claim submitted, but the analysis does not reflect that.
+
+Jacob Gunn is off work and looking for suitable duties. The console does not reflect the true current status or next actions.
+
+What I need it to do
+
+Build the following features and fixes.
+
+A) Business rules
+
+Rule: If worker is off work OR there is no current Return To Work plan, Risk Level must be High. This overrides any other calculation.
+
+Rule: If Worker Information Sheet is not returned within 14 days of first request, escalate automatically in order Zora -> Wayne -> Michelle. Track escalation level and timestamps.
+
+Rule: “Current Status” is derived from the latest synced emails and notes, not static labels.
+
+Rule: Allow multiple next steps, ordered by priority.
+
+B) Case card UI changes
+Add these fields to the analysis view header:
+
+Worker Name
+
+Company (optional, can stay if present)
+
+Date of Injury (DOI)
+
+Manager Name
+
+Risk Level (driven by rules)
+
+Expected Recovery Date (from latest medical certificate if present, else estimated)
+
+Body sections, top to bottom:
+
+Current Status: auto-generated summary from the most recent case correspondence.
+
+Next Steps: list of 1 to 5 actionable items. Allow confirm or remove per item.
+
+Attachments: “eye” icon opens latest certificates and related medical files.
+
+Comments and Updates: a scrollable multiline input with “Save changes” button. On save, post as a Freshdesk private note and store locally.
+
+Audit Log: collapsible panel listing time, user, and summary of each change.
+
+C) “Eye” icon attachment behavior
+
+Clicking the eye opens a side panel with the latest medical certificate(s) and any medical letters.
+
+Fetch order: newest first. Show filename, date, and a “view” link.
+
+D) Current status summarizer
+
+Summarize the last 3 to 10 inbound and outbound case messages from Freshdesk into a single paragraph that states the truth on the ground.
+
+Example for Jacob: “Actively seeking suitable duties. Natalie requested options from Stephen. Stephen forwarded to Talent Team. Awaiting forklift operator role.”
+
+Example for Stuart: “Injury check completed. Claim submitted. Awaiting determination.”
+
+E) Next-step generator with XGBoost fallback
+
+Primary source: deterministic rules by case state and recent communications.
+
+If rules do not produce at least one next step, call a lightweight XGBoost classifier that proposes up to 3 likely next steps using engineered features.
+
+Always present next steps as suggestions until a user clicks Confirm. Confirmed steps are saved to case metadata with created_by and timestamp.
+
+F) Teach the system: feedback loop
+
+On any suggested next step, allow “Correct,” “Not Relevant,” or “Better Action.”
+
+If “Better Action,” capture the replacement text and save it.
+
+Store feedback events in table case_feedback.
+
+Periodic job retrains the XGBoost model on confirmed steps vs context features.
+
+Keep a simple SHAP summary to display feature importance at training time to help with transparency.
+
+G) Worker Information Sheet automation
+
+Track request_date and status.
+
+If not returned within 14 days, raise escalation_level and create an automatic next step “Escalate to Zora” with CC to Wayne and Michelle.
+
+Post a Freshdesk private note when escalation occurs.
+
+H) Freshdesk sync
+
+On “Save changes” in the Comments and Updates box, post as a Freshdesk private note and store a local copy with reference id.
+
+Nightly or on-demand sync pulls the latest messages to refresh Current Status and can trigger new suggested steps.
+
+I) Data model updates (Postgres, use prisma or knex)
+
+workers(id, name, company, manager_name, date_of_injury, expected_recovery_date, status_off_work boolean, rtw_plan_present boolean)
+
+cases(id, worker_id, risk_level, current_status, next_steps jsonb, escalation_level int default 0)
+
+attachments(id, case_id, type, filename, url, created_at)
+
+case_notes(id, case_id, author, body, created_at, freshdesk_note_id)
+
+worker_info_sheet(id, worker_id, requested_at, returned_at, status)
+
+case_feedback(id, case_id, suggestion_text, feedback_type enum["correct","not_relevant","better_action"], better_action_text, features jsonb, created_at)
+
+model_training_runs(id, started_at, finished_at, version, metrics jsonb, shap_top_features jsonb)
+
+J) Rule engine
+Create a tiny rule engine module:
+
+`deriveRisk(worker): "High" if off_work true OR rtw_plan_present false, else “Normal” or calculated.
+
+deriveCurrentStatus(case, messages): summarize N recent messages.
+
+deriveNextSteps(case, status, messages): use rule templates first, then XGBoost fallback if empty.
+
+K) XGBoost next-step recommender
+
+Training target: next_step_label chosen by a human for similar contexts.
+
+Features (examples):
+
+worker.off_work, worker.rtw_plan_present
+
+days_since_injury, days_since_last_employer_reply, days_since_last_worker_reply
+
+has_pending_info_sheet, days_since_info_sheet_request
+
+claim_status, last_action_type, risk_level
+
+Store features per suggestion in case_feedback.features when users give feedback.
+
+Provide a CLI script train_nextstep.ts that exports the model to a local artifact path and logs metrics.
+
+Load the artifact at server start for inference.
+
+Add an endpoint to trigger retraining on demand and to show metrics and SHAP top features from the last run.
+
+L) API endpoints
+
+GET /api/cases/:id returns case with worker, attachments, current_status, next_steps.
+
+POST /api/cases/:id/notes { body } posts a private note to Freshdesk and stores it.
+
+POST /api/cases/:id/next-steps/confirm { step_text } saves a confirmed step.
+
+POST /api/cases/:id/next-steps/feedback { suggestion_text, feedback_type, better_action_text? } logs feedback and triggers re-ranking in memory.
+
+POST /api/worker-info/:workerId/request starts the info sheet request and sets requested_at.
+
+POST /api/worker-info/:workerId/mark-returned sets returned_at and clears escalation.
+
+POST /api/model/train kicks off retraining, returns version and metrics.
+
+GET /api/model/status returns current model version and last metrics.
+
+M) Freshdesk integration
+
+Env vars: FRESHDESK_BASE_URL, FRESHDESK_API_KEY, FRESHDESK_PRODUCT_ID.
+
+Implement thin client: createPrivateNote(ticketId, text), listRecentMessages(ticketId, limit).
+
+N) UI states and controls
+
+Confirm and Remove for each suggested next step.
+
+Inline editor for Comments and Updates with Save changes.
+
+Collapsible Audit Log.
+
+Eye icon opens attachments side panel.
+
+Display clear labels for DOI, Manager, Expected Recovery Date. Replace vague “26 days ago” with explicit “Date of injury: 2025-09-11” and “26 days since DOI.”
+
+O) Acceptance tests
+Create integration and e2e tests that assert:
+
+Off work or no RTW plan sets High risk.
+
+Eye icon fetches newest certificates and opens viewer.
+
+Current Status reflects last messages after a sync.
+
+Worker Info Sheet not returned in 14 days triggers escalation and private note.
+
+Next Steps shows multiple items. When rules produce none, XGBoost supplies suggestions.
+
+Feedback loop records “Better Action” and it appears as a suggested step next time for a similar context after retraining.
+
+Stuart case shows “Injury check completed. Claim submitted. Awaiting determination.”
+
+Jacob case shows “Actively seeking suitable duties…” and forklift role search in Current Status, with appropriate next steps.
+
+P) Seed and fixtures
+
+Add minimal seed data for workers Jacob Gunn and Stuart Barkley and example Freshdesk message fixtures so tests can pass locally.
+
+Include one sample medical certificate attachment per worker.
+
+Q) Dev notes
+
+Keep functions pure where possible.
+
+Use feature flags for the recommender and summarizer to allow toggling.
+
+Provide small README with how to run, how to train, and env setup.
+
+Build all of the above, then output:
+
+Database migration scripts
+
+API routes and handlers
+
+Freshdesk client
+
+React components updated for the new case view
+
+XGBoost training script and model loader
+
+Tests with deterministic fixtures
+
+README with run, train, and test commands
