@@ -1,9 +1,13 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Clock, User, Building, Eye, CheckCircle, ArrowRight } from "lucide-react";
+import { Clock, User, Building, Eye, CheckCircle, ArrowRight, Sparkles } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { MLAlertBadge } from "./MLAlertBadge";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
 interface CaseCardProps {
   ticketId: string;
@@ -111,6 +115,9 @@ export default function CaseCard({
   onCompanyClick,
   organizationId,
 }: CaseCardProps) {
+  const { toast } = useToast();
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  
   const handleViewCase = () => {
     onViewCase?.();
   };
@@ -121,6 +128,43 @@ export default function CaseCard({
     if (workerId && onWorkerClick && !workerNameIsExtracted) {
       onWorkerClick(workerId);
     }
+  };
+
+  const analyzeNextStepMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/next-step/analyze/${ticketId}`, {
+        method: 'POST',
+        body: JSON.stringify({ fdId }),
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error('Failed to analyze next step');
+      }
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/cases'] });
+      toast({
+        title: "Next step updated",
+        description: data.analysis?.nextStep || "Successfully analyzed case",
+      });
+      setIsAnalyzing(false);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Analysis failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      setIsAnalyzing(false);
+    }
+  });
+
+  const handleAnalyzeNextStep = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsAnalyzing(true);
+    analyzeNextStepMutation.mutate();
   };
   
   const handleCompanyClick = (e: React.MouseEvent) => {
@@ -206,16 +250,29 @@ export default function CaseCard({
           {/* Step tracking information */}
           <div className="space-y-2 pt-2 border-t">
             {nextStep && (
-              <div className="flex items-center gap-2 text-sm">
-                <ArrowRight className="h-4 w-4 text-blue-500" />
-                <span className="text-foreground font-medium" data-testid={`text-next-step-${ticketId}`}>
-                  Next: {nextStep}
-                </span>
-                {assignedTo && (
-                  <Badge variant="outline" className="text-xs" data-testid={`badge-assigned-${ticketId}`}>
-                    {assignedTo}
-                  </Badge>
-                )}
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <ArrowRight className="h-4 w-4 text-blue-500" />
+                  <span className="text-foreground font-medium" data-testid={`text-next-step-${ticketId}`}>
+                    Next: {nextStep}
+                  </span>
+                  {assignedTo && (
+                    <Badge variant="outline" className="text-xs" data-testid={`badge-assigned-${ticketId}`}>
+                      {assignedTo}
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleAnalyzeNextStep}
+                  disabled={isAnalyzing || analyzeNextStepMutation.isPending}
+                  className="h-6 text-xs gap-1"
+                  data-testid={`button-analyze-next-step-${ticketId}`}
+                >
+                  <Sparkles className="h-3 w-3" />
+                  {isAnalyzing || analyzeNextStepMutation.isPending ? "Analyzing..." : "Analyze"}
+                </Button>
               </div>
             )}
             
