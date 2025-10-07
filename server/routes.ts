@@ -50,6 +50,7 @@ import { caseDrawerRoutes } from "./caseDrawerRoutes.js";
 import { medicalDocumentRoutes } from "./medicalDocumentRoutes.js";
 import { analyticsRoutes } from "./analyticsRoutes.js";
 import { nextStepRoutes } from "./nextStepRoutes.js";
+import caseConsoleRoutes from "./caseConsoleRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -62,6 +63,7 @@ import { createMedicalCertificateScheduler } from "./medicalCertificateScheduler
 import { createConsultantAppointmentService } from "./consultantAppointmentService";
 import { createFollowUpScheduler } from "./followUpScheduler";
 import { createReportDeliveryScheduler } from "./reportDeliveryScheduler";
+import { startWorkerInfoSheetJob } from "./workerInfoSheetJob";
 import { emailService } from "./emailService";
 import { WorkflowSimulator } from "./workflowSimulator";
 import { EmailDraftingService } from "./emailDraftingService";
@@ -89,6 +91,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Start report delivery scheduler (1-hour delayed email delivery)
   reportDeliveryScheduler.start();
   console.log('Report delivery scheduler started (checks every 15 minutes)');
+  
+  // Start Worker Info Sheet escalation job (every 6 hours)
+  startWorkerInfoSheetJob();
   
   // Wire up scheduler instance for status endpoint
   const { setSchedulerInstance } = await import('./reportRoutes');
@@ -1477,6 +1482,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/reports', reportRoutes);
   app.use('/api/analytics', analyticsRoutes);
   app.use('/api/next-step', nextStepRoutes);
+  app.use('/api/case-console', caseConsoleRoutes);
   
   // Mount critical missing routes for Michele and Admin
   app.use('/api/michelle', michelleRoutes);
