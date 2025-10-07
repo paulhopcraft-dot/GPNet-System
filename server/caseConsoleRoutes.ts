@@ -3,8 +3,12 @@ import { storage } from './storage';
 import { ruleEngine } from './ruleEngine';
 import { xgboostService } from './xgboostService';
 import { workerInfoSheetService } from './workerInfoSheetService';
+import { requireAuth } from './authRoutes.js'; // CRITICAL: Authentication middleware
 
 const router = Router();
+
+// CRITICAL: All case console routes require authentication
+router.use(requireAuth);
 
 /**
  * GET /api/case-console/:ticketId/analysis
@@ -13,10 +17,12 @@ const router = Router();
 router.get('/:ticketId/analysis', async (req: Request, res: Response) => {
   try {
     const { ticketId } = req.params;
+    const userOrgId = req.session.user?.organizationId; // Authenticated user's organization
     
-    const ticket = await storage.getTicket(ticketId);
+    // CRITICAL: Pass organizationId to storage to prevent cross-tenant fetches
+    const ticket = await storage.getTicket(ticketId, userOrgId);
     if (!ticket) {
-      return res.status(404).json({ error: 'Ticket not found' });
+      return res.status(404).json({ error: 'Ticket not found or access denied' });
     }
 
     // Run full analysis
@@ -34,7 +40,7 @@ router.get('/:ticketId/analysis', async (req: Request, res: Response) => {
     let workerInfoSheetStatus = null;
     if (ticket.workerId) {
       try {
-        const sheet = await storage.getWorkerInfoSheetByWorkerId(ticket.workerId);
+        const sheet = await storage.getWorkerInfoSheetByWorkerId(ticket.workerId, ticket.organizationId);
         if (sheet) {
           workerInfoSheetStatus = await workerInfoSheetService.getEscalationStatus(sheet.id);
         }
@@ -75,6 +81,7 @@ router.get('/:ticketId/analysis', async (req: Request, res: Response) => {
 router.post('/:ticketId/feedback', async (req: Request, res: Response) => {
   try {
     const { ticketId } = req.params;
+    const userOrgId = req.session.user?.organizationId; // Authenticated user's organization
     const { 
       feedbackType, 
       suggestionText, 
@@ -87,13 +94,20 @@ router.post('/:ticketId/feedback', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'feedbackType and suggestionText are required' });
     }
 
-    const ticket = await storage.getTicket(ticketId);
+    // CRITICAL: Pass organizationId to storage to prevent cross-tenant fetches
+    const ticket = await storage.getTicket(ticketId, userOrgId);
     if (!ticket) {
-      return res.status(404).json({ error: 'Ticket not found' });
+      return res.status(404).json({ error: 'Ticket not found or access denied' });
     }
 
-    // Record feedback for ML training
+    // CRITICAL: Validate ticket has organization for ML feedback
+    if (!ticket.organizationId) {
+      return res.status(400).json({ error: 'Ticket has no organization - cannot record feedback' });
+    }
+
+    // Record feedback for ML training (with organizationId for multi-tenant isolation)
     const feedbackId = await xgboostService.recordFeedback({
+      organizationId: ticket.organizationId, // CRITICAL: Multi-tenant partitioning
       ticketId,
       feedbackType,
       suggestionText,
@@ -120,10 +134,12 @@ router.post('/:ticketId/feedback', async (req: Request, res: Response) => {
 router.post('/:ticketId/update-analysis', async (req: Request, res: Response) => {
   try {
     const { ticketId } = req.params;
+    const userOrgId = req.session.user?.organizationId; // Authenticated user's organization
     
-    const ticket = await storage.getTicket(ticketId);
+    // CRITICAL: Pass organizationId to storage to prevent cross-tenant fetches
+    const ticket = await storage.getTicket(ticketId, userOrgId);
     if (!ticket) {
-      return res.status(404).json({ error: 'Ticket not found' });
+      return res.status(404).json({ error: 'Ticket not found or access denied' });
     }
 
     // Update ticket with latest analysis
@@ -151,17 +167,19 @@ router.post('/:ticketId/update-analysis', async (req: Request, res: Response) =>
 router.get('/:ticketId/worker-info-sheet', async (req: Request, res: Response) => {
   try {
     const { ticketId } = req.params;
+    const userOrgId = req.session.user?.organizationId; // Authenticated user's organization
     
-    const ticket = await storage.getTicket(ticketId);
+    // CRITICAL: Pass organizationId to storage to prevent cross-tenant fetches
+    const ticket = await storage.getTicket(ticketId, userOrgId);
     if (!ticket) {
-      return res.status(404).json({ error: 'Ticket not found' });
+      return res.status(404).json({ error: 'Ticket not found or access denied' });
     }
 
     if (!ticket.workerId) {
       return res.json({ hasSheet: false, message: 'No worker associated with ticket' });
     }
 
-    const sheet = await storage.getWorkerInfoSheetByWorkerId(ticket.workerId);
+    const sheet = await storage.getWorkerInfoSheetByWorkerId(ticket.workerId, ticket.organizationId);
     
     if (!sheet) {
       return res.json({ hasSheet: false });
@@ -193,10 +211,12 @@ router.get('/:ticketId/worker-info-sheet', async (req: Request, res: Response) =
 router.post('/:ticketId/worker-info-sheet/request', async (req: Request, res: Response) => {
   try {
     const { ticketId } = req.params;
+    const userOrgId = req.session.user?.organizationId; // Authenticated user's organization
     
-    const ticket = await storage.getTicket(ticketId);
+    // CRITICAL: Pass organizationId to storage to prevent cross-tenant fetches
+    const ticket = await storage.getTicket(ticketId, userOrgId);
     if (!ticket) {
-      return res.status(404).json({ error: 'Ticket not found' });
+      return res.status(404).json({ error: 'Ticket not found or access denied' });
     }
 
     if (!ticket.workerId) {
@@ -226,7 +246,14 @@ router.post('/:ticketId/worker-info-sheet/request', async (req: Request, res: Re
  */
 router.post('/:ticketId/worker-info-sheet/:sheetId/mark-returned', async (req: Request, res: Response) => {
   try {
-    const { sheetId } = req.params;
+    const { ticketId, sheetId } = req.params;
+    const userOrgId = req.session.user?.organizationId; // Authenticated user's organization
+    
+    // CRITICAL: Pass organizationId to storage to prevent cross-tenant fetches
+    const ticket = await storage.getTicket(ticketId, userOrgId);
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found or access denied' });
+    }
     
     const sheet = await workerInfoSheetService.markReturned(sheetId);
 
@@ -250,9 +277,12 @@ router.post('/:ticketId/worker-info-sheet/:sheetId/mark-returned', async (req: R
  */
 router.get('/training/status', async (req: Request, res: Response) => {
   try {
-    const latestRun = await storage.getLatestModelTrainingRun();
-    const allRuns = await storage.getAllModelTrainingRuns();
-    const feedbackCount = (await storage.getAllCaseFeedback()).length;
+    const userOrgId = req.session.user?.organizationId; // Authenticated user's organization
+    
+    // CRITICAL: Filter all data by user's organization
+    const latestRun = await storage.getLatestModelTrainingRun(userOrgId);
+    const allRuns = await storage.getAllModelTrainingRuns(userOrgId);
+    const feedbackCount = (await storage.getAllCaseFeedback(userOrgId)).length;
 
     res.json({
       latestRun,
@@ -273,12 +303,15 @@ router.get('/training/status', async (req: Request, res: Response) => {
  */
 router.post('/training/start', async (req: Request, res: Response) => {
   try {
-    const runId = await xgboostService.trainModel();
+    const userOrgId = req.session.user?.organizationId; // Authenticated user's organization
+    
+    // CRITICAL: Train model only on user's organization data
+    const runId = await xgboostService.trainModel(userOrgId);
 
     res.json({
       success: true,
       runId,
-      message: 'Model training started'
+      message: `Model training started for organization ${userOrgId}`
     });
   } catch (error) {
     console.error('Error starting model training:', error);

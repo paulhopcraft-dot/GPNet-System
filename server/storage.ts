@@ -39,7 +39,7 @@ import { eq, desc, and, sql, asc, isNotNull } from "drizzle-orm";
 export interface IStorage {
   // Tickets
   createTicket(ticket: InsertTicket): Promise<Ticket>;
-  getTicket(id: string): Promise<Ticket | undefined>;
+  getTicket(id: string, organizationId?: string): Promise<Ticket | undefined>; // CRITICAL: Pass organizationId to validate ownership
   getAllTickets(): Promise<Ticket[]>;
   updateTicketStatus(id: string, status: string): Promise<Ticket>;
   updateTicketPriority(id: string, priority: string): Promise<Ticket>;
@@ -400,24 +400,24 @@ export interface IStorage {
   // Worker Info Sheets (14-day escalation chain: Zora → Wayne → Michelle)
   createWorkerInfoSheet(data: InsertWorkerInfoSheet): Promise<WorkerInfoSheet>;
   getWorkerInfoSheet(id: string): Promise<WorkerInfoSheet | undefined>;
-  getWorkerInfoSheetByWorkerId(workerId: string): Promise<WorkerInfoSheet | undefined>;
+  getWorkerInfoSheetByWorkerId(workerId: string, organizationId?: string): Promise<WorkerInfoSheet | undefined>; // CRITICAL: Pass organizationId to validate ownership
   getWorkerInfoSheetByTicketId(ticketId: string): Promise<WorkerInfoSheet | undefined>;
   updateWorkerInfoSheet(id: string, updates: Partial<InsertWorkerInfoSheet>): Promise<WorkerInfoSheet>;
-  getPendingWorkerInfoSheets(): Promise<WorkerInfoSheet[]>; // For escalation job
+  getPendingWorkerInfoSheets(organizationId?: string): Promise<WorkerInfoSheet[]>; // For escalation job - CRITICAL: Pass organizationId for multi-tenant filtering
   markWorkerInfoSheetReturned(id: string): Promise<WorkerInfoSheet>;
   escalateWorkerInfoSheet(id: string): Promise<WorkerInfoSheet>;
   
   // Case Feedback (ML training feedback loop)
   createCaseFeedback(data: InsertCaseFeedback): Promise<CaseFeedback>;
   getCaseFeedbackByTicket(ticketId: string): Promise<CaseFeedback[]>;
-  getAllCaseFeedback(): Promise<CaseFeedback[]>; // For ML model training
-  getCaseFeedbackForTraining(limit?: number): Promise<CaseFeedback[]>;
+  getAllCaseFeedback(organizationId?: string): Promise<CaseFeedback[]>; // For ML model training - CRITICAL: Pass organizationId to prevent cross-tenant leakage
+  getCaseFeedbackForTraining(organizationId?: string, limit?: number): Promise<CaseFeedback[]>; // CRITICAL: organizationId for multi-tenant ML training
   
   // Model Training Runs (XGBoost tracking with SHAP)
   createModelTrainingRun(data: InsertModelTrainingRun): Promise<ModelTrainingRun>;
   getModelTrainingRun(id: string): Promise<ModelTrainingRun | undefined>;
-  getLatestModelTrainingRun(): Promise<ModelTrainingRun | undefined>;
-  getAllModelTrainingRuns(): Promise<ModelTrainingRun[]>;
+  getLatestModelTrainingRun(organizationId?: string): Promise<ModelTrainingRun | undefined>; // CRITICAL: organizationId for per-tenant models
+  getAllModelTrainingRuns(organizationId?: string): Promise<ModelTrainingRun[]>; // CRITICAL: organizationId for multi-tenant isolation
   updateModelTrainingRun(id: string, updates: Partial<InsertModelTrainingRun>): Promise<ModelTrainingRun>;
   
   // Update ticket with rule engine fields
@@ -449,7 +449,20 @@ export class DatabaseStorage implements IStorage {
     return ticket;
   }
 
-  async getTicket(id: string): Promise<Ticket | undefined> {
+  async getTicket(id: string, organizationId?: string): Promise<Ticket | undefined> {
+    // CRITICAL: When organizationId is provided, enforce multi-tenant isolation
+    if (organizationId) {
+      const [ticket] = await db
+        .select()
+        .from(tickets)
+        .where(and(
+          eq(tickets.id, id),
+          eq(tickets.organizationId, organizationId)
+        ));
+      return ticket || undefined;
+    }
+    
+    // Legacy: Allow fetching without org filter (for admin operations)
     const [ticket] = await db.select().from(tickets).where(eq(tickets.id, id));
     return ticket || undefined;
   }
@@ -2810,7 +2823,20 @@ export class DatabaseStorage implements IStorage {
     return sheet || undefined;
   }
 
-  async getWorkerInfoSheetByWorkerId(workerId: string): Promise<WorkerInfoSheet | undefined> {
+  async getWorkerInfoSheetByWorkerId(workerId: string, organizationId?: string): Promise<WorkerInfoSheet | undefined> {
+    // CRITICAL: When organizationId is provided, enforce multi-tenant isolation
+    if (organizationId) {
+      const [sheet] = await db
+        .select()
+        .from(workerInfoSheets)
+        .where(and(
+          eq(workerInfoSheets.workerId, workerId),
+          eq(workerInfoSheets.organizationId, organizationId)
+        ));
+      return sheet || undefined;
+    }
+    
+    // Legacy: Allow fetching without org filter (for admin operations)
     const [sheet] = await db
       .select()
       .from(workerInfoSheets)
@@ -2835,16 +2861,21 @@ export class DatabaseStorage implements IStorage {
     return sheet;
   }
 
-  async getPendingWorkerInfoSheets(): Promise<WorkerInfoSheet[]> {
+  async getPendingWorkerInfoSheets(organizationId?: string): Promise<WorkerInfoSheet[]> {
+    const conditions = [
+      eq(workerInfoSheets.status, 'pending'),
+      sql`${workerInfoSheets.returnedAt} IS NULL`
+    ];
+    
+    // CRITICAL: Multi-tenant filtering - only return sheets for the specified organization
+    if (organizationId) {
+      conditions.push(eq(workerInfoSheets.organizationId, organizationId));
+    }
+    
     return await db
       .select()
       .from(workerInfoSheets)
-      .where(
-        and(
-          eq(workerInfoSheets.status, 'pending'),
-          sql`${workerInfoSheets.returnedAt} IS NULL`
-        )
-      )
+      .where(and(...conditions))
       .orderBy(asc(workerInfoSheets.requestedAt));
   }
 
@@ -2896,18 +2927,32 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(caseFeedback.createdAt));
   }
 
-  async getAllCaseFeedback(): Promise<CaseFeedback[]> {
+  async getAllCaseFeedback(organizationId?: string): Promise<CaseFeedback[]> {
+    // CRITICAL: Filter by organizationId to prevent cross-tenant data leakage
+    if (organizationId) {
+      return await db
+        .select()
+        .from(caseFeedback)
+        .where(eq(caseFeedback.organizationId, organizationId))
+        .orderBy(desc(caseFeedback.createdAt));
+    }
+    // SECURITY WARNING: Only return all feedback if no organizationId provided (admin/system use only)
     return await db
       .select()
       .from(caseFeedback)
       .orderBy(desc(caseFeedback.createdAt));
   }
 
-  async getCaseFeedbackForTraining(limit?: number): Promise<CaseFeedback[]> {
-    const query = db
+  async getCaseFeedbackForTraining(organizationId?: string, limit?: number): Promise<CaseFeedback[]> {
+    // CRITICAL: Filter by organizationId for per-tenant ML training
+    let query = db
       .select()
       .from(caseFeedback)
       .orderBy(desc(caseFeedback.createdAt));
+    
+    if (organizationId) {
+      query = query.where(eq(caseFeedback.organizationId, organizationId)) as any;
+    }
     
     if (limit) {
       return await query.limit(limit);
@@ -2932,17 +2977,32 @@ export class DatabaseStorage implements IStorage {
     return run || undefined;
   }
 
-  async getLatestModelTrainingRun(): Promise<ModelTrainingRun | undefined> {
+  async getLatestModelTrainingRun(organizationId?: string): Promise<ModelTrainingRun | undefined> {
+    // CRITICAL: Filter by organizationId for per-tenant models
+    const conditions = [eq(modelTrainingRuns.status, 'completed')];
+    if (organizationId) {
+      conditions.push(eq(modelTrainingRuns.organizationId, organizationId));
+    }
+    
     const [run] = await db
       .select()
       .from(modelTrainingRuns)
-      .where(eq(modelTrainingRuns.status, 'completed'))
+      .where(and(...conditions))
       .orderBy(desc(modelTrainingRuns.finishedAt))
       .limit(1);
     return run || undefined;
   }
 
-  async getAllModelTrainingRuns(): Promise<ModelTrainingRun[]> {
+  async getAllModelTrainingRuns(organizationId?: string): Promise<ModelTrainingRun[]> {
+    // CRITICAL: Filter by organizationId for multi-tenant isolation
+    if (organizationId) {
+      return await db
+        .select()
+        .from(modelTrainingRuns)
+        .where(eq(modelTrainingRuns.organizationId, organizationId))
+        .orderBy(desc(modelTrainingRuns.startedAt));
+    }
+    // SECURITY WARNING: Only return all runs if no organizationId provided (admin/system use only)
     return await db
       .select()
       .from(modelTrainingRuns)
