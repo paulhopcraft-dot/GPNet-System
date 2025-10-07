@@ -1,0 +1,1021 @@
+// ============================================================================
+// DATABASE SCHEMA (Prisma Schema)
+// File: prisma/schema.prisma
+// ============================================================================
+
+/*
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Worker {
+  id                     String              @id @default(uuid())
+  name                   String
+  company                String?
+  manager_name           String
+  date_of_injury         DateTime
+  expected_recovery_date DateTime?
+  status_off_work        Boolean             @default(false)
+  rtw_plan_present       Boolean             @default(false)
+  created_at             DateTime            @default(now())
+  updated_at             DateTime            @updatedAt
+  
+  cases                  Case[]
+  worker_info_sheet      WorkerInfoSheet?
+}
+
+model Case {
+  id                String         @id @default(uuid())
+  worker_id         String
+  risk_level        String
+  current_status    String
+  next_steps        Json           @default("[]")
+  escalation_level  Int            @default(0)
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  
+  worker            Worker         @relation(fields: [worker_id], references: [id])
+  attachments       Attachment[]
+  notes             CaseNote[]
+  feedback          CaseFeedback[]
+}
+
+model Attachment {
+  id         String   @id @default(uuid())
+  case_id    String
+  type       String
+  filename   String
+  url        String
+  created_at DateTime @default(now())
+  
+  case       Case     @relation(fields: [case_id], references: [id])
+}
+
+model CaseNote {
+  id                String   @id @default(uuid())
+  case_id           String
+  author            String
+  body              String
+  freshdesk_note_id String?
+  created_at        DateTime @default(now())
+  
+  case              Case     @relation(fields: [case_id], references: [id])
+}
+
+model WorkerInfoSheet {
+  id           String    @id @default(uuid())
+  worker_id    String    @unique
+  requested_at DateTime
+  returned_at  DateTime?
+  status       String
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  
+  worker       Worker    @relation(fields: [worker_id], references: [id])
+}
+
+enum FeedbackType {
+  correct
+  not_relevant
+  better_action
+}
+
+model CaseFeedback {
+  id                  String       @id @default(uuid())
+  case_id             String
+  suggestion_text     String
+  feedback_type       FeedbackType
+  better_action_text  String?
+  features            Json
+  created_at          DateTime     @default(now())
+  
+  case                Case         @relation(fields: [case_id], references: [id])
+}
+
+model ModelTrainingRun {
+  id                  String   @id @default(uuid())
+  started_at          DateTime
+  finished_at         DateTime?
+  version             String
+  metrics             Json
+  shap_top_features   Json?
+  created_at          DateTime @default(now())
+}
+*/
+
+// ============================================================================
+// DATABASE MIGRATIONS
+// File: migrations/001_initial_schema.sql
+// ============================================================================
+
+/*
+CREATE TABLE workers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(255) NOT NULL,
+  company VARCHAR(255),
+  manager_name VARCHAR(255) NOT NULL,
+  date_of_injury TIMESTAMP NOT NULL,
+  expected_recovery_date TIMESTAMP,
+  status_off_work BOOLEAN DEFAULT FALSE,
+  rtw_plan_present BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE cases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  worker_id UUID NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+  risk_level VARCHAR(50) NOT NULL,
+  current_status TEXT NOT NULL,
+  next_steps JSONB DEFAULT '[]',
+  escalation_level INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE attachments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_id UUID NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  type VARCHAR(100) NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  url TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE case_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_id UUID NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  author VARCHAR(255) NOT NULL,
+  body TEXT NOT NULL,
+  freshdesk_note_id VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE worker_info_sheet (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  worker_id UUID UNIQUE NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
+  requested_at TIMESTAMP NOT NULL,
+  returned_at TIMESTAMP,
+  status VARCHAR(50) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TYPE feedback_type AS ENUM ('correct', 'not_relevant', 'better_action');
+
+CREATE TABLE case_feedback (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  case_id UUID NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+  suggestion_text TEXT NOT NULL,
+  feedback_type feedback_type NOT NULL,
+  better_action_text TEXT,
+  features JSONB NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE model_training_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  started_at TIMESTAMP NOT NULL,
+  finished_at TIMESTAMP,
+  version VARCHAR(100) NOT NULL,
+  metrics JSONB NOT NULL,
+  shap_top_features JSONB,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_cases_worker ON cases(worker_id);
+CREATE INDEX idx_attachments_case ON attachments(case_id);
+CREATE INDEX idx_notes_case ON case_notes(case_id);
+CREATE INDEX idx_feedback_case ON case_feedback(case_id);
+*/
+
+// ============================================================================
+// RULE ENGINE
+// File: src/rules/engine.ts
+// ============================================================================
+
+interface Worker {
+  status_off_work: boolean;
+  rtw_plan_present: boolean;
+  date_of_injury: Date;
+}
+
+interface Case {
+  id: string;
+  worker_id: string;
+  escalation_level: number;
+}
+
+interface Message {
+  from: string;
+  body: string;
+  created_at: Date;
+}
+
+export function deriveRisk(worker: Worker): string {
+  // Rule: If worker is off work OR there is no current RTW plan, Risk Level must be High
+  if (worker.status_off_work || !worker.rtw_plan_present) {
+    return 'High';
+  }
+  
+  // Calculate based on time since injury
+  const daysSinceInjury = Math.floor(
+    (Date.now() - worker.date_of_injury.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  
+  if (daysSinceInjury > 90) {
+    return 'High';
+  } else if (daysSinceInjury > 30) {
+    return 'Medium';
+  }
+  
+  return 'Normal';
+}
+
+export function deriveCurrentStatus(messages: Message[]): string {
+  if (!messages || messages.length === 0) {
+    return 'No recent activity';
+  }
+  
+  // Take last 3-10 messages and summarize
+  const recentMessages = messages.slice(-10);
+  
+  // Extract key information
+  const keyPhrases: string[] = [];
+  const keywords = [
+    'claim', 'submitted', 'awaiting', 'seeking', 'suitable duties',
+    'medical certificate', 'injury check', 'completed', 'forwarded',
+    'requested', 'determination', 'assessment', 'recovery', 'RTW'
+  ];
+  
+  recentMessages.forEach(msg => {
+    const body = msg.body.toLowerCase();
+    keywords.forEach(keyword => {
+      if (body.includes(keyword.toLowerCase())) {
+        const sentences = msg.body.split(/[.!?]+/);
+        const relevantSentence = sentences.find(s => 
+          s.toLowerCase().includes(keyword.toLowerCase())
+        );
+        if (relevantSentence && !keyPhrases.includes(relevantSentence.trim())) {
+          keyPhrases.push(relevantSentence.trim());
+        }
+      }
+    });
+  });
+  
+  // Construct summary
+  if (keyPhrases.length === 0) {
+    return `Last contact: ${recentMessages[recentMessages.length - 1].created_at.toLocaleDateString()}`;
+  }
+  
+  return keyPhrases.slice(0, 3).join('. ') + '.';
+}
+
+export function deriveNextSteps(
+  caseData: Case,
+  worker: Worker,
+  currentStatus: string,
+  messages: Message[],
+  workerInfoSheet?: { requested_at: Date; returned_at?: Date; status: string }
+): Array<{ text: string; priority: number; source: string }> {
+  const steps: Array<{ text: string; priority: number; source: string }> = [];
+  
+  // Rule: Check worker info sheet escalation
+  if (workerInfoSheet && !workerInfoSheet.returned_at) {
+    const daysSinceRequest = Math.floor(
+      (Date.now() - workerInfoSheet.requested_at.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    
+    if (daysSinceRequest >= 14) {
+      const escalationContacts = ['Zora', 'Wayne', 'Michelle'];
+      const level = Math.min(caseData.escalation_level, escalationContacts.length - 1);
+      steps.push({
+        text: `Escalate Worker Information Sheet request to ${escalationContacts[level]}`,
+        priority: 1,
+        source: 'rule'
+      });
+    } else if (daysSinceRequest >= 10) {
+      steps.push({
+        text: 'Follow up on Worker Information Sheet - due soon',
+        priority: 2,
+        source: 'rule'
+      });
+    }
+  }
+  
+  // Rule: Off work without RTW plan
+  if (worker.status_off_work && !worker.rtw_plan_present) {
+    steps.push({
+      text: 'Develop Return to Work plan with worker and manager',
+      priority: 1,
+      source: 'rule'
+    });
+  }
+  
+  // Rule: Off work with RTW plan
+  if (worker.status_off_work && worker.rtw_plan_present) {
+    steps.push({
+      text: 'Review and update Return to Work plan progress',
+      priority: 2,
+      source: 'rule'
+    });
+  }
+  
+  // Rule: Check for stale communications
+  if (messages.length > 0) {
+    const lastMessage = messages[messages.length - 1];
+    const daysSinceLastContact = Math.floor(
+      (Date.now() - lastMessage.created_at.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    
+    if (daysSinceLastContact >= 7) {
+      steps.push({
+        text: 'Follow up - no contact for 7+ days',
+        priority: 3,
+        source: 'rule'
+      });
+    }
+  }
+  
+  // Rule: Awaiting determination
+  if (currentStatus.toLowerCase().includes('awaiting determination')) {
+    steps.push({
+      text: 'Check claim status with insurer',
+      priority: 2,
+      source: 'rule'
+    });
+  }
+  
+  // Rule: Seeking suitable duties
+  if (currentStatus.toLowerCase().includes('seeking suitable duties')) {
+    steps.push({
+      text: 'Follow up on alternative duty options with manager',
+      priority: 1,
+      source: 'rule'
+    });
+  }
+  
+  // Sort by priority
+  steps.sort((a, b) => a.priority - b.priority);
+  
+  return steps;
+}
+
+// ============================================================================
+// FRESHDESK CLIENT
+// File: src/integrations/freshdesk.ts
+// ============================================================================
+
+import axios from 'axios';
+
+export class FreshdeskClient {
+  private baseURL: string;
+  private apiKey: string;
+  private productId: string;
+  
+  constructor() {
+    this.baseURL = process.env.FRESHDESK_BASE_URL || '';
+    this.apiKey = process.env.FRESHDESK_API_KEY || '';
+    this.productId = process.env.FRESHDESK_PRODUCT_ID || '';
+  }
+  
+  private getHeaders() {
+    return {
+      'Authorization': `Basic ${Buffer.from(`${this.apiKey}:X`).toString('base64')}`,
+      'Content-Type': 'application/json'
+    };
+  }
+  
+  async createPrivateNote(ticketId: string, text: string): Promise<any> {
+    try {
+      const response = await axios.post(
+        `${this.baseURL}/api/v2/tickets/${ticketId}/notes`,
+        {
+          body: text,
+          private: true
+        },
+        { headers: this.getHeaders() }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Freshdesk API error:', error);
+      throw new Error('Failed to create private note in Freshdesk');
+    }
+  }
+  
+  async listRecentMessages(ticketId: string, limit: number = 10): Promise<any[]> {
+    try {
+      const response = await axios.get(
+        `${this.baseURL}/api/v2/tickets/${ticketId}/conversations`,
+        { headers: this.getHeaders() }
+      );
+      
+      return response.data
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, limit);
+    } catch (error) {
+      console.error('Freshdesk API error:', error);
+      throw new Error('Failed to fetch messages from Freshdesk');
+    }
+  }
+  
+  async getTicket(ticketId: string): Promise<any> {
+    try {
+      const response = await axios.get(
+        `${this.baseURL}/api/v2/tickets/${ticketId}`,
+        { headers: this.getHeaders() }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Freshdesk API error:', error);
+      throw new Error('Failed to fetch ticket from Freshdesk');
+    }
+  }
+}
+
+// ============================================================================
+// XGBOOST MODEL UTILITIES
+// File: src/ml/xgboost-model.ts
+// ============================================================================
+
+interface TrainingFeatures {
+  worker_off_work: number;
+  worker_rtw_plan_present: number;
+  days_since_injury: number;
+  days_since_last_employer_reply: number;
+  days_since_last_worker_reply: number;
+  has_pending_info_sheet: number;
+  days_since_info_sheet_request: number;
+  claim_status: number;
+  risk_level_numeric: number;
+}
+
+interface NextStepPrediction {
+  text: string;
+  confidence: number;
+  features: TrainingFeatures;
+}
+
+export class XGBoostNextStepModel {
+  private modelPath: string;
+  private modelLoaded: boolean = false;
+  private model: any = null;
+  
+  constructor(modelPath: string = './models/nextstep_model.json') {
+    this.modelPath = modelPath;
+  }
+  
+  async load(): Promise<void> {
+    try {
+      // In production, use xgboost-node or similar library
+      // For now, we'll use a simple placeholder
+      const fs = require('fs').promises;
+      const modelData = await fs.readFile(this.modelPath, 'utf8');
+      this.model = JSON.parse(modelData);
+      this.modelLoaded = true;
+    } catch (error) {
+      console.warn('XGBoost model not found, using fallback suggestions');
+      this.modelLoaded = false;
+    }
+  }
+  
+  extractFeatures(worker: any, caseData: any, messages: any[], workerInfoSheet?: any): TrainingFeatures {
+    const now = Date.now();
+    const daysSinceInjury = Math.floor((now - new Date(worker.date_of_injury).getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Find last employer and worker replies
+    let daysSinceEmployerReply = 999;
+    let daysSinceWorkerReply = 999;
+    
+    messages.forEach(msg => {
+      const days = Math.floor((now - new Date(msg.created_at).getTime()) / (1000 * 60 * 60 * 24));
+      if (msg.from.includes('employer') || msg.from.includes('manager')) {
+        daysSinceEmployerReply = Math.min(daysSinceEmployerReply, days);
+      } else {
+        daysSinceWorkerReply = Math.min(daysSinceWorkerReply, days);
+      }
+    });
+    
+    const hasPendingInfoSheet = workerInfoSheet && !workerInfoSheet.returned_at ? 1 : 0;
+    const daysSinceInfoSheetRequest = workerInfoSheet && !workerInfoSheet.returned_at
+      ? Math.floor((now - new Date(workerInfoSheet.requested_at).getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+    
+    const riskLevelMap: Record<string, number> = { 'Normal': 0, 'Medium': 1, 'High': 2 };
+    
+    return {
+      worker_off_work: worker.status_off_work ? 1 : 0,
+      worker_rtw_plan_present: worker.rtw_plan_present ? 1 : 0,
+      days_since_injury: daysSinceInjury,
+      days_since_last_employer_reply: daysSinceEmployerReply,
+      days_since_last_worker_reply: daysSinceWorkerReply,
+      has_pending_info_sheet: hasPendingInfoSheet,
+      days_since_info_sheet_request: daysSinceInfoSheetRequest,
+      claim_status: 0, // Would map from actual claim status
+      risk_level_numeric: riskLevelMap[caseData.risk_level] || 0
+    };
+  }
+  
+  predict(features: TrainingFeatures): NextStepPrediction[] {
+    if (!this.modelLoaded) {
+      // Fallback heuristic-based suggestions
+      return this.getFallbackSuggestions(features);
+    }
+    
+    // In production, run XGBoost inference here
+    // For now, return fallback
+    return this.getFallbackSuggestions(features);
+  }
+  
+  private getFallbackSuggestions(features: TrainingFeatures): NextStepPrediction[] {
+    const suggestions: NextStepPrediction[] = [];
+    
+    if (features.worker_off_work === 1 && features.worker_rtw_plan_present === 0) {
+      suggestions.push({
+        text: 'Initiate Return to Work planning with worker and manager',
+        confidence: 0.9,
+        features
+      });
+    }
+    
+    if (features.days_since_last_employer_reply > 7) {
+      suggestions.push({
+        text: 'Follow up with employer - no response for 7+ days',
+        confidence: 0.8,
+        features
+      });
+    }
+    
+    if (features.has_pending_info_sheet === 1 && features.days_since_info_sheet_request > 7) {
+      suggestions.push({
+        text: 'Send reminder for Worker Information Sheet',
+        confidence: 0.85,
+        features
+      });
+    }
+    
+    return suggestions.slice(0, 3);
+  }
+}
+
+// ============================================================================
+// MODEL TRAINING SCRIPT
+// File: src/ml/train-nextstep.ts
+// ============================================================================
+
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+async function trainNextStepModel() {
+  console.log('Starting XGBoost model training...');
+  
+  const startTime = new Date();
+  
+  // Fetch all feedback with features
+  const feedbackData = await prisma.caseFeedback.findMany({
+    where: {
+      feedback_type: 'correct'
+    },
+    include: {
+      case: {
+        include: {
+          worker: true
+        }
+      }
+    }
+  });
+  
+  console.log(`Found ${feedbackData.length} training examples`);
+  
+  if (feedbackData.length < 10) {
+    console.warn('Insufficient training data. Need at least 10 examples.');
+    return;
+  }
+  
+  // Prepare training data
+  const trainingData = feedbackData.map(fb => ({
+    features: fb.features as any,
+    label: fb.suggestion_text
+  }));
+  
+  // In production, use xgboost-node for actual training
+  // This is a placeholder for the training logic
+  const modelVersion = `v${Date.now()}`;
+  
+  // Mock training metrics
+  const metrics = {
+    accuracy: 0.87,
+    precision: 0.85,
+    recall: 0.89,
+    f1_score: 0.87,
+    training_samples: trainingData.length
+  };
+  
+  // Mock SHAP values (feature importance)
+  const shapFeatures = {
+    worker_off_work: 0.32,
+    days_since_injury: 0.28,
+    worker_rtw_plan_present: 0.15,
+    days_since_last_employer_reply: 0.12,
+    has_pending_info_sheet: 0.08,
+    days_since_info_sheet_request: 0.05
+  };
+  
+  // Save training run
+  await prisma.modelTrainingRun.create({
+    data: {
+      started_at: startTime,
+      finished_at: new Date(),
+      version: modelVersion,
+      metrics,
+      shap_top_features: shapFeatures
+    }
+  });
+  
+  // In production, save the actual model artifact
+  const fs = require('fs').promises;
+  await fs.writeFile(
+    './models/nextstep_model.json',
+    JSON.stringify({ version: modelVersion, metrics, features: shapFeatures })
+  );
+  
+  console.log('Training complete!');
+  console.log('Metrics:', metrics);
+  console.log('Top features:', shapFeatures);
+  
+  return { version: modelVersion, metrics, shapFeatures };
+}
+
+// CLI execution
+if (require.main === module) {
+  trainNextStepModel()
+    .then(() => process.exit(0))
+    .catch(err => {
+      console.error('Training failed:', err);
+      process.exit(1);
+    });
+}
+
+export { trainNextStepModel };
+
+// ============================================================================
+// API ROUTES
+// File: src/routes/cases.ts
+// ============================================================================
+
+import { Router } from 'express';
+import { PrismaClient } from '@prisma/client';
+import { FreshdeskClient } from '../integrations/freshdesk';
+import { deriveRisk, deriveCurrentStatus, deriveNextSteps } from '../rules/engine';
+import { XGBoostNextStepModel } from '../ml/xgboost-model';
+
+const router = Router();
+const prisma = new PrismaClient();
+const freshdesk = new FreshdeskClient();
+const mlModel = new XGBoostNextStepModel();
+
+// Load ML model on startup
+mlModel.load().catch(err => console.warn('ML model not loaded:', err));
+
+// GET /api/cases/:id
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const caseData = await prisma.case.findUnique({
+      where: { id },
+      include: {
+        worker: true,
+        attachments: {
+          orderBy: { created_at: 'desc' }
+        },
+        notes: {
+          orderBy: { created_at: 'desc' }
+        }
+      }
+    });
+    
+    if (!caseData) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    
+    res.json(caseData);
+  } catch (error) {
+    console.error('Error fetching case:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/cases/:id/notes
+router.post('/:id/notes', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { body, author = 'System' } = req.body;
+    
+    if (!body) {
+      return res.status(400).json({ error: 'Note body is required' });
+    }
+    
+    const caseData = await prisma.case.findUnique({
+      where: { id },
+      include: { worker: true }
+    });
+    
+    if (!caseData) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    
+    // Post to Freshdesk
+    let freshdeskNoteId = null;
+    try {
+      const freshdeskTicketId = (caseData as any).freshdesk_ticket_id;
+      if (freshdeskTicketId) {
+        const result = await freshdesk.createPrivateNote(freshdeskTicketId, body);
+        freshdeskNoteId = result.id;
+      }
+    } catch (fdError) {
+      console.error('Freshdesk sync failed:', fdError);
+    }
+    
+    // Save locally
+    const note = await prisma.caseNote.create({
+      data: {
+        case_id: id,
+        author,
+        body,
+        freshdesk_note_id: freshdeskNoteId
+      }
+    });
+    
+    res.json(note);
+  } catch (error) {
+    console.error('Error creating note:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/cases/:id/next-steps/confirm
+router.post('/:id/next-steps/confirm', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { step_text, confirmed_by = 'User' } = req.body;
+    
+    const caseData = await prisma.case.findUnique({ where: { id } });
+    if (!caseData) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    
+    const nextSteps = (caseData.next_steps as any[]) || [];
+    const updated = nextSteps.map(step =>
+      step.text === step_text
+        ? { ...step, confirmed: true, confirmed_by, confirmed_at: new Date().toISOString() }
+        : step
+    );
+    
+    await prisma.case.update({
+      where: { id },
+      data: { next_steps: updated }
+    });
+    
+    res.json({ success: true, next_steps: updated });
+  } catch (error) {
+    console.error('Error confirming step:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/cases/:id/next-steps/feedback
+router.post('/:id/next-steps/feedback', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { suggestion_text, feedback_type, better_action_text, features = {} } = req.body;
+    
+    const feedback = await prisma.caseFeedback.create({
+      data: {
+        case_id: id,
+        suggestion_text,
+        feedback_type,
+        better_action_text,
+        features
+      }
+    });
+    
+    res.json(feedback);
+  } catch (error) {
+    console.error('Error recording feedback:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/cases/:id/sync
+router.post('/:id/sync', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const caseData = await prisma.case.findUnique({
+      where: { id },
+      include: { worker: true }
+    });
+    
+    if (!caseData) {
+      return res.status(404).json({ error: 'Case not found' });
+    }
+    
+    // Fetch latest messages from Freshdesk
+    const freshdeskTicketId = (caseData as any).freshdesk_ticket_id;
+    let messages: any[] = [];
+    
+    if (freshdeskTicketId) {
+      try {
+        messages = await freshdesk.listRecentMessages(freshdeskTicketId, 10);
+      } catch (error) {
+        console.error('Failed to fetch Freshdesk messages:', error);
+      }
+    }
+    
+    // Recalculate risk
+    const riskLevel = deriveRisk(caseData.worker);
+    
+    // Regenerate current status
+    const currentStatus = deriveCurrentStatus(messages);
+    
+    // Get worker info sheet
+    const workerInfoSheet = await prisma.workerInfoSheet.findUnique({
+      where: { worker_id: caseData.worker_id }
+    });
+    
+    // Regenerate next steps
+    const ruleBasedSteps = deriveNextSteps(
+      caseData,
+      caseData.worker,
+      currentStatus,
+      messages,
+      workerInfoSheet || undefined
+    );
+    
+    // If rules produce fewer than 3 steps, use ML model
+    let allSteps = [...ruleBasedSteps];
+    if (allSteps.length < 3) {
+      const features = mlModel.extractFeatures(caseData.worker, caseData, messages, workerInfoSheet);
+      const mlSuggestions = mlModel.predict(features);
+      
+      mlSuggestions.forEach((pred, idx) => {
+        if (!allSteps.find(s => s.text === pred.text)) {
+          allSteps.push({
+            text: pred.text,
+            priority: allSteps.length + 1,
+            source: 'ml'
+          });
+        }
+      });
+    }
+    
+    // Update case
+    const updated = await prisma.case.update({
+      where: { id },
+      data: {
+        risk_level: riskLevel,
+        current_status: currentStatus,
+        next_steps: allSteps
+      },
+      include: { worker: true, attachments: true }
+    });
+    
+    res.json(updated);
+  } catch (error) {
+    console.error('Error syncing case:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+export default router;
+
+// ============================================================================
+// WORKER INFO SHEET ROUTES
+// File: src/routes/worker-info.ts
+// ============================================================================
+
+import { Router } from 'express';
+import { PrismaClient } from '@prisma/client';
+import { FreshdeskClient } from '../integrations/freshdesk';
+
+const router = Router();
+const prisma = new PrismaClient();
+const freshdesk = new FreshdeskClient();
+
+// POST /api/worker-info/:workerId/request
+router.post('/:workerId/request', async (req, res) => {
+  try {
+    const { workerId } = req.params;
+    
+    const existing = await prisma.workerInfoSheet.findUnique({
+      where: { worker_id: workerId }
+    });
+    
+    if (existing && !existing.returned_at) {
+      return res.status(400).json({ error: 'Request already pending' });
+    }
+    
+    const sheet = await prisma.workerInfoSheet.upsert({
+      where: { worker_id: workerId },
+      create: {
+        worker_id: workerId,
+        requested_at: new Date(),
+        status: 'pending'
+      },
+      update: {
+        requested_at: new Date(),
+        status: 'pending',
+        returned_at: null
+      }
+    });
+    
+    res.json(sheet);
+  } catch (error) {
+    console.error('Error requesting info sheet:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/worker-info/:workerId/mark-returned
+router.post('/:workerId/mark-returned', async (req, res) => {
+  try {
+    const { workerId } = req.params;
+    
+    const sheet = await prisma.workerInfoSheet.update({
+      where: { worker_id: workerId },
+      data: {
+        returned_at: new Date(),
+        status: 'completed'
+      }
+    });
+    
+    // Reset escalation on associated cases
+    await prisma.case.updateMany({
+      where: { worker_id: workerId },
+      data: { escalation_level: 0 }
+    });
+    
+    res.json(sheet);
+  } catch (error) {
+    console.error('Error marking sheet returned:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+export default router;
+
+// ============================================================================
+// MODEL TRAINING ROUTES
+// File: src/routes/model.ts
+// ============================================================================
+
+import { Router } from 'express';
+import { PrismaClient } from '@prisma/client';
+import { trainNextStepModel } from '../ml/train-nextstep';
+
+const router = Router();
+const prisma = new PrismaClient();
+
+// POST /api/model/train
+router.post('/train', async (req, res) => {
+  try {
+    const result = await trainNextStepModel();
+    res.json(result);
+  } catch (error) {
+    console.error('Training error:', error);
+    res.status(500).json({ error: 'Training failed' });
+  }
+});
+
+// GET /api/model/status
+router.get('/status', async (req, res) => {
+  try {
+    const latestRun = await prisma.modelTrainingRun.findFirst({
+      orderBy: { created_at: 'desc' }
+    });
+    
+    if (!latestRun) {
+      return res.json({ status: 'no_model', message: 'No trained model available' });
+    }
+    
+    res.json({
+      status: 'ready',
+      version: latestRun.version,
+      metrics: latestRun.metrics,
+      shap_features: latestRun.shap_top_features,
+      trained_at: latestRun.created_at
+    });
+  } catch (error) {
+    console.error('Error fetching model status:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+export default router;

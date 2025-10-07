@@ -12,7 +12,7 @@ DEMO_DATA_DIR = DATA_DIR / "demo"
 MODEL_VERSION = "v1.0"
 
 # UC-1: Case Priority Thresholds
-UC1_HIGH_THRESHOLD = 0.70
+UC1_HIGH_THRESHOLD = 0.75
 UC1_MEDIUM_THRESHOLD = 0.40
 
 # UC-2: Check-in Escalation Threshold
