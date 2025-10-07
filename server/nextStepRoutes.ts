@@ -108,4 +108,109 @@ router.get('/preview/:ticketId', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * Get comprehensive case summary for analysis dialog
+ */
+router.get('/summary/:ticketId', requireAuth, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { fdId } = req.query;
+
+    const { storage } = await import('./storage');
+    const { db } = await import('./db');
+    const { medicalCertificates, stepHistory } = await import('@shared/schema');
+    const { eq, desc } = await import('drizzle-orm');
+    
+    // Get ticket with error handling
+    let ticket;
+    try {
+      ticket = await storage.getTicket(ticketId);
+    } catch (dbError) {
+      console.error('Database error fetching ticket:', dbError);
+      return res.status(503).json({ 
+        error: 'Database unavailable',
+        message: 'Unable to fetch ticket information. Please try again later.'
+      });
+    }
+    
+    if (!ticket) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    // Get latest medical certificate
+    let latestCertificate = null;
+    try {
+      const certs = await db
+        .select()
+        .from(medicalCertificates)
+        .where(eq(medicalCertificates.ticketId, ticketId))
+        .orderBy(desc(medicalCertificates.expiryDate))
+        .limit(1);
+      
+      if (certs.length > 0) {
+        const cert = certs[0];
+        latestCertificate = {
+          status: cert.status || 'Active',
+          expiryDate: cert.expiryDate?.toISOString() || new Date().toISOString(),
+          issuedBy: cert.issuedBy || 'Unknown'
+        };
+      }
+    } catch (error) {
+      console.error('Error fetching medical certificates:', error);
+    }
+
+    // Get recent steps
+    let recentSteps: Array<{step: string, completedAt: string}> = [];
+    try {
+      const steps = await db
+        .select()
+        .from(stepHistory)
+        .where(eq(stepHistory.ticketId, ticketId))
+        .orderBy(desc(stepHistory.completedAt))
+        .limit(3);
+      
+      recentSteps = steps.map(s => ({
+        step: s.step,
+        completedAt: s.completedAt?.toISOString() || new Date().toISOString()
+      }));
+    } catch (error) {
+      console.error('Error fetching step history:', error);
+    }
+
+    // Perform AI analysis to get suggested next step
+    const analysis = await nextStepService.analyzeAndUpdateNextStep(
+      ticketId, 
+      fdId ? parseInt(fdId as string) : ticket.fdId ?? undefined
+    );
+
+    const summary = {
+      ticketId: ticket.id,
+      caseType: ticket.caseType,
+      workerName: ticket.workerName || 'Unknown',
+      company: ticket.companyName || 'Unknown',
+      dateOfInjury: ticket.dateOfInjury?.toISOString(),
+      injuryStatus: ticket.injuryDetails?.status,
+      latestCertificate,
+      recentSteps,
+      suggestedNextStep: {
+        action: analysis?.nextStep || ticket.nextStep || 'Review case',
+        assignedTo: analysis?.assignedTo || ticket.assignedOwner,
+        dueDate: ticket.slaDueAt?.toISOString(),
+        priority: analysis?.priority || ticket.priority || 'medium',
+        urgency: analysis?.urgency || 'routine',
+        reasoning: analysis?.reasoning || 'Based on current case status'
+      },
+      currentStatus: ticket.status
+    };
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Case summary error:', error);
+    res.status(500).json({ 
+      error: 'Summary failed',
+      message: 'Unable to generate case summary. Please try again.'
+    });
+  }
+});
+
 export { router as nextStepRoutes };
