@@ -28,8 +28,15 @@ export class WorkerInfoSheetService {
       return existing;
     }
 
-    // Create new request
+    // CRITICAL: Get organizationId from ticket for multi-tenant partitioning
+    const ticket = await storage.getTicket(ticketId);
+    if (!ticket || !ticket.organizationId) {
+      throw new Error(`Cannot request Worker Info Sheet: ticket ${ticketId} has no organizationId`);
+    }
+
+    // Create new request with organizationId
     const sheet = await storage.createWorkerInfoSheet({
+      organizationId: ticket.organizationId, // CRITICAL: Multi-tenant partitioning
       ticketId,
       workerId,
       requestedAt: new Date(),
@@ -37,10 +44,10 @@ export class WorkerInfoSheetService {
       escalationLevel: 0
     });
 
-    console.log(`✅ Worker Info Sheet requested for ticket ${ticketId} (assigned to ${ESCALATION_CHAIN[0].name})`);
+    console.log(`✅ Worker Info Sheet requested for ticket ${ticketId} (org: ${ticket.organizationId}, assigned to ${ESCALATION_CHAIN[0].name})`);
     
-    // TODO: Send initial email to employer requesting the sheet
-    await this.sendRequestEmail(sheet, ESCALATION_CHAIN[0]);
+    // TODO: Send initial email to employer requesting the sheet (use per-tenant Freshdesk settings)
+    await this.sendRequestEmail(sheet, ESCALATION_CHAIN[0], ticket.organizationId);
 
     return sheet;
   }
@@ -61,37 +68,45 @@ export class WorkerInfoSheetService {
   /**
    * Check all pending Worker Info Sheets for escalation
    * Called by background job every 6 hours
+   * CRITICAL: Processes each organization separately for multi-tenant isolation
    */
   async checkAndEscalate(): Promise<void> {
-    const pendingSheets = await storage.getPendingWorkerInfoSheets();
-    console.log(`Checking ${pendingSheets.length} pending Worker Info Sheets for escalation...`);
+    // CRITICAL: Get all organizations to process each tenant separately
+    const allOrganizations = await storage.getAllOrganizations();
+    console.log(`Checking Worker Info Sheets for ${allOrganizations.length} organizations...`);
 
-    const now = new Date();
-    
-    for (const sheet of pendingSheets) {
-      const daysSinceRequest = this.calculateDaysDifference(sheet.requestedAt, now);
-      const daysSinceLastEscalation = sheet.lastEscalatedAt 
-        ? this.calculateDaysDifference(sheet.lastEscalatedAt, now)
-        : daysSinceRequest;
+    for (const org of allOrganizations) {
+      // CRITICAL: Filter sheets by organizationId to prevent cross-tenant leakage
+      const pendingSheets = await storage.getPendingWorkerInfoSheets(org.id);
+      console.log(`  ${org.name}: ${pendingSheets.length} pending sheets`);
 
-      const currentLevel = sheet.escalationLevel || 0;
-      const shouldEscalate = daysSinceLastEscalation >= ESCALATION_INTERVAL_DAYS;
+      const now = new Date();
+      
+      for (const sheet of pendingSheets) {
+        const daysSinceRequest = this.calculateDaysDifference(sheet.requestedAt, now);
+        const daysSinceLastEscalation = sheet.lastEscalatedAt 
+          ? this.calculateDaysDifference(sheet.lastEscalatedAt, now)
+          : daysSinceRequest;
 
-      if (shouldEscalate && currentLevel < ESCALATION_CHAIN.length - 1) {
-        await this.escalate(sheet);
-      } else if (currentLevel >= ESCALATION_CHAIN.length - 1 && daysSinceLastEscalation >= ESCALATION_INTERVAL_DAYS) {
-        // Already at Michelle (final escalation), keep sending reminders every 14 days
-        await this.sendFinalEscalationReminder(sheet);
+        const currentLevel = sheet.escalationLevel || 0;
+        const shouldEscalate = daysSinceLastEscalation >= ESCALATION_INTERVAL_DAYS;
+
+        if (shouldEscalate && currentLevel < ESCALATION_CHAIN.length - 1) {
+          await this.escalate(sheet, org.id);
+        } else if (currentLevel >= ESCALATION_CHAIN.length - 1 && daysSinceLastEscalation >= ESCALATION_INTERVAL_DAYS) {
+          // Already at Michelle (final escalation), keep sending reminders every 14 days
+          await this.sendFinalEscalationReminder(sheet, org.id);
+        }
       }
     }
 
-    console.log('✅ Worker Info Sheet escalation check complete');
+    console.log('✅ Worker Info Sheet escalation check complete (all organizations processed)');
   }
 
   /**
    * Escalate Worker Info Sheet to next level
    */
-  private async escalate(sheet: WorkerInfoSheet): Promise<void> {
+  private async escalate(sheet: WorkerInfoSheet, organizationId: string): Promise<void> {
     const newLevel = (sheet.escalationLevel || 0) + 1;
     
     if (newLevel >= ESCALATION_CHAIN.length) {
@@ -102,21 +117,21 @@ export class WorkerInfoSheetService {
     const escalatedSheet = await storage.escalateWorkerInfoSheet(sheet.id);
     const assignedTo = ESCALATION_CHAIN[newLevel];
 
-    console.log(`⬆️ Worker Info Sheet ${sheet.id} escalated to ${assignedTo.name} (Level ${newLevel})`);
+    console.log(`⬆️ Worker Info Sheet ${sheet.id} escalated to ${assignedTo.name} (Level ${newLevel}) for org ${organizationId}`);
     
-    // Send escalation email
-    await this.sendEscalationEmail(escalatedSheet, assignedTo);
+    // Send escalation email (with per-tenant Freshdesk settings)
+    await this.sendEscalationEmail(escalatedSheet, assignedTo, organizationId);
   }
 
   /**
    * Send final escalation reminder (when already at Michelle)
    */
-  private async sendFinalEscalationReminder(sheet: WorkerInfoSheet): Promise<void> {
+  private async sendFinalEscalationReminder(sheet: WorkerInfoSheet, organizationId: string): Promise<void> {
     const michelle = ESCALATION_CHAIN[ESCALATION_CHAIN.length - 1];
-    console.log(`📧 Sending final reminder for Worker Info Sheet ${sheet.id} to ${michelle.name}`);
+    console.log(`📧 Sending final reminder for Worker Info Sheet ${sheet.id} to ${michelle.name} for org ${organizationId}`);
     
-    // TODO: Send reminder email
-    await this.sendReminderEmail(sheet, michelle);
+    // TODO: Send reminder email (with per-tenant Freshdesk settings)
+    await this.sendReminderEmail(sheet, michelle, organizationId);
   }
 
   /**
@@ -143,29 +158,36 @@ export class WorkerInfoSheetService {
   }
 
   // Email sending methods (placeholders for actual email integration)
+  // CRITICAL: All methods accept organizationId to use per-tenant Freshdesk credentials
 
-  private async sendRequestEmail(sheet: WorkerInfoSheet, assignedTo: EscalationContact): Promise<void> {
-    console.log(`📧 [TODO] Send Worker Info Sheet request email to ${assignedTo.name} (${assignedTo.email})`);
+  private async sendRequestEmail(sheet: WorkerInfoSheet, assignedTo: EscalationContact, organizationId: string): Promise<void> {
+    console.log(`📧 [TODO] Send Worker Info Sheet request email to ${assignedTo.name} for org ${organizationId}`);
     // In real implementation, this would:
     // 1. Get employer contact details from ticket
-    // 2. Send email with Worker Info Sheet form/template
-    // 3. CC the assigned coordinator (Zora initially)
+    // 2. Get organization-specific Freshdesk credentials/settings
+    // 3. Send email with Worker Info Sheet form/template
+    // 4. CC the assigned coordinator (Zora initially)
+    // 5. Use organization's email domain and branding
   }
 
-  private async sendEscalationEmail(sheet: WorkerInfoSheet, assignedTo: EscalationContact): Promise<void> {
-    console.log(`📧 [TODO] Send escalation email to ${assignedTo.name} (${assignedTo.email})`);
+  private async sendEscalationEmail(sheet: WorkerInfoSheet, assignedTo: EscalationContact, organizationId: string): Promise<void> {
+    console.log(`📧 [TODO] Send escalation email to ${assignedTo.name} for org ${organizationId}`);
     // In real implementation, this would:
-    // 1. Send email to next level in escalation chain
-    // 2. Include case details and reason for escalation
-    // 3. Request immediate action
+    // 1. Get organization-specific Freshdesk credentials/settings
+    // 2. Send email to next level in escalation chain
+    // 3. Include case details and reason for escalation
+    // 4. Request immediate action
+    // 5. Use organization's email domain (not hardcoded @gpnet.com)
   }
 
-  private async sendReminderEmail(sheet: WorkerInfoSheet, assignedTo: EscalationContact): Promise<void> {
-    console.log(`📧 [TODO] Send reminder email to ${assignedTo.name} (${assignedTo.email})`);
+  private async sendReminderEmail(sheet: WorkerInfoSheet, assignedTo: EscalationContact, organizationId: string): Promise<void> {
+    console.log(`📧 [TODO] Send reminder email to ${assignedTo.name} for org ${organizationId}`);
     // In real implementation, this would:
-    // 1. Send reminder email
-    // 2. Highlight urgency (14 days overdue)
-    // 3. Request escalation to management if needed
+    // 1. Get organization-specific Freshdesk credentials/settings
+    // 2. Send reminder email
+    // 3. Highlight urgency (14 days overdue)
+    // 4. Request escalation to management if needed
+    // 5. Use organization's email domain and branding
   }
 
   // Helper methods
@@ -212,9 +234,11 @@ export class WorkerInfoSheetService {
 
   /**
    * Get all overdue Worker Info Sheets (pending > 14 days)
+   * CRITICAL: Accepts organizationId for multi-tenant filtering
    */
-  async getOverdueSheets(): Promise<WorkerInfoSheet[]> {
-    const pendingSheets = await storage.getPendingWorkerInfoSheets();
+  async getOverdueSheets(organizationId?: string): Promise<WorkerInfoSheet[]> {
+    // CRITICAL: Pass organizationId to filter by tenant
+    const pendingSheets = await storage.getPendingWorkerInfoSheets(organizationId);
     const now = new Date();
     
     return pendingSheets.filter(sheet => {

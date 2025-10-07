@@ -1058,6 +1058,7 @@ export const rtwPlans = pgTable("rtw_plans", {
 // Worker Info Sheet tracking with 14-day escalation chain (Zora → Wayne → Michelle)
 export const workerInfoSheets = pgTable("worker_info_sheets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id).notNull(), // CRITICAL: Multi-tenant partitioning
   workerId: varchar("worker_id").references(() => workers.id).notNull().unique(),
   ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
   requestedAt: timestamp("requested_at").notNull().defaultNow(),
@@ -1072,6 +1073,7 @@ export const workerInfoSheets = pgTable("worker_info_sheets", {
 // Case feedback for ML training - feedback loop to improve next-step suggestions
 export const caseFeedback = pgTable("case_feedback", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id).notNull(), // CRITICAL: Multi-tenant partitioning
   ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
   suggestionText: text("suggestion_text").notNull(), // The next-step suggestion that was shown
   feedbackType: text("feedback_type").notNull(), // "correct", "not_relevant", "better_action"
@@ -1084,6 +1086,7 @@ export const caseFeedback = pgTable("case_feedback", {
 // XGBoost model training runs tracking with SHAP explainability
 export const modelTrainingRuns = pgTable("model_training_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id), // OPTIONAL: For per-tenant models (null = global model)
   startedAt: timestamp("started_at").notNull().defaultNow(),
   finishedAt: timestamp("finished_at"),
   version: text("version").notNull(), // Model version identifier

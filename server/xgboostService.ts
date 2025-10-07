@@ -167,19 +167,23 @@ export class XGBoostService {
 
   /**
    * Train XGBoost model using feedback data
+   * CRITICAL: Accepts organizationId to train per-tenant models and prevent cross-tenant data aggregation
    */
-  async trainModel(): Promise<string> {
-    const feedback = await storage.getAllCaseFeedback();
+  async trainModel(organizationId?: string): Promise<string> {
+    // CRITICAL: Filter feedback by organizationId to prevent cross-tenant data leakage
+    const feedback = await storage.getAllCaseFeedback(organizationId);
     
     if (feedback.length < 50) {
-      throw new Error(`Insufficient training data: ${feedback.length} samples (minimum 50 required)`);
+      const orgMsg = organizationId ? ` for organization ${organizationId}` : '';
+      throw new Error(`Insufficient training data${orgMsg}: ${feedback.length} samples (minimum 50 required)`);
     }
 
     const runId = crypto.randomUUID();
     
     try {
-      // Create training run record
+      // Create training run record (with organizationId for per-tenant models)
       const trainingRun = await storage.createModelTrainingRun({
+        organizationId, // CRITICAL: Store which organization this model was trained for
         version: this.modelVersion,
         trainingDataCount: feedback.length,
         metrics: {},
@@ -221,6 +225,7 @@ export class XGBoostService {
    * Record feedback for ML training
    */
   async recordFeedback(params: {
+    organizationId: string; // CRITICAL: Multi-tenant partitioning
     ticketId: string;
     givenBy?: string;
     feedbackType: 'correct' | 'not_relevant' | 'better_action';
@@ -229,6 +234,7 @@ export class XGBoostService {
     features: any;
   }): Promise<string> {
     const feedback = await storage.createCaseFeedback({
+      organizationId: params.organizationId, // CRITICAL: Multi-tenant partitioning
       ticketId: params.ticketId,
       suggestionText: params.suggestionText,
       feedbackType: params.feedbackType,
