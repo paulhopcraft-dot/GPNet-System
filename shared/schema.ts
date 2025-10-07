@@ -57,6 +57,12 @@ export const tickets = pgTable("tickets", {
   followUpDay3Sent: boolean("follow_up_day3_sent").default(false), // Whether day 3 follow-up has been sent
   formType: text("form_type"), // Type of health check form for follow-ups
   
+  // Case Console - Rule Engine fields (nullable for backward compatibility)
+  riskLevel: text("risk_level"), // "Normal", "Medium", "High" - calculated from rules
+  currentStatus: text("current_status"), // Auto-generated summary from recent emails
+  nextStepsJson: jsonb("next_steps_json"), // Array of {text, priority, source} objects
+  escalationLevel: integer("escalation_level").default(0), // For Worker Info Sheet escalation (0=Zora, 1=Wayne, 2=Michelle)
+  
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -90,6 +96,14 @@ export const workers = pgTable("workers", {
   
   // New field for spec compatibility (nullable for incremental migration)
   roleTitle: text("role_title"), // Job title - maps to roleApplied
+  
+  // Case Console - Rule Engine fields (nullable for backward compatibility)
+  managerName: text("manager_name"), // Worker's manager
+  company: text("company"), // Company name
+  dateOfInjury: timestamp("date_of_injury"), // When injury occurred
+  expectedRecoveryDate: timestamp("expected_recovery_date"), // Expected recovery date
+  statusOffWork: boolean("status_off_work").default(false), // Currently off work
+  rtwPlanPresent: boolean("rtw_plan_present").default(false), // Has RTW plan
 });
 
 // Documents table for document management
@@ -1037,6 +1051,50 @@ export const rtwPlans = pgTable("rtw_plans", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// ===============================================
+// CASE CONSOLE - RULE ENGINE & ML SYSTEM
+// ===============================================
+
+// Worker Info Sheet tracking with 14-day escalation chain (Zora → Wayne → Michelle)
+export const workerInfoSheets = pgTable("worker_info_sheets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").references(() => workers.id).notNull().unique(),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  requestedAt: timestamp("requested_at").notNull().defaultNow(),
+  returnedAt: timestamp("returned_at"), // When worker returned the info sheet
+  status: text("status").notNull().default("pending"), // "pending", "returned", "escalated", "expired"
+  escalationLevel: integer("escalation_level").default(0), // 0=Zora, 1=Wayne, 2=Michelle
+  lastEscalatedAt: timestamp("last_escalated_at"), // When last escalation occurred
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Case feedback for ML training - feedback loop to improve next-step suggestions
+export const caseFeedback = pgTable("case_feedback", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
+  suggestionText: text("suggestion_text").notNull(), // The next-step suggestion that was shown
+  feedbackType: text("feedback_type").notNull(), // "correct", "not_relevant", "better_action"
+  betterActionText: text("better_action_text"), // User's alternative suggestion if feedbackType is "better_action"
+  features: jsonb("features").notNull(), // Feature snapshot for ML: {riskLevel, daysOffWork, hasRTWPlan, etc}
+  givenBy: text("given_by"), // User ID who provided feedback
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// XGBoost model training runs tracking with SHAP explainability
+export const modelTrainingRuns = pgTable("model_training_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+  version: text("version").notNull(), // Model version identifier
+  metrics: jsonb("metrics").notNull(), // {accuracy, precision, recall, f1_score}
+  shapTopFeatures: jsonb("shap_top_features"), // Top 10 SHAP feature importances
+  trainingDataCount: integer("training_data_count"), // Number of feedback samples used
+  status: text("status").notNull().default("running"), // "running", "completed", "failed"
+  errorMessage: text("error_message"), // Error details if failed
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Schema definitions
 export const insertTicketSchema = createInsertSchema(tickets).omit({
   id: true,
@@ -1079,6 +1137,22 @@ export const insertRtwPlanSchema = createInsertSchema(rtwPlans).omit({
   updatedAt: true,
 });
 
+export const insertWorkerInfoSheetSchema = createInsertSchema(workerInfoSheets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCaseFeedbackSchema = createInsertSchema(caseFeedback).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertModelTrainingRunSchema = createInsertSchema(modelTrainingRuns).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertConversationSchema = createInsertSchema(conversations).omit({
   id: true,
   createdAt: true,
@@ -1115,6 +1189,15 @@ export type Stakeholder = typeof stakeholders.$inferSelect;
 export type InsertRtwPlan = z.infer<typeof insertRtwPlanSchema>;
 export type RtwPlan = typeof rtwPlans.$inferSelect;
 export type Attachment = typeof attachments.$inferSelect;
+
+export type InsertWorkerInfoSheet = z.infer<typeof insertWorkerInfoSheetSchema>;
+export type WorkerInfoSheet = typeof workerInfoSheets.$inferSelect;
+
+export type InsertCaseFeedback = z.infer<typeof insertCaseFeedbackSchema>;
+export type CaseFeedback = typeof caseFeedback.$inferSelect;
+
+export type InsertModelTrainingRun = z.infer<typeof insertModelTrainingRunSchema>;
+export type ModelTrainingRun = typeof modelTrainingRuns.$inferSelect;
 
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Conversation = typeof conversations.$inferSelect;
