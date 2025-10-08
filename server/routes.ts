@@ -51,6 +51,7 @@ import { medicalDocumentRoutes } from "./medicalDocumentRoutes.js";
 import { analyticsRoutes } from "./analyticsRoutes.js";
 import { nextStepRoutes } from "./nextStepRoutes.js";
 import caseConsoleRoutes from "./caseConsoleRoutes";
+import { registerChatGPTRoutes } from "./chatgptRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -1492,6 +1493,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/ml', mlRoutes);
   app.use('/api/case-drawer', caseDrawerRoutes);
   app.use('/api/medical-documents', medicalDocumentRoutes);
+  
+  // Mount ChatGPT integration routes
+  registerChatGPTRoutes(app);
 
   // ===========================================
   // SERVER CREATION
