@@ -1,0 +1,636 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "GPNet Case Management API",
+    "description": "API for interacting with GPNet occupational health case management system through ChatGPT. Manage workers, cases, assessments, and health records.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://YOUR_REPLIT_DOMAIN.replit.app",
+      "description": "GPNet Production Server"
+    }
+  ],
+  "paths": {
+    "/api/chatgpt/workers/search": {
+      "get": {
+        "summary": "Search for workers",
+        "description": "Search workers by name, email, or role. Use this to find workers before accessing their cases or creating new assessments.",
+        "operationId": "searchWorkers",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "description": "Search term (name, email, or role)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum number of results (default 10)",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "workers": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WorkerSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chatgpt/workers/{workerId}": {
+      "get": {
+        "summary": "Get worker details",
+        "description": "Get complete information about a specific worker including their cases and health records.",
+        "operationId": "getWorkerDetails",
+        "parameters": [
+          {
+            "name": "workerId",
+            "in": "path",
+            "required": true,
+            "description": "Worker ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Worker details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chatgpt/cases/search": {
+      "get": {
+        "summary": "Search cases",
+        "description": "Search and filter cases by status, type, priority, or worker. Use this to find specific cases or get an overview of active cases.",
+        "operationId": "searchCases",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Case status (NEW, ANALYSING, AWAITING_REVIEW, READY_TO_SEND, COMPLETE)",
+            "schema": {
+              "type": "string",
+              "enum": ["NEW", "ANALYSING", "AWAITING_REVIEW", "READY_TO_SEND", "COMPLETE"]
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "description": "Case type (pre_employment, injury, mental_health, return_to_work)",
+            "schema": {
+              "type": "string",
+              "enum": ["pre_employment", "injury", "mental_health", "return_to_work"]
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "description": "Priority level",
+            "schema": {
+              "type": "string",
+              "enum": ["low", "medium", "high", "urgent"]
+            }
+          },
+          {
+            "name": "workerId",
+            "in": "query",
+            "required": false,
+            "description": "Filter by specific worker",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Maximum results (default 20)",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cases found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "cases": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CaseSummary"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chatgpt/cases/{caseId}": {
+      "get": {
+        "summary": "Get case details",
+        "description": "Get complete details about a specific case including worker info, analysis results, and recommendations.",
+        "operationId": "getCaseDetails",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "description": "Case ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Case details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chatgpt/cases": {
+      "post": {
+        "summary": "Create new case",
+        "description": "Create a new case/assessment for a worker. Requires worker ID.",
+        "operationId": "createCase",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["workerId"],
+                "properties": {
+                  "workerId": {
+                    "type": "string",
+                    "description": "ID of the worker"
+                  },
+                  "caseType": {
+                    "type": "string",
+                    "enum": ["pre_employment", "injury", "mental_health", "return_to_work"],
+                    "default": "pre_employment"
+                  },
+                  "companyName": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string",
+                    "description": "Case subject/title"
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": ["low", "medium", "high", "urgent"],
+                    "default": "medium"
+                  },
+                  "nextStep": {
+                    "type": "string",
+                    "description": "Next action required"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Case created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "case": {
+                      "$ref": "#/components/schemas/CaseSummary"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chatgpt/cases/{caseId}/status": {
+      "patch": {
+        "summary": "Update case status",
+        "description": "Update the status of a case and optionally set the next step.",
+        "operationId": "updateCaseStatus",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "description": "Case ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["status"],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": ["NEW", "ANALYSING", "AWAITING_REVIEW", "READY_TO_SEND", "COMPLETE"]
+                  },
+                  "nextStep": {
+                    "type": "string",
+                    "description": "Optional next action"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Status updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "case": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chatgpt/cases/{caseId}/notes": {
+      "post": {
+        "summary": "Add note to case",
+        "description": "Add a note or comment to a case. Notes appear in the case thread.",
+        "operationId": "addCaseNote",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "description": "Case ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["note"],
+                "properties": {
+                  "note": {
+                    "type": "string",
+                    "description": "Note content"
+                  },
+                  "author": {
+                    "type": "string",
+                    "default": "ChatGPT Assistant"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Note added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chatgpt/stats": {
+      "get": {
+        "summary": "Get system statistics",
+        "description": "Get overall system statistics including case counts and status breakdown.",
+        "operationId": "getStats",
+        "responses": {
+          "200": {
+            "description": "System statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "stats": {
+                      "type": "object",
+                      "properties": {
+                        "totalCases": {
+                          "type": "integer"
+                        },
+                        "newCases": {
+                          "type": "integer"
+                        },
+                        "inProgress": {
+                          "type": "integer"
+                        },
+                        "completed": {
+                          "type": "integer"
+                        },
+                        "flagged": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "API Key",
+        "description": "API key for GPNet access. Obtain from your Replit secrets."
+      }
+    },
+    "schemas": {
+      "WorkerSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "dateOfBirth": {
+            "type": "string"
+          },
+          "site": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkerDetails": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "worker": {
+            "$ref": "#/components/schemas/WorkerSummary"
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseSummary"
+            }
+          }
+        }
+      },
+      "CaseSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "workerId": {
+            "type": "string"
+          },
+          "nextStep": {
+            "type": "string"
+          },
+          "assignedTo": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastUpdateAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CaseDetails": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "case": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "priority": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              },
+              "companyName": {
+                "type": "string"
+              },
+              "nextStep": {
+                "type": "string"
+              },
+              "lastStep": {
+                "type": "string"
+              },
+              "assignedTo": {
+                "type": "string"
+              },
+              "workCover": {
+                "type": "boolean"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastUpdateAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "flags": {
+                "type": "object",
+                "properties": {
+                  "red": {
+                    "type": "integer"
+                  },
+                  "amber": {
+                    "type": "integer"
+                  },
+                  "green": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          },
+          "worker": {
+            "$ref": "#/components/schemas/WorkerSummary"
+          },
+          "analysis": {
+            "type": "object",
+            "properties": {
+              "fitClassification": {
+                "type": "string"
+              },
+              "ragScore": {
+                "type": "string"
+              },
+              "recommendations": {
+                "type": "object"
+              },
+              "notes": {
+                "type": "string"
+              },
+              "lastAssessed": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ]
+}
