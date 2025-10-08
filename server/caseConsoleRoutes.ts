@@ -334,22 +334,40 @@ router.post('/training/start', async (req: Request, res: Response) => {
 /**
  * POST /api/case-console/training/demo-feedback
  * Generate demo feedback for testing (development only)
+ * Admin users can specify organizationId, regular users use their session org
  */
 router.post('/training/demo-feedback', async (req: Request, res: Response) => {
   try {
     const userOrgId = req.session.user?.organizationId;
-    const { feedbackCount = 50 } = req.body;
+    const { feedbackCount = 50, organizationId } = req.body;
+    const userPermissions = req.session.user?.permissions || [];
+    const userRole = req.session.user?.role;
+    
+    // Check if user is admin
+    const isAdmin = userPermissions.includes('admin') || 
+                    userPermissions.includes('superuser') ||
+                    userRole === 'super_user';
 
-    if (!userOrgId) {
-      return res.status(400).json({ error: 'No organization ID in session' });
+    // Determine which organization to use
+    let targetOrgId: string;
+    
+    if (organizationId && isAdmin) {
+      // Admin can specify any organization
+      targetOrgId = organizationId;
+    } else if (userOrgId) {
+      // Regular user uses their session org
+      targetOrgId = userOrgId;
+    } else {
+      return res.status(400).json({ error: 'No organization ID available. Please specify organizationId in request body.' });
     }
 
-    // Generate demo feedback for user's organization
-    const result = await generateBulkDemoFeedback(userOrgId, 10, Math.ceil(feedbackCount / 10));
+    // Generate demo feedback for target organization
+    const result = await generateBulkDemoFeedback(targetOrgId, 10, Math.ceil(feedbackCount / 10));
 
     res.json({
       success: true,
       ...result,
+      organizationId: targetOrgId,
       message: `Generated ${result.totalFeedback} demo feedback entries for ${result.ticketsProcessed} tickets`
     });
   } catch (error) {
