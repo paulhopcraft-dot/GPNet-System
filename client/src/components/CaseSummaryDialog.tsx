@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { CalendarIcon, FileText, Clock, User, AlertCircle, CheckCircle2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import AIFeedback from "./AIFeedback";
 
 interface CaseSummaryData {
   ticketId: string;
@@ -188,6 +189,19 @@ export function CaseSummaryDialog({ open, onOpenChange, data, isLoading }: CaseS
                 )}
               </div>
             </div>
+
+            {/* AI Feedback Component */}
+            <AIFeedback
+              ticketId={data.ticketId}
+              suggestionText={data.suggestedNextStep.action}
+              features={{
+                priority: data.suggestedNextStep.priority,
+                urgency: data.suggestedNextStep.urgency,
+                caseType: data.caseType,
+                currentStatus: data.currentStatus
+              }}
+              compact={true}
+            />
 
             {/* Current Status */}
             <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
