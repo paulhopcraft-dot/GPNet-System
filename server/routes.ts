@@ -53,6 +53,7 @@ import { nextStepRoutes } from "./nextStepRoutes.js";
 import caseConsoleRoutes from "./caseConsoleRoutes";
 import { registerChatGPTRoutes } from "./chatgptRoutes";
 import { registerAgentRoutes } from "./agentRoutes";
+import { registerRTWRoutes } from "./rtwRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -1500,6 +1501,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Mount Agent Builder routes
   registerAgentRoutes(app);
+
+  // Mount RTW Gating Workflow routes
+  registerRTWRoutes(app);
 
   // ===========================================
   // SERVER CREATION
