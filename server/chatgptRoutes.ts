@@ -27,6 +27,20 @@ export function chatgptAuthMiddleware(req: any, res: any, next: any) {
 }
 
 export function registerChatGPTRoutes(app: Express) {
+  // Serve OpenAPI spec (no auth required for schema discovery)
+  app.get('/api/chatgpt/openapi.json', async (req, res) => {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const openapiPath = path.join(process.cwd(), 'server', 'openapi.json');
+    try {
+      const spec = await fs.readFile(openapiPath, 'utf-8');
+      res.setHeader('Content-Type', 'application/json');
+      res.send(spec);
+    } catch (error) {
+      res.status(500).json({ error: 'OpenAPI spec not found' });
+    }
+  });
+
   // Apply auth middleware to all ChatGPT routes
   app.use('/api/chatgpt', chatgptAuthMiddleware);
 
