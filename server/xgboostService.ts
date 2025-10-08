@@ -37,7 +37,7 @@ interface TrainingMetrics {
 
 export class XGBoostService {
   private modelVersion = 'xgboost-ready-v1';
-  private useActualXGBoost = true; // ENABLED: XGBoost ready, falls back to rule-based if models unavailable
+  private useActualXGBoost = false; // DISABLED: Use simulation mode for now (Python XGBoost not implemented)
 
   /**
    * Predict risk level using ML model (currently rule-based, future XGBoost)
