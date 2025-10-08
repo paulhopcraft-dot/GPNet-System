@@ -52,6 +52,7 @@ import { analyticsRoutes } from "./analyticsRoutes.js";
 import { nextStepRoutes } from "./nextStepRoutes.js";
 import caseConsoleRoutes from "./caseConsoleRoutes";
 import { registerChatGPTRoutes } from "./chatgptRoutes";
+import { registerAgentRoutes } from "./agentRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { db } from "./db";
@@ -1496,6 +1497,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Mount ChatGPT integration routes
   registerChatGPTRoutes(app);
+  
+  // Mount Agent Builder routes
+  registerAgentRoutes(app);
 
   // ===========================================
   // SERVER CREATION
