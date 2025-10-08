@@ -72,15 +72,17 @@ function piiPhiScrub(obj: any): any {
 // ========== DATA FETCHING ==========
 async function fetchCase(ticketId: string) {
   const ticket = await db.query.tickets.findFirst({
-    where: eq(tickets.id, ticketId),
-    with: {
-      worker: true
-    }
+    where: eq(tickets.id, ticketId)
   });
 
   if (!ticket) {
     throw new Error(`Case ${ticketId} not found`);
   }
+
+  // Get worker info
+  const worker = ticket.workerId 
+    ? await db.query.workers.findFirst({ where: eq(workers.id, ticket.workerId) })
+    : null;
 
   // Get form submissions for this ticket
   const submissions = await db.query.formSubmissions.findMany({
@@ -90,9 +92,9 @@ async function fetchCase(ticketId: string) {
   return {
     id: ticket.id,
     worker_id: ticket.workerId,
-    worker_name: ticket.worker?.name,
-    notes: ticket.notes || '',
-    job_role: ticket.worker?.role || 'unknown',
+    worker_name: worker ? `${worker.firstName} ${worker.lastName}` : 'Unknown',
+    notes: ticket.subject || ticket.nextStep || '',
+    job_role: worker?.roleApplied || worker?.roleTitle || 'unknown',
     case_type: ticket.caseType,
     status: ticket.status,
     submissions: submissions.map((s: any) => s.formData)
@@ -237,10 +239,11 @@ function policyCrossCheck(capacity: any, roleReq: any): Record<string, boolean> 
 async function notify(reason: string, caseId: string) {
   console.log(`[RTW ALERT] Case ${caseId}: ${reason}`);
   
-  // Update ticket with notification
+  // Update ticket next step with notification
   await db.update(tickets)
     .set({
-      notes: sql`COALESCE(notes, '') || E'\n[RTW ALERT] ' || ${reason}`
+      nextStep: `RTW ALERT: ${reason}`,
+      lastUpdateAt: new Date()
     })
     .where(eq(tickets.id, caseId));
 
@@ -254,7 +257,8 @@ async function writebackPlacement(caseId: string, role: string, controls: any) {
   await db.update(tickets)
     .set({
       status: 'READY_TO_SEND',
-      notes: sql`COALESCE(notes, '') || E'\n[RTW APPROVED] Role: ' || ${role} || E', Controls: ' || ${JSON.stringify(controls)}`
+      nextStep: `RTW APPROVED for ${role}. Controls: ${JSON.stringify(controls)}`,
+      lastUpdateAt: new Date()
     })
     .where(eq(tickets.id, caseId));
 
