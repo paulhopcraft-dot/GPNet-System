@@ -71,7 +71,8 @@ export default function TrainingDashboard() {
     mutationFn: async () => {
       setIsGeneratingDemo(true);
       return apiRequest("POST", "/api/case-console/training/demo-feedback", {
-        feedbackCount: 50
+        feedbackCount: 50,
+        organizationId: "34878b77-8969-40d1-86e2-8192869275d2" // Org with tickets for demo
       });
     },
     onSuccess: (data: any) => {
