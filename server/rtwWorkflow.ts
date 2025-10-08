@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { db } from './db';
-import { tickets, workers, formSubmissions } from '@shared/schema';
-import { eq, and, sql } from 'drizzle-orm';
+import { tickets, workers, formSubmissions, medicalDocuments } from '@shared/schema';
+import { eq, and, sql, desc } from 'drizzle-orm';
 
 // ========== AUDIT TRAIL ==========
 interface AuditEvent {
@@ -156,6 +156,81 @@ function getRoleRequirements(role: string): any {
   return roleReqs[role.toLowerCase()] || roleReqs['default'];
 }
 
+// ========== MEDICAL CERTIFICATE VALIDATION ==========
+async function validateMedicalCertificate(ticketId: string, workerId: string | null): Promise<{
+  valid: boolean;
+  reason?: string;
+  certificateId?: string;
+  validTo?: string;
+  fitStatus?: string;
+}> {
+  if (!workerId) {
+    return { valid: false, reason: 'NO_WORKER_ID' };
+  }
+
+  // Get the most recent medical certificate for this ticket/worker
+  const cert = await db.query.medicalDocuments.findFirst({
+    where: and(
+      eq(medicalDocuments.ticketId, ticketId),
+      eq(medicalDocuments.workerId, workerId),
+      eq(medicalDocuments.kind, 'medical_certificate')
+    ),
+    orderBy: [desc(medicalDocuments.createdAt)]
+  });
+
+  if (!cert) {
+    return { valid: false, reason: 'NO_CERTIFICATE_FOUND' };
+  }
+
+  // Check if certificate has required sign-off
+  if (!cert.signaturePresent) {
+    return { 
+      valid: false, 
+      reason: 'MISSING_DOCTOR_SIGNATURE',
+      certificateId: cert.id 
+    };
+  }
+
+  // Check certificate expiry
+  if (cert.validTo) {
+    const expiryDate = new Date(cert.validTo);
+    const today = new Date();
+    
+    if (expiryDate < today) {
+      return { 
+        valid: false, 
+        reason: 'CERTIFICATE_EXPIRED',
+        certificateId: cert.id,
+        validTo: cert.validTo
+      };
+    }
+  } else {
+    return { 
+      valid: false, 
+      reason: 'NO_EXPIRY_DATE',
+      certificateId: cert.id 
+    };
+  }
+
+  // Check if worker is declared unfit
+  if (cert.fitStatus === 'unfit') {
+    return {
+      valid: false,
+      reason: 'WORKER_DECLARED_UNFIT',
+      certificateId: cert.id,
+      fitStatus: cert.fitStatus
+    };
+  }
+
+  // Valid certificate
+  return {
+    valid: true,
+    certificateId: cert.id,
+    validTo: cert.validTo,
+    fitStatus: cert.fitStatus || 'unknown'
+  };
+}
+
 // ========== LLM RISK SUMMARIZATION ==========
 let openai: OpenAI | null = null;
 
@@ -286,14 +361,24 @@ export async function runRTWFlow(ticketId: string): Promise<{
     const caseSafe = piiPhiScrub(caseData);
     audit.log('pii_phi_scrub', 'ok', { safe_keys: Object.keys(caseSafe) });
 
-    // 3. Check medical certificate (gate)
-    const medCertOk = caseData.status !== 'NEW'; // Simplified check
-    if (!medCertOk) {
-      audit.log('gate_med_cert', 'fail', { reason: 'CASE_NOT_READY' });
-      await notify('CASE_NOT_READY_FOR_RTW', ticketId);
-      return { decision: 'DECLINED_NOT_READY', audit: audit.export() };
+    // 3. Check medical certificate (gate) - CRITICAL VALIDATION
+    const certValidation = await validateMedicalCertificate(ticketId, caseData.worker_id);
+    
+    if (!certValidation.valid) {
+      audit.log('gate_med_cert', 'fail', { 
+        reason: certValidation.reason,
+        certificateId: certValidation.certificateId,
+        validTo: certValidation.validTo 
+      });
+      await notify(`MISSING_OR_INVALID_CERT: ${certValidation.reason}`, ticketId);
+      return { decision: 'DECLINED_NO_CERT', audit: audit.export() };
     }
-    audit.log('gate_med_cert', 'ok', { status: 'valid' });
+    
+    audit.log('gate_med_cert', 'ok', { 
+      certificateId: certValidation.certificateId,
+      validTo: certValidation.validTo,
+      fitStatus: certValidation.fitStatus
+    });
 
     // 4. Get capacity and role requirements
     const capacity = await getCapacity(caseData);
