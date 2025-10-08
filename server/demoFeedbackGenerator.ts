@@ -65,19 +65,23 @@ export async function generateDemoFeedback(
 
   for (let i = 0; i < count; i++) {
     const feedbackType = FEEDBACK_TYPES[Math.floor(Math.random() * FEEDBACK_TYPES.length)];
-    const suggestionText = SAMPLE_SUGGESTIONS[Math.floor(Math.random() * SAMPLE_SUGGESTIONS.length)];
-    const features = generateFeatures();
+    const predictedNextSteps = [SAMPLE_SUGGESTIONS[Math.floor(Math.random() * SAMPLE_SUGGESTIONS.length)]];
+    const betterNextSteps = feedbackType === 'better_action' 
+      ? [BETTER_ACTIONS[Math.floor(Math.random() * BETTER_ACTIONS.length)]]
+      : undefined;
 
     const feedback = await storage.createCaseFeedback({
       organizationId,
       ticketId,
-      suggestionText,
+      userId: 'demo-generator',
       feedbackType,
-      betterActionText: feedbackType === 'better_action' 
-        ? BETTER_ACTIONS[Math.floor(Math.random() * BETTER_ACTIONS.length)]
-        : undefined,
-      features,
-      givenBy: 'demo-generator'
+      predictedRisk: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low',
+      actualRisk: Math.random() > 0.7 ? 'high' : Math.random() > 0.4 ? 'medium' : 'low',
+      predictedStatus: 'pending',
+      actualStatus: Math.random() > 0.5 ? 'in_progress' : 'pending',
+      predictedNextSteps,
+      betterNextSteps,
+      comments: `Demo feedback - ${feedbackType}`
     });
 
     feedbackIds.push(feedback.id);
