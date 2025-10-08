@@ -177,8 +177,8 @@ export class XGBoostService {
       const orgMsg = organizationId ? ` for organization ${organizationId}` : '';
       throw new Error(`Insufficient training data${orgMsg}: ${feedback.length} samples (minimum 50 required)`);
     }
-
-    const runId = crypto.randomUUID();
+    
+    let runId: string | null = null;
     
     try {
       // Create training run record (with organizationId for per-tenant models)
@@ -189,6 +189,8 @@ export class XGBoostService {
         metrics: {},
         status: 'running'
       });
+
+      runId = trainingRun.id;
 
       if (this.useActualXGBoost) {
         // Future: Train actual XGBoost model
@@ -212,11 +214,13 @@ export class XGBoostService {
 
       return runId;
     } catch (error) {
-      await storage.updateModelTrainingRun(runId, {
-        status: 'failed',
-        finishedAt: new Date(),
-        errorMessage: error instanceof Error ? error.message : 'Unknown error'
-      });
+      if (runId) {
+        await storage.updateModelTrainingRun(runId, {
+          status: 'failed',
+          finishedAt: new Date(),
+          errorMessage: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
       throw error;
     }
   }

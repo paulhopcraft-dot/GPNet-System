@@ -114,6 +114,10 @@ localPort = 46295
 localPort = 46419
 
 [[ports]]
+localPort = 46487
+externalPort = 8080
+
+[[ports]]
 localPort = 46791
 
 [env]
