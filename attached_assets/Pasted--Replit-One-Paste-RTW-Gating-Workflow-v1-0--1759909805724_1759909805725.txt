@@ -1,0 +1,170 @@
+# ===========================================
+# Replit One-Paste: RTW Gating Workflow (v1.0)
+# ===========================================
+
+import os, re, httpx
+from datetime import datetime
+from typing import Dict, Any, Tuple, List
+from fastapi import FastAPI
+from pydantic import BaseModel
+from dotenv import load_dotenv
+from openai import OpenAI
+
+# ---------- CONFIG ----------
+load_dotenv()
+MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-...")
+GP_NET_API_BASE = os.getenv("GP_NET_API_BASE", "https://api.gpnet.local")
+GP_NET_API_KEY = os.getenv("GP_NET_API_KEY", "gpnet_dev_key")
+client = OpenAI(api_key=OPENAI_API_KEY)
+
+# ---------- AUDIT TRAIL ----------
+class AuditTrail:
+    def __init__(self, flow_name: str, version: str):
+        self.flow_name = flow_name
+        self.version = version
+        self.events: List[Dict[str, Any]] = []
+        self.started_at = datetime.utcnow().isoformat()
+
+    def log(self, node: str, stage: str, data: Dict[str, Any]):
+        self.events.append({
+            "ts": datetime.utcnow().isoformat(),
+            "node": node,
+            "stage": stage,
+            "data": data
+        })
+
+    def export(self) -> Dict[str, Any]:
+        return {
+            "flow": self.flow_name,
+            "version": self.version,
+            "started_at": self.started_at,
+            "ended_at": datetime.utcnow().isoformat(),
+            "events": self.events
+        }
+
+# ---------- LLM NODE ----------
+def summarize_risks(case_notes: str, capacity: dict, role_req: dict) -> dict:
+    """
+    Mirrors Visual Kit LLM node using Responses API with structured output.
+    """
+    prompt = f"CASE_NOTES:\n{case_notes}\n\nCAPACITY:\n{capacity}\n\nROLE_REQ:\n{role_req}\n\nReturn JSON: {{'risks': [list of short factual risk strings]}}"
+    resp = client.responses.create(
+        model=MODEL,
+        input=[
+            {"role":"system","content":"Summarize clinical or role-fit risks only; never invent data."},
+            {"role":"user","content":prompt}
+        ],
+        response_format={"type":"json_object"}
+    )
+    try:
+        return eval(resp.output[0].content[0].text)
+    except Exception:
+        return {"risks": []}
+
+# ---------- DETERMINISTIC NODES ----------
+DROP_FIELDS = {"ssn", "home_address", "diagnosis_free_text", "dob"}
+MASK_FIELDS = {"phone", "email"}
+
+def pii_phi_scrub(obj: Dict[str, Any]) -> Dict[str, Any]:
+    safe = {}
+    for k, v in obj.items():
+        if k in DROP_FIELDS:
+            continue
+        if k in MASK_FIELDS and isinstance(v, str):
+            safe[k] = re.sub(r".", "•", v)
+        elif isinstance(v, dict):
+            safe[k] = pii_phi_scrub(v)
+        else:
+            safe[k] = v
+    return safe
+
+def fetch_case(case_id: str) -> Dict[str, Any]:
+    return {
+        "id": case_id,
+        "worker_id": "W123",
+        "notes": "Worker reports mild back strain; fit for light duties.",
+        "documents": {"med_cert": {"status": "valid"}},
+        "job_role": "warehouse_picker"
+    }
+
+def get_capacity(worker_id: str) -> Dict[str, Any]:
+    return {"lift_kg": 15, "shift_hours": 6, "restrictions": ["no_repetitive_bending"]}
+
+def get_role_requirements(role: str) -> Dict[str, Any]:
+    return {"lift_min_kg": 10, "min_hours": 6, "prohibited": ["night_shift_only"]}
+
+def policy_cross_check(capacity: Dict[str, Any], role_req: Dict[str, Any]) -> Dict[str, bool]:
+    meets_physical = capacity.get("lift_kg", 0) >= role_req.get("lift_min_kg", 999)
+    meets_hours = capacity.get("shift_hours", 0) >= role_req.get("min_hours", 999)
+    meets_restrictions = len(set(capacity.get("restrictions",[])).intersection(set(role_req.get("prohibited",[])))) == 0
+    return {
+        "meets_physical": meets_physical,
+        "meets_hours": meets_hours,
+        "meets_restrictions": meets_restrictions
+    }
+
+def notify(reason: str, case_id: str):
+    print(f"[ALERT] {case_id}: {reason}")
+    return {"status":"sent","reason":reason,"case_id":case_id}
+
+def writeback_placement(case_id: str, role: str, controls: Dict[str, Any]):
+    print(f"[PLACEMENT] {case_id}: approved for {role}")
+    return {"status":"created","case_id":case_id,"role":role,"controls":controls}
+
+# ---------- WORKFLOW ----------
+def run_flow(case_id: str) -> Tuple[str, Dict[str, Any]]:
+    audit = AuditTrail("RTW_Gating", "v1.0")
+
+    case = fetch_case(case_id)
+    audit.log("fetch_case", "ok", {"id": case["id"], "role": case["job_role"]})
+
+    case_safe = pii_phi_scrub(case)
+    audit.log("pii_phi_scrub", "ok", {"safe_keys": list(case_safe.keys())})
+
+    med_cert_ok = case_safe.get("documents",{}).get("med_cert",{}).get("status") == "valid"
+    if not med_cert_ok:
+        audit.log("gate_med_cert", "fail", {"reason":"MISSING_OR_INVALID_CERT"})
+        notify("MISSING_OR_INVALID_CERT", case_id)
+        return "DECLINED_NO_CERT", audit.export()
+    audit.log("gate_med_cert", "ok", {"status":"valid"})
+
+    capacity = get_capacity(case_safe["worker_id"])
+    role_req = get_role_requirements(case_safe["job_role"])
+    audit.log("lookup_capacity", "ok", capacity)
+    audit.log("lookup_role_req", "ok", role_req)
+
+    risks = summarize_risks(case_safe.get("notes",""), capacity, role_req).get("risks", [])
+    audit.log("llm_risks", "ok", {"risks": risks})
+
+    flags = policy_cross_check(capacity, role_req)
+    audit.log("policy_cross_check", "ok", flags)
+
+    if (not all(flags.values())) or len(risks) > 0:
+        notify("REVIEW_REQUIRED", case_id)
+        audit.log("escalation", "sent", {"flags": flags, "risks": risks})
+        return "REVIEW_REQUIRED", audit.export()
+
+    placement = writeback_placement(case_id, case_safe["job_role"], controls={"light_duties": True})
+    audit.log("placement", "ok", placement)
+
+    return "APPROVED", audit.export()
+
+# ---------- FASTAPI APP ----------
+app = FastAPI(title="RTW Gating Workflow")
+
+class RunRequest(BaseModel):
+    case_id: str
+
+@app.post("/run-rtw")
+def run_rtw(req: RunRequest):
+    decision, audit = run_flow(req.case_id)
+    return {"decision": decision, "audit": audit}
+
+@app.get("/")
+def health():
+    return {"ok": True, "flow": "RTW_Gating_v1.0"}
+
+# ---------- RUN ----------
+# Replit will auto-run via "Run" button using Uvicorn
+# Manual start: uvicorn main:app --host 0.0.0.0 --port 8000
