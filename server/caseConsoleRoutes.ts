@@ -357,6 +357,14 @@ router.post('/training/demo-feedback', async (req: Request, res: Response) => {
     } else if (userOrgId) {
       // Regular user uses their session org
       targetOrgId = userOrgId;
+    } else if (isAdmin) {
+      // Admin with no org in session - find org with tickets
+      const allTickets = await storage.getAllTickets();
+      const orgWithTickets = allTickets.find(t => t.organizationId)?.organizationId;
+      if (!orgWithTickets) {
+        return res.status(400).json({ error: 'No tickets available for demo feedback generation' });
+      }
+      targetOrgId = orgWithTickets;
     } else {
       return res.status(400).json({ error: 'No organization ID available. Please specify organizationId in request body.' });
     }
