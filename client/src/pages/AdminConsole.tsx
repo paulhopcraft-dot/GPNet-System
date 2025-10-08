@@ -20,7 +20,8 @@ import {
   Download,
   Upload,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Brain
 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -35,6 +36,7 @@ import UnmatchedEmailsTab from "@/components/admin/UnmatchedEmailsTab";
 import AdminCasesTab from "@/components/admin/AdminCasesTab";
 import CompaniesTab from "@/components/admin/CompaniesTab";
 import { FreshdeskTab } from "@/components/admin/FreshdeskTab";
+import TrainingDashboard from "@/components/TrainingDashboard";
 
 // Database Migration Card Component
 function DatabaseMigrationCard() {
@@ -130,6 +132,7 @@ export default function AdminConsole() {
     email: 'support@gpnet.au',
     name: 'Natalie Support',
     userType: 'admin' as const,
+    organizationId: '3487866d-5cf8-42aa-a42b-b09b50cd1c61', // GPNet organization ID
     permissions: ['admin', 'superuser']
   };
 
@@ -183,7 +186,7 @@ export default function AdminConsole() {
 
       {/* Admin Console Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className={`grid w-full ${mockUser.permissions?.includes('superuser') ? 'grid-cols-11' : 'grid-cols-10'}`}>
+        <TabsList className={`grid w-full ${mockUser.permissions?.includes('superuser') ? 'grid-cols-12' : 'grid-cols-11'}`}>
           <TabsTrigger value="overview" className="flex items-center gap-2" data-testid="tab-overview">
             <BarChart3 className="h-4 w-4" />
             Overview
@@ -213,6 +216,10 @@ export default function AdminConsole() {
           <TabsTrigger value="admin-users" className="flex items-center gap-2" data-testid="tab-admin-users">
             <Shield className="h-4 w-4" />
             Admin Users
+          </TabsTrigger>
+          <TabsTrigger value="ai-training" className="flex items-center gap-2" data-testid="tab-ai-training">
+            <Brain className="h-4 w-4" />
+            AI Training
           </TabsTrigger>
           <TabsTrigger value="audit-logs" className="flex items-center gap-2" data-testid="tab-audit-logs">
             <Activity className="h-4 w-4" />
@@ -260,6 +267,10 @@ export default function AdminConsole() {
 
         <TabsContent value="admin-users" className="space-y-6">
           <AdminUsersTab />
+        </TabsContent>
+
+        <TabsContent value="ai-training" className="space-y-6">
+          <TrainingDashboard />
         </TabsContent>
 
         <TabsContent value="audit-logs" className="space-y-6">

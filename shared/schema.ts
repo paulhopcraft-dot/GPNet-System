@@ -1075,11 +1075,15 @@ export const caseFeedback = pgTable("case_feedback", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: varchar("organization_id").references(() => organizations.id).notNull(), // CRITICAL: Multi-tenant partitioning
   ticketId: varchar("ticket_id").references(() => tickets.id).notNull(),
-  suggestionText: text("suggestion_text").notNull(), // The next-step suggestion that was shown
-  feedbackType: text("feedback_type").notNull(), // "correct", "not_relevant", "better_action"
-  betterActionText: text("better_action_text"), // User's alternative suggestion if feedbackType is "better_action"
-  features: jsonb("features").notNull(), // Feature snapshot for ML: {riskLevel, daysOffWork, hasRTWPlan, etc}
-  givenBy: text("given_by"), // User ID who provided feedback
+  userId: varchar("user_id"), // User who provided feedback
+  feedbackType: text("feedback_type").notNull(), // Type of feedback given
+  predictedRisk: varchar("predicted_risk"), // AI predicted risk level
+  actualRisk: varchar("actual_risk"), // Actual risk level as confirmed by user
+  predictedStatus: varchar("predicted_status"), // AI predicted status
+  actualStatus: varchar("actual_status"), // Actual status as confirmed by user
+  predictedNextSteps: jsonb("predicted_next_steps"), // AI predicted next steps
+  betterNextSteps: jsonb("better_next_steps"), // User's better next steps
+  comments: text("comments"), // Additional feedback comments
   createdAt: timestamp("created_at").defaultNow(),
 });
 

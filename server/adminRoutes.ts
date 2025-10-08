@@ -22,7 +22,8 @@ export const requireAdmin = async (req: Request, res: Response, next: any) => {
         email: 'support@gpnet.au',
         name: 'Natalie Support',
         userType: 'admin',
-        role: 'Administrator',
+        role: 'super_user',
+        organizationId: '34878b77-8969-40d1-86e2-8192869275d2', // Organization with most tickets for testing
         permissions: ['admin', 'superuser']
       };
       req.session.isAuthenticated = true;
@@ -47,7 +48,8 @@ export const requireSuperuser = async (req: Request, res: Response, next: any) =
         email: 'support@gpnet.au',
         name: 'Natalie Support',
         userType: 'admin',
-        role: 'Administrator',
+        role: 'super_user',
+        organizationId: '34878b77-8969-40d1-86e2-8192869275d2', // Organization with most tickets for testing
         permissions: ['admin', 'superuser']
       };
       req.session.isAuthenticated = true;
