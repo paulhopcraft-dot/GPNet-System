@@ -4,6 +4,7 @@ import { ruleEngine } from './ruleEngine';
 import { xgboostService } from './xgboostService';
 import { workerInfoSheetService } from './workerInfoSheetService';
 import { requireAuth } from './authRoutes.js'; // CRITICAL: Authentication middleware
+import { generateDemoFeedbackForAllOrgs, generateBulkDemoFeedback } from './demoFeedbackGenerator';
 
 const router = Router();
 
@@ -40,7 +41,7 @@ router.get('/:ticketId/analysis', async (req: Request, res: Response) => {
     let workerInfoSheetStatus = null;
     if (ticket.workerId) {
       try {
-        const sheet = await storage.getWorkerInfoSheetByWorkerId(ticket.workerId, ticket.organizationId);
+        const sheet = await storage.getWorkerInfoSheetByWorkerId(ticket.workerId, ticket.organizationId ?? undefined);
         if (sheet) {
           workerInfoSheetStatus = await workerInfoSheetService.getEscalationStatus(sheet.id);
         }
@@ -179,7 +180,7 @@ router.get('/:ticketId/worker-info-sheet', async (req: Request, res: Response) =
       return res.json({ hasSheet: false, message: 'No worker associated with ticket' });
     }
 
-    const sheet = await storage.getWorkerInfoSheetByWorkerId(ticket.workerId, ticket.organizationId);
+    const sheet = await storage.getWorkerInfoSheetByWorkerId(ticket.workerId, ticket.organizationId ?? undefined);
     
     if (!sheet) {
       return res.json({ hasSheet: false });
@@ -317,6 +318,75 @@ router.post('/training/start', async (req: Request, res: Response) => {
     console.error('Error starting model training:', error);
     res.status(500).json({ 
       error: error instanceof Error ? error.message : 'Failed to start training' 
+    });
+  }
+});
+
+/**
+ * POST /api/case-console/training/demo-feedback
+ * Generate demo feedback for testing (development only)
+ */
+router.post('/training/demo-feedback', async (req: Request, res: Response) => {
+  try {
+    const userOrgId = req.session.user?.organizationId;
+    const { feedbackCount = 50 } = req.body;
+
+    if (!userOrgId) {
+      return res.status(400).json({ error: 'No organization ID in session' });
+    }
+
+    // Generate demo feedback for user's organization
+    const result = await generateBulkDemoFeedback(userOrgId, 10, Math.ceil(feedbackCount / 10));
+
+    res.json({
+      success: true,
+      ...result,
+      message: `Generated ${result.totalFeedback} demo feedback entries for ${result.ticketsProcessed} tickets`
+    });
+  } catch (error) {
+    console.error('Error generating demo feedback:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to generate demo feedback' 
+    });
+  }
+});
+
+/**
+ * POST /api/case-console/training/demo-feedback-all
+ * Generate demo feedback for all organizations (admin only)
+ * CRITICAL: Admin/superuser permission check required
+ */
+router.post('/training/demo-feedback-all', async (req: Request, res: Response) => {
+  try {
+    const userPermissions = req.session.user?.permissions || [];
+    const userRole = req.session.user?.role;
+    
+    // CRITICAL: Verify admin/superuser permission before cross-tenant operations
+    const isAdmin = userPermissions.includes('admin') || 
+                    userPermissions.includes('superuser') ||
+                    userRole === 'super_user';
+    
+    if (!isAdmin) {
+      return res.status(403).json({ 
+        error: 'Forbidden: Admin or superuser permission required for cross-organization operations' 
+      });
+    }
+
+    const { feedbackPerOrg = 50 } = req.body;
+
+    // Generate demo feedback for all organizations (admin-only operation)
+    const results = await generateDemoFeedbackForAllOrgs(feedbackPerOrg);
+
+    res.json({
+      success: true,
+      results,
+      totalOrganizations: Object.keys(results).length,
+      message: `Generated demo feedback for ${Object.keys(results).length} organizations`
+    });
+  } catch (error) {
+    console.error('Error generating demo feedback for all orgs:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to generate demo feedback' 
     });
   }
 });
