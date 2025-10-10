@@ -302,6 +302,8 @@ export function normalizeInjuryData(rawPayload: JotformRawPayload): any {
     // System Metadata (captured from JotForm)
     completedBy: normalizeString(rawPayload.completedBy || rawPayload.completed_by || rawPayload.submittedBy || rawPayload.submitted_by),
     completedDate: normalizeDate(rawPayload.completedDate || rawPayload.completed_date || rawPayload.submissionDate || rawPayload.submission_date),
+    caseId: normalizeString(rawPayload.caseId || rawPayload.case_id || rawPayload.ticketId || rawPayload.ticket_id),
+    companyId: normalizeString(rawPayload.companyId || rawPayload.company_id || rawPayload.organizationId || rawPayload.organization_id),
   };
 }
 
