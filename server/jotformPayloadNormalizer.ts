@@ -239,25 +239,57 @@ export function normalizePreEmploymentData(rawPayload: JotformRawPayload): any {
 
 /**
  * Normalizes Injury Assessment form data from Jotform
+ * Updated to capture all Module 1 WIS specification fields
  */
 export function normalizeInjuryData(rawPayload: JotformRawPayload): any {
   return {
-    // Personal Information
+    // Personal Information (Core Worker Details)
     firstName: normalizeString(rawPayload.firstName || rawPayload.first_name),
     lastName: normalizeString(rawPayload.lastName || rawPayload.last_name),
+    fullName: normalizeString(rawPayload.fullName || rawPayload.full_name),
     email: normalizeString(rawPayload.email),
     phone: normalizeString(rawPayload.phone),
     dateOfBirth: normalizeDate(rawPayload.dateOfBirth || rawPayload.date_of_birth),
     employeeId: normalizeString(rawPayload.employeeId || rawPayload.employee_id),
     
-    // Injury Details
-    injuryDate: normalizeDate(rawPayload.injuryDate || rawPayload.injury_date),
-    injuryLocation: normalizeString(rawPayload.injuryLocation || rawPayload.injury_location),
+    // Manager/Supervisor Details (Module 1 Spec - Critical Update)
+    managerName: normalizeString(rawPayload.managerName || rawPayload.manager_name),
+    managerEmail: normalizeString(rawPayload.managerEmail || rawPayload.manager_email),
+    managerPhone: normalizeString(rawPayload.managerPhone || rawPayload.manager_phone),
+    
+    // Incident Details (Enhanced from spec)
+    injuryDate: normalizeDate(rawPayload.injuryDate || rawPayload.injury_date || rawPayload.incidentDate || rawPayload.incident_date),
+    injuryLocation: normalizeString(rawPayload.injuryLocation || rawPayload.injury_location || rawPayload.location),
     injuryType: normalizeString(rawPayload.injuryType || rawPayload.injury_type),
-    bodyPartAffected: normalizeArray(rawPayload.bodyPartAffected || rawPayload.body_part_affected),
+    description: normalizeString(rawPayload.description || rawPayload.incidentDescription || rawPayload.incident_description),
+    activityAtTime: normalizeString(rawPayload.activityAtTime || rawPayload.activity_at_time || rawPayload.activity),
+    witnesses: normalizeString(rawPayload.witnesses || rawPayload.witnessDetails || rawPayload.witness_details),
+    bodyPartAffected: normalizeArray(rawPayload.bodyPartAffected || rawPayload.body_part_affected || rawPayload.bodyPart || rawPayload.body_part),
     painLevel: normalizeInteger(rawPayload.painLevel || rawPayload.pain_level),
     
-    // Work Impact
+    // Medical Response (Module 1 Spec)
+    ambulanceCalled: normalizeBoolean(rawPayload.ambulanceCalled || rawPayload.ambulance_called),
+    hospitalAttended: normalizeBoolean(rawPayload.hospitalAttended || rawPayload.hospital_attended),
+    hospitalName: normalizeString(rawPayload.hospitalName || rawPayload.hospital_name),
+    doctorSeen: normalizeBoolean(rawPayload.doctorSeen || rawPayload.doctor_seen),
+    firstAidAdministered: normalizeBoolean(rawPayload.firstAidAdministered || rawPayload.first_aid_administered),
+    firstAidDetails: normalizeString(rawPayload.firstAidDetails || rawPayload.first_aid_details),
+    
+    // Current Worker Status (Module 1 Spec)
+    currentLocation: normalizeString(rawPayload.currentLocation || rawPayload.current_location || rawPayload.workerLocation || rawPayload.worker_location),
+    workStatus: normalizeString(rawPayload.workStatus || rawPayload.work_status),
+    expectedTimeOff: normalizeString(rawPayload.expectedTimeOff || rawPayload.expected_time_off || rawPayload.timeOff || rawPayload.time_off),
+    
+    // Employment Context (Module 1 Spec)
+    underPerformanceManagement: normalizeBoolean(rawPayload.underPerformanceManagement || rawPayload.under_performance_management || rawPayload.performanceManagement || rawPayload.performance_management),
+    performanceDetails: normalizeString(rawPayload.performanceDetails || rawPayload.performance_details),
+    previousInjuries: normalizeBoolean(rawPayload.previousInjuries || rawPayload.previous_injuries),
+    previousInjuryDetails: normalizeString(rawPayload.previousInjuryDetails || rawPayload.previous_injury_details),
+    
+    // Additional Information (Module 1 Spec - Free-form notes)
+    additionalInfo: normalizeString(rawPayload.additionalInfo || rawPayload.additional_info || rawPayload.notes || rawPayload.additionalNotes || rawPayload.additional_notes),
+    
+    // Work Impact (Backward compatibility - kept for existing forms)
     timeOffWork: normalizeBoolean(rawPayload.timeOffWork || rawPayload.time_off_work),
     modifiedDuties: normalizeBoolean(rawPayload.modifiedDuties || rawPayload.modified_duties),
     medicalTreatment: normalizeBoolean(rawPayload.medicalTreatment || rawPayload.medical_treatment),
@@ -266,6 +298,10 @@ export function normalizeInjuryData(rawPayload: JotformRawPayload): any {
     consentToShare: normalizeBoolean(rawPayload.consentToShare || rawPayload.consent_to_share),
     signature: normalizeString(rawPayload.signature),
     signatureDate: normalizeDate(rawPayload.signatureDate || rawPayload.signature_date),
+    
+    // System Metadata (captured from JotForm)
+    completedBy: normalizeString(rawPayload.completedBy || rawPayload.completed_by || rawPayload.submittedBy || rawPayload.submitted_by),
+    completedDate: normalizeDate(rawPayload.completedDate || rawPayload.completed_date || rawPayload.submissionDate || rawPayload.submission_date),
   };
 }
 
