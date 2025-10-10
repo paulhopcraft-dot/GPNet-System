@@ -1,0 +1,1375 @@
+```markdown
+# GPNet Injury Management System - Technical Specification v1.0
+
+## Document Purpose
+This specification defines the complete workflow for Module 1: Initial Injury Management in the GPNet system. This document is implementation-ready and designed to be converted into executable code for the REPL environment.
+
+---
+
+## System Architecture Overview
+
+### Technology Stack
+- **Frontend**: GPNet Web Application (React-based)
+- **Backend**: Node.js with Express
+- **AI/ML**: OpenAI GPT-4, XGBoost, Bayesian Networks
+- **Integrations**: Freshdesk (ticket repository), JotForms (form structure), Stripe (payments)
+- **Database**: PostgreSQL with real-time sync to Freshdesk
+- **Email**: SendGrid with automated routing
+- **Web Scraping**: Puppeteer for doctor email lookup
+
+### Data Flow Architecture
+```
+
+Injury Occurs → Michelle Logs In → GPNet UI → Fill WIS →
+Risk Assessment → Worker Email → Injury Check → Medical Cert →
+Medical Report → RTW Plan → Doctor Review → Implementation
+↓
+Freshdesk Sync (continuous)
+
+```
+---
+
+## MODULE 1: INITIAL INJURY MANAGEMENT
+
+## 1. SYSTEM INITIALIZATION & USER ACCESS
+
+### 1.1 Account Setup
+```javascript
+// Registration & Login Flow
+const accountSetup = {
+  registration: {
+    method: "Google OAuth",
+    fields: {
+      companyName: "required",
+      primaryContactName: "required",
+      primaryContactEmail: "required",
+      companySize: "optional",
+      industry: "optional"
+    },
+    process: [
+      "User clicks 'Get Started'",
+      "Watch demo video (optional)",
+      "Sign in with Google",
+      "System auto-creates account",
+      "Redirect to dashboard"
+    ]
+  },
+  
+  pricing: {
+    systemAccess: "FREE",
+    medicalCheckFee: 40.00,
+    billingTrigger: "Medical report generation",
+    paymentMethods: ["Stripe", "Monthly Invoice (automated)"]
+  },
+  
+  userRoles: {
+    primaryContact: {
+      access: "Full - all cases for company",
+      login: "Single login per company",
+      permissions: ["Create cases", "View all", "Edit all", "Approve RTW plans"]
+    },
+    secondaryContact: {
+      access: "Division-specific",
+      permissions: ["View assigned cases", "Update assigned cases"]
+    },
+    systemAdmin: {
+      users: ["Natalie", "System team"],
+      access: "All companies, all cases",
+      permissions: ["Override automation", "Approve alerts", "System configuration"]
+    }
+  }
+}
+```
+
+### 1.2 Dashboard Interface
+
+```javascript
+const dashboard = {
+  mainScreen: {
+    buttons: [
+      { id: "newInjury", label: "New Injury", priority: "primary" },
+      { id: "viewCases", label: "View All Cases", priority: "secondary" },
+      { id: "reports", label: "Reports", priority: "secondary" }
+    ],
+    
+    aiAssistant: {
+      name: "Michelle AI",
+      purpose: "Help determine case type via natural language",
+      capabilities: [
+        "Determine if preventative/injury/mental health/general wellbeing",
+        "Guide through WIS completion",
+        "Answer process questions"
+      ]
+    },
+    
+    caseList: {
+      columns: ["Worker Name", "Injury Date", "Status", "Risk Level", "WorkCover %", "Next Action"],
+      filters: ["All", "Active", "Pending", "Closed"],
+      sorting: ["Date", "Risk", "Status"]
+    }
+  }
+}
+```
+
+-----
+
+## 2. WORKER INFORMATION SHEET (WIS) - INJURY MODULE
+
+### 2.1 WIS Data Structure
+
+```javascript
+const workerInformationSheet = {
+  // Core Worker Details
+  workerDetails: {
+    fullName: { type: "text", required: true, validation: "min 2 words" },
+    email: { type: "email", required: true, validation: "valid email format" },
+    phone: { type: "tel", required: false },
+    employeeId: { type: "text", required: false }
+  },
+  
+  // Manager/Supervisor Details (NEW - CRITICAL UPDATE)
+  managerDetails: {
+    managerName: { 
+      type: "text", 
+      required: true, 
+      label: "Onsite Manager/Supervisor Name",
+      helpText: "Person directly supervising worker at time of injury"
+    },
+    managerEmail: { 
+      type: "email", 
+      required: false,
+      label: "Manager Email (optional)",
+      helpText: "To keep manager in the loop"
+    },
+    managerPhone: { type: "tel", required: false }
+  },
+  
+  // Incident Details
+  incidentDetails: {
+    date: { type: "datetime", required: true, label: "When did the injury occur?" },
+    location: { 
+      type: "text", 
+      required: true, 
+      label: "Where did it happen?",
+      placeholder: "e.g., Warehouse Bay 3, Office, Client site"
+    },
+    description: { 
+      type: "textarea", 
+      required: true,
+      label: "What happened?",
+      inputMethod: ["typing", "voice-to-text"],
+      placeholder: "Describe the incident in detail..."
+    },
+    activityAtTime: {
+      type: "text",
+      required: true,
+      label: "What was the worker doing at the time?"
+    },
+    witnesses: {
+      type: "textarea",
+      required: false,
+      label: "Were there any witnesses? (Names and contact details)"
+    }
+  },
+  
+  // Medical Response
+  medicalResponse: {
+    ambulanceCalled: { type: "boolean", required: true },
+    hospitalAttended: { type: "boolean", required: true },
+    hospitalName: { type: "text", required: false, conditional: "if hospitalAttended = true" },
+    doctorSeen: { type: "boolean", required: true },
+    firstAidAdministered: { type: "boolean", required: true },
+    firstAidDetails: { type: "textarea", required: false, conditional: "if firstAidAdministered = true" }
+  },
+  
+  // Current Worker Status
+  workerStatus: {
+    currentLocation: {
+      type: "select",
+      required: true,
+      options: ["At work", "At home", "In hospital", "Unknown"],
+      label: "Where is the worker now?"
+    },
+    workStatus: {
+      type: "select",
+      required: true,
+      options: ["Still working", "Off work", "Modified duties", "Unknown"],
+      label: "Current work status"
+    },
+    expectedTimeOff: {
+      type: "select",
+      required: false,
+      options: ["No time off", "Rest of day", "1-3 days", "1 week", "2+ weeks", "Unknown"]
+    }
+  },
+  
+  // Employment Context
+  employmentContext: {
+    underPerformanceManagement: {
+      type: "boolean",
+      required: true,
+      label: "Is the worker currently under performance management?"
+    },
+    performanceDetails: {
+      type: "textarea",
+      required: false,
+      conditional: "if underPerformanceManagement = true"
+    },
+    previousInjuries: {
+      type: "boolean",
+      required: false,
+      label: "Any previous injuries or claims?"
+    },
+    previousInjuryDetails: {
+      type: "textarea",
+      required: false,
+      conditional: "if previousInjuries = true"
+    }
+  },
+  
+  // Free-form Additional Information
+  additionalInfo: {
+    type: "textarea",
+    required: false,
+    inputMethod: ["typing", "voice-to-text"],
+    label: "Any other relevant information?",
+    placeholder: "Use this space to add any context that might be important..."
+  },
+  
+  // System Metadata
+  metadata: {
+    completedBy: { type: "text", auto: "primaryContactName" },
+    completedDate: { type: "datetime", auto: "timestamp" },
+    caseId: { type: "uuid", auto: "generated" },
+    companyId: { type: "uuid", auto: "from login session" }
+  }
+}
+```
+
+### 2.2 WIS User Experience
+
+```javascript
+const wisUX = {
+  features: {
+    saveAndResume: true,
+    autoSave: "every 30 seconds",
+    progressIndicator: true,
+    voiceInput: {
+      enabled: true,
+      targetFields: ["description", "additionalInfo"],
+      mobileOptimized: true
+    }
+  },
+  
+  validation: {
+    onSubmit: "Check required fields only",
+    allowPartialSave: true,
+    warnBeforeLeaving: true
+  },
+  
+  ui: {
+    layout: "Single page with sections",
+    optionalFieldsCollapsed: true,
+    mobileFriendly: true,
+    accessibility: "WCAG 2.1 AA compliant"
+  }
+}
+```
+
+### 2.3 WIS Completion Logic
+
+```javascript
+const wisCompletionFlow = {
+  onSubmit: async (wisData) => {
+    // Step 1: Validate and save
+    const validation = validateWIS(wisData);
+    if (!validation.complete) {
+      return {
+        status: "incomplete",
+        missingFields: validation.missing,
+        action: "Allow partial save, flag for follow-up"
+      };
+    }
+    
+    // Step 2: Create case in GPNet + Freshdesk
+    const caseId = await createCase(wisData);
+    
+    // Step 3: Send email to worker (captured email)
+    const workerEmail = wisData.workerDetails.email;
+    await tagWorkerEmailToCase(caseId, workerEmail);
+    
+    // Step 4: Assess injury severity
+    const riskLevel = await assessRiskLevel(wisData);
+    
+    // Step 5: Trigger appropriate workflow
+    return {
+      caseId: caseId,
+      riskLevel: riskLevel,
+      nextAction: determineNextAction(riskLevel)
+    };
+  },
+  
+  incompleteFieldHandling: {
+    timing: "24 hours after initial save",
+    action: "Email primary contact with list of missing fields",
+    escalation: {
+      condition: "Critical fields missing after 48 hours",
+      action: "Alert Natalie with case details"
+    }
+  }
+}
+```
+
+-----
+
+## 3. RISK ASSESSMENT & TRIAGE
+
+### 3.1 Risk Level Determination
+
+```javascript
+const riskAssessment = {
+  algorithm: (wisData) => {
+    const signals = {
+      hospitalVisit: wisData.medicalResponse.hospitalAttended ? 30 : 0,
+      ambulance: wisData.medicalResponse.ambulanceCalled ? 25 : 0,
+      currentlyHospitalized: wisData.workerStatus.currentLocation === "In hospital" ? 40 : 0,
+      offWork: wisData.workerStatus.workStatus === "Off work" ? 15 : 0,
+      expectedTimeOff: scoreTimeOff(wisData.workerStatus.expectedTimeOff),
+      uncertaintyLevel: wisData.workerStatus.currentLocation === "Unknown" ? -10 : 0
+    };
+    
+    const totalScore = Object.values(signals).reduce((a, b) => a + b, 0);
+    
+    // Risk thresholds
+    if (totalScore >= 50) return "RED";
+    if (totalScore >= 20) return "YELLOW";
+    return "GREEN";
+  },
+  
+  riskLevels: {
+    RED: {
+      label: "High Risk / Critical",
+      color: "#DC2626",
+      criteria: [
+        "Worker hospitalized",
+        "Serious incapacitation",
+        "Major trauma",
+        "Ambulance required"
+      ],
+      immediateActions: [
+        "DO NOT send injury check immediately",
+        "Send supportive follow-up email",
+        "Wait for worker to confirm they're settled at home",
+        "Alert Natalie and Michelle"
+      ]
+    },
+    
+    YELLOW: {
+      label: "Moderate Risk",
+      color: "#F59E0B",
+      criteria: [
+        "Clear injury occurred",
+        "Doctor visit required",
+        "Medical intervention needed",
+        "Expected time off work"
+      ],
+      immediateActions: [
+        "Send initial supportive email",
+        "Flag for review before injury check",
+        "May send injury check after 24-48 hours",
+        "Monitor worker responses"
+      ]
+    },
+    
+    GREEN: {
+      label: "Low Risk / Unclear",
+      color: "#10B981",
+      criteria: [
+        "Minor incident",
+        "Worker still at work or at home",
+        "Unclear if actual injury",
+        "No immediate medical intervention"
+      ],
+      immediateActions: [
+        "Send injury check immediately",
+        "Standard follow-up protocol",
+        "Request medical certificate if applicable"
+      ]
+    }
+  }
+}
+```
+
+### 3.2 Risk Level Display
+
+```javascript
+const riskDisplayUI = {
+  caseCard: {
+    riskBadge: {
+      position: "top-right",
+      showScore: true,
+      format: "RISK LEVEL | WorkCover Likelihood: XX%"
+    }
+  },
+  
+  detailView: {
+    riskPanel: {
+      elements: [
+        "Risk level indicator (color-coded)",
+        "Contributing factors list",
+        "Recommended actions checklist",
+        "WorkCover prediction percentage",
+        "Risk mitigation suggestions"
+      ]
+    }
+  }
+}
+```
+
+-----
+
+## 4. WORKER COMMUNICATION & INJURY CHECK DEPLOYMENT
+
+### 4.1 Initial Worker Contact Email Templates
+
+```javascript
+const emailTemplates = {
+  GREEN_InitialContact: {
+    subject: "GPNet Support - {{workerName}} Incident Follow-up",
+    body: `
+Hi {{workerName}},
+
+We understand there was an incident at work on {{incidentDate}}. GPNet is here to support your recovery and ensure you receive appropriate care.
+
+To help us assist you better, please complete this brief injury assessment:
+
+{{injuryCheckLink}}
+
+This will help us understand what happened and coordinate any necessary support.
+
+If you have any questions or concerns, please don't hesitate to reach out.
+
+Best regards,
+GPNet Support Team
+On behalf of {{companyName}}
+    `,
+    sendTiming: "Immediately after WIS submission",
+    includeAttachments: false
+  },
+  
+  YELLOW_InitialContact: {
+    subject: "GPNet Support - Checking In on Your Recovery",
+    body: `
+Hi {{workerName}},
+
+We hope you're recovering well following the incident on {{incidentDate}}. GPNet is here to support you through this process.
+
+How are you feeling? Please let us know your current status when you're able to respond to this email.
+
+We'll be in touch again soon with next steps to support your recovery.
+
+Take care,
+GPNet Support Team
+On behalf of {{companyName}}
+    `,
+    sendTiming: "Immediately after WIS submission",
+    followUp: {
+      ifNoResponse24h: "Send gentle reminder",
+      ifNoResponse48h: "Alert Michelle and Natalie"
+    }
+  },
+  
+  RED_InitialContact: {
+    subject: "GPNet Support - We're Here For You",
+    body: `
+Hi {{workerName}},
+
+We were concerned to hear about your injury on {{incidentDate}}. Your health and recovery are our top priority.
+
+GPNet is here to support you through this time. When you're feeling up to it, please let us know how you're doing by replying to this email.
+
+There's no rush - focus on your recovery. We'll follow up with you in a few days.
+
+Wishing you a smooth recovery,
+GPNet Support Team
+On behalf of {{companyName}}
+    `,
+    sendTiming: "Immediately after WIS submission",
+    followUp: {
+      ifNoResponse48h: "Send compassionate check-in",
+      ifNoResponse96h: "Alert Michelle and Natalie for phone call"
+    }
+  },
+  
+  injuryCheckReminder: {
+    subject: "Reminder: Quick Injury Assessment - {{workerName}}",
+    body: `
+Hi {{workerName}},
+
+Just a friendly reminder to complete your injury assessment when you get a moment:
+
+{{injuryCheckLink}}
+
+This helps us ensure you get the right support and care.
+
+Thanks,
+GPNet Support Team
+    `,
+    sendTiming: "24 hours after initial email if not completed"
+  }
+}
+```
+
+### 4.2 Injury Check Sending Logic
+
+```javascript
+const injuryCheckDeployment = {
+  decisionTree: async (caseData) => {
+    const riskLevel = caseData.riskLevel;
+    const workerEmail = caseData.workerDetails.email;
+    
+    switch(riskLevel) {
+      case "GREEN":
+        // Send immediately
+        await sendEmail(workerEmail, emailTemplates.GREEN_InitialContact);
+        await sendInjuryCheck(workerEmail, caseData.caseId);
+        return {
+          sent: true,
+          timing: "immediate",
+          nextCheck: "24h reminder if not completed"
+        };
+        
+      case "YELLOW":
+        // Send supportive email, wait for response before injury check
+        await sendEmail(workerEmail, emailTemplates.YELLOW_InitialContact);
+        return {
+          sent: false,
+          timing: "delayed",
+          condition: "Wait for worker response or 24-48h, then reassess",
+          nextCheck: "monitor_worker_response"
+        };
+        
+      case "RED":
+        // Send compassionate email, DO NOT send injury check
+        await sendEmail(workerEmail, emailTemplates.RED_InitialContact);
+        return {
+          sent: false,
+          timing: "significantly_delayed",
+          condition: "Wait for worker to confirm settled at home",
+          nextCheck: "48h compassionate follow-up",
+          requiresManualReview: true
+        };
+    }
+  },
+  
+  delayedInjuryCheckTrigger: {
+    YELLOW: {
+      autoSendConditions: [
+        "Worker responds positively to initial email",
+        "48 hours elapsed and worker confirmed at home",
+        "Michelle manually approves sending"
+      ]
+    },
+    
+    RED: {
+      autoSendConditions: [
+        "Worker explicitly confirms ready (email response)",
+        "Worker's status updated to 'At home' AND 7+ days elapsed",
+        "Michelle manually approves sending"
+      ],
+      neverAutoSend: true,
+      requiresHumanApproval: true
+    }
+  },
+  
+  trackingAndAlerts: {
+    noWorkerResponse: {
+      timing: [
+        { hours: 24, action: "Send gentle reminder email" },
+        { hours: 48, action: "Alert Michelle and Natalie - phone call required" }
+      ]
+    },
+    
+    injuryCheckNotSent: {
+      condition: "WIS submitted but injury check not deployed after 7 days",
+      action: "Flag case for Natalie review with reason"
+    }
+  }
+}
+```
+
+### 4.3 Email Routing & Case Matching
+
+```javascript
+const emailRouting = {
+  inboundEmail: async (email) => {
+    // All emails sent to support@gpnet.com are processed here
+    
+    // Step 1: Extract sender email
+    const senderEmail = email.from;
+    
+    // Step 2: Search for matching case
+    const matchingCases = await database.query(`
+      SELECT case_id, worker_name, status 
+      FROM cases 
+      WHERE worker_email = $1 
+      AND status != 'closed'
+      ORDER BY created_date DESC
+    `, [senderEmail]);
+    
+    if (matchingCases.length > 0) {
+      // Match found - merge into case
+      const caseId = matchingCases[0].case_id;
+      await mergeEmailToCase(caseId, email);
+      await syncToFreshdesk(caseId);
+      
+      // Analyze email for next actions
+      await analyzeEmailForActions(caseId, email);
+      
+      return { matched: true, caseId: caseId };
+    } else {
+      // No match - check if email mentions worker name
+      const mentionedWorker = await extractWorkerNameFromEmail(email);
+      
+      if (mentionedWorker) {
+        const caseByName = await findCaseByWorkerName(mentionedWorker);
+        if (caseByName) {
+          await mergeEmailToCase(caseByName.case_id, email);
+          return { matched: true, caseId: caseByName.case_id, matchMethod: "name" };
+        }
+      }
+      
+      // Still no match - create alert for manual routing
+      await createManualRoutingAlert({
+        email: email,
+        issue: "Cannot match to existing case"
+      });
+      
+      return { matched: false, requiresManualReview: true };
+    }
+  },
+  
+  outboundEmail: {
+    alwaysCC: (caseData) => {
+      const ccList = [];
+      
+      // Always CC support@gpnet.com for tracking
+      ccList.push("support@gpnet.com");
+      
+      // CC WorkCover case manager if applicable
+      if (caseData.isWorkCover && caseData.workCoverCaseManager) {
+        ccList.push(caseData.workCoverCaseManager.email);
+      }
+      
+      return ccList;
+    }
+  }
+}
+```
+
+-----
+
+## 5. INJURY CHECK SUBMISSION & PROCESSING
+
+### 5.1 Injury Check Components
+
+```javascript
+const injuryCheck = {
+  structure: {
+    section1_IncidentDetails: {
+      questions: [
+        "In your own words, what happened?",
+        "What part(s) of your body were affected?",
+        "Did you feel pain immediately or did it come on gradually?",
+        "What were you doing at the exact moment of injury?"
+      ]
+    },
+    
+    section2_SymptomAssessment: {
+      questions: [
+        "On a scale of 1-10, how would you rate your pain right now?",
+        "What activities make the pain worse?",
+        "What activities make the pain better?",
+        "Are you experiencing any of the following: [checklist]"
+      ]
+    },
+    
+    section3_FunctionalLimitations: {
+      questions: [
+        "What work tasks are you currently unable to do?",
+        "What work tasks are you able to do with difficulty?",
+        "What work tasks can you do without any issues?",
+        "Are there any movements or positions you need to avoid?"
+      ]
+    },
+    
+    section4_WorkerPerspective: {
+      questions: [
+        "What do you think caused the injury?",
+        "Could this injury have been prevented? If so, how?",
+        "Is there anything else we should know about the incident?",
+        "How are you feeling emotionally about what happened?"
+      ]
+    },
+    
+    section5_CurrentStatus: {
+      questions: [
+        "Have you seen a doctor?",
+        "What did the doctor say?",
+        "What is your current location? (home/work/hospital)",
+        "When do you expect to return to work?"
+      ]
+    }
+  },
+  
+  submission: {
+    format: "JSON object",
+    storage: ["GPNet database", "Freshdesk attachment (PDF)"],
+    privacy: "Visible to Michelle (employer) and Natalie (admin)"
+  }
+}
+```
+
+### 5.2 Post-Submission Automation
+
+```javascript
+const postInjuryCheckSubmission = async (injuryCheckData, caseId) => {
+  // IMMEDIATE ACTIONS (within 30 seconds)
+  
+  // 1. Notify stakeholders
+  await Promise.all([
+    sendEmail("natalie@gpnet.com", {
+      subject: `Injury Check Submitted - ${injuryCheckData.workerName}`,
+      body: `${injuryCheckData.workerName} has completed their injury check for case ${caseId}.`
+    }),
+    
+    sendEmail(injuryCheckData.primaryContactEmail, {
+      subject: `Injury Check Submitted - ${injuryCheckData.workerName}`,
+      body: `${injuryCheckData.workerName} has completed their injury check. You can view the results in GPNet.`
+    })
+  ]);
+  
+  // 2. Generate PDF of injury check results
+  const injuryCheckPDF = await generatePDF({
+    template: "injury_check_results",
+    data: injuryCheckData
+  });
+  
+  await attachToCase(caseId, injuryCheckPDF, "injury_check.pdf");
+  
+  // 3. Generate Medical Report (AI-powered analysis)
+  const medicalReport = await generateMedicalReport({
+    injuryCheckData: injuryCheckData,
+    wisData: await getCaseData(caseId),
+    similarCases: await findSimilarCases(injuryCheckData)
+  });
+  
+  // 4. Generate Medical Report PDF
+  const medicalReportPDF = await generatePDF({
+    template: "medical_report",
+    data: medicalReport
+  });
+  
+  await attachToCase(caseId, medicalReportPDF, "medical_report.pdf");
+  
+  // 5. Update case status
+  await updateCaseStatus(caseId, {
+    status: "injury_check_complete",
+    nextAction: "awaiting_medical_certificate",
+    medicalReportGenerated: true
+  });
+  
+  // 6. Trigger medical certificate request
+  await requestMedicalCertificate(caseId);
+  
+  // 7. Sync everything to Freshdesk
+  await syncToFreshdesk(caseId);
+  
+  return {
+    success: true,
+    medicalReportId: medicalReport.id,
+    nextStage: "medical_certificate_collection"
+  };
+}
+```
+
+-----
+
+## 6. MEDICAL CERTIFICATE MANAGEMENT
+
+### 6.1 Medical Certificate Request System
+
+```javascript
+const medicalCertificateRequest = {
+  initialRequest: {
+    timing: "Immediately after injury check submission OR if worker reports seeing doctor",
+    
+    email: {
+      subject: "Medical Certificate Required - {{workerName}}",
+      body: `
+Hi {{workerName}},
+
+Thank you for completing your injury assessment.
+
+To continue supporting your recovery and process your claim, we need a medical certificate from your doctor.
+
+**Please upload your medical certificate:**
+- Reply to this email with the certificate attached, OR
+- Upload directly in GPNet at: {{uploadLink}}
+
+**Important:** We cannot continue payments without a current medical certificate.
+
+If you have any questions, please let us know.
+
+Best regards,
+GPNet Support Team
+      `,
+      attachments: []
+    }
+  },
+  
+  reminderSequence: [
+    {
+      day: 1,
+      sendIfNotReceived: true,
+      template: {
+        subject: "Reminder: Medical Certificate Needed",
+        body: `
+Hi {{workerName}},
+
+Just a quick reminder that we still need your medical certificate to continue processing your claim and payments.
+
+Please send it as soon as possible by replying to this email.
+
+Thanks,
+GPNet Support Team
+        `,
+        tone: "friendly"
+      }
+    },
+    
+    {
+      day: 2,
+      sendIfNotReceived: true,
+      template: {
+        subject: "Important: Medical Certificate Required",
+        body: `
+Hi {{workerName}},
+
+We haven't yet received your medical certificate.
+
+**Please note:** Without this document, we cannot continue to pay you as per workplace policy.
+
+Please send your certificate today by replying to this email or uploading at {{uploadLink}}.
+
+If you're having trouble getting a certificate, please let us know so we can assist.
+
+GPNet Support Team
+        `,
+        tone: "urgent_but_supportive"
+      }
+    },
+    
+    {
+      day: 3,
+      sendIfNotReceived: true,
+      escalation: true,
+      template: {
+        subject: "URGENT: Medical Certificate Required - Payment Hold",
+        body: `
+Hi {{workerName}},
+
+This is an urgent reminder that we have not received your medical certificate after three requests.
+
+**Your payments are now on hold** until we receive this document.
+
+Please send your medical certificate immediately or contact us if you need assistance.
+
+GPNet Support Team
+        `,
+        tone: "urgent"
+      },
+      
+      adminAlert: {
+        recipients: ["natalie@gpnet.com", "{{primaryContactEmail}}"],
+        message: "{{workerName}} has not provided medical certificate after 3 reminders. Phone call required.",
+        priority: "high"
+      }
+    }
+  ],
+  
+  certificateReceived: async (caseId, certificateFile) => {
+    // 1. Store certificate
+    await attachToCase(caseId, certificateFile, "medical_certificate.pdf");
+    
+    // 2. Extract information using OCR/AI
+    const certInfo = await extractCertificateInfo(certificateFile);
+    
+    // 3. Store structured data
+    await updateCase(caseId, {
+      medicalCertificate: {
+        received: true,
+        receivedDate: new Date(),
+        validFrom: certInfo.startDate,
+        validUntil: certInfo.endDate,
+        treatingDoctor: certInfo.doctorName,
+        clinic: certInfo.clinicName,
+        restrictions: certInfo.restrictions
+      }
+    });
+    
+    // 4. Stop reminder emails
+    await cancelScheduledEmails(caseId, "medical_certificate_reminder");
+    
+    // 5. Trigger doctor email lookup
+    await findDoctorEmail(caseId, certInfo);
+    
+    // 6. Update next action
+    await updateCaseStatus(caseId, {
+      status: "medical_certificate_received",
+      nextAction: "generate_rtw_plan"
+    });
+    
+    return { success: true, nextStage: "rtw_plan_generation" };
+  }
+}
+```
+
+### 6.2 Certificate Expiry Tracking
+
+```javascript
+const certificateExpiryTracking = {
+  monitoringSchedule: {
+    checkFrequency: "daily",
+    
+    alerts: [
+      {
+        timing: "7 days before expiry",
+        action: async (caseData) => {
+          await sendEmail(caseData.workerEmail, {
+            subject: "Medical Certificate Renewal Reminder",
+            body: `
+Hi ${caseData.workerName},
+
+Your current medical certificate expires on ${caseData.medicalCertificate.validUntil}.
+
+Please arrange to see your doctor for a new certificate before this date so we can continue your payments without interruption.
+
+You can send the new certificate by replying to this email.
+
+Thanks,
+GPNet Support Team
+            `,
+            cc: [
+              caseData.treatingDoctorEmail,
+              ...(caseData.isWorkCover ? [caseData.workCoverCaseManager] : [])
+            ]
+          });
+        }
+      },
+      
+      {
+        timing: "On expiry date",
+        action: async (caseData) => {
+          await sendEmail(caseData.workerEmail, {
+            subject: "URGENT: Medical Certificate Expired",
+            body: `
+Hi ${caseData.workerName},
+
+Your medical certificate expired today. We need a current certificate to continue processing your claim.
+
+Please send your updated certificate immediately.
+
+GPNet Support Team
+            `
+          });
+          
+          // Alert administrators
+          await createAlert({
+            type: "certificate_expired",
+            caseId: caseData.caseId,
+            message: `${caseData.workerName}'s certificate expired - immediate action required`
+          });
+        }
+      }
+    ]
+  },
+  
+  autoRenewalWorkflow: {
+    enabled: true,
+    description: "Fully automated - no human intervention required",
+    ccClinicOnAllEmails: true,
+    ccWorkCoverIfApplicable: true
+  }
+}
+```
+
+-----
+
+## 7. DOCTOR CONTACT INFORMATION EXTRACTION
+
+### 7.1 Doctor Email Lookup System
+
+```javascript
+const doctorEmailLookup = {
+  process: async (caseId, certificateInfo) => {
+    const { doctorName, clinicName, clinicAddress, clinicPhone } = certificateInfo;
+    
+    // Step 1: Check if email is on certificate
+    const emailOnCert = extractEmailFromPDF(certificateInfo.certificateFile);
+    
+    if (emailOnCert) {
+      return {
+        method: "certificate",
+        email: emailOnCert,
+        confidence: "high",
+        requiresVerification: true
+      };
+    }
+    
+    // Step 2: Web search for clinic
+    const searchQuery = `${clinicName} ${clinicAddress} contact email`;
+    const searchResults = await webSearch(searchQuery);
+    
+    // Step 3: Find clinic website
+    const clinicWebsite = identifyOfficialWebsite(searchResults, clinicName);
+    
+    if (!clinicWebsite) {
+      return {
+        method: "none",
+        email: null,
+        requiresManualLookup: true,
+        alertAdmin: true
+      };
+    }
+    
+    // Step 4: Crawl website for email
+    const crawlResults = await crawlWebsiteForEmail(clinicWebsite, doctorName);
+    
+    if (crawlResults.found) {
+      return {
+        method: "web_crawl",
+        email: crawlResults.email,
+        source: crawlResults.pageUrl,
+        confidence: crawlResults.confidence,
+        requiresVerification: true
+      };
+    }
+    
+    // Step 5: Try alternative methods
+    const alternativeEmail = await tryAlternativeMethods(clinicName, doctorName);
+    
+    if (alternativeEmail) {
+      return {
+        method: "alternative",
+        email: alternativeEmail.email,
+        confidence: "medium",
+        requiresVerification: true
+      };
+    }
+    
+    // Step 6: Failed - requires manual lookup
+    return {
+      method: "none",
+      email: null,
+      requiresManualLookup: true,
+      alertAdmin: true,
+      searchAttempted: true,
+      clinicWebsite: clinicWebsite
+    };
+  },
+  
+  webCrawlingLogic: {
+    pages: [
+      "/contact",
+      "/contact-us",
+      "/our-doctors",
+      "/staff",
+      "/about",
+      "/team"
+    ],
+    
+    emailPatterns: [
+      /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g
+    ],
+    
+    confidenceScoring: (email, context) => {
+      let score = 0;
+      
+      // Higher confidence if email contains doctor's name
+      if (email.toLowerCase().includes(context.doctorName.toLowerCase())) score += 30;
+      
+      // Higher confidence if found on dedicated contact page
+      if (context.pageUrl.includes('/contact')) score += 20;
+      
+      // Higher confidence if email domain matches clinic website
+      if (email.includes(context.clinicDomain)) score += 30;
+      
+      // Lower confidence if generic emails
+      if (email.includes('info@') || email.includes('admin@')) score -= 20;
+      
+      return Math.max(0, Math.min(100, score));
+    }
+  },
+  
+  verificationWorkflow: async (caseId, emailLookupResult) => {
+    // Create alert for Natalie to verify
+    await createAdminAlert({
+      type: "doctor_email_verification",
+      caseId: caseId,
+      priority: "medium",
+      data: {
+        foundEmail: emailLookupResult.email,
+        method: emailLookupResult.method,
+        confidence: emailLookupResult.confidence,
+        source: emailLookupResult.source
+      },
+      actions: [
+        {
+          label: "Approve Email",
+          action: "approve_doctor_email"
+        },
+        {
+          label: "Edit Email",
+          action: "edit_doctor_email"
+        },
+        {
+          label: "Manual Lookup Required",
+          action: "flag_for_manual_lookup"
+        }
+      ]
+    });
+  },
+  
+  manualLookupAlert: async (caseId, certificateInfo) => {
+    await createAdminAlert({
+      type: "doctor_email_not_found",
+      caseId: caseId,
+      priority: "high",
+      message: `Unable to find email for ${certificateInfo.doctorName} at ${certificateInfo.clinicName}. Manual lookup required.`,
+      data: {
+        doctorName: certificateInfo.doctorName,
+        clinicName: certificateInfo.clinicName,
+        clinicPhone: certificateInfo.clinicPhone,
+        clinicWebsite: certificateInfo.clinicWebsite || "Not found"
+      },
+      suggestedAction: "Look up in HealthEngine or call clinic"
+    });
+  }
+}
+```
+
+-----
+
+## 8. MEDICAL REPORT GENERATION
+
+### 8.1 AI-Powered Medical Report
+
+```javascript
+const medicalReportGeneration = {
+  inputs: {
+    required: [
+      "Worker Information Sheet data",
+      "Injury Check responses",
+      "Medical certificate details"
+    ],
+    optional: [
+      "Similar case history from database",
+      "Best practice guidelines for injury type",
+      "Industry benchmarks"
+    ]
+  },
+  
+  aiPrompt: (data) => `
+You are a medical case analyst for GPNet. Generate a comprehensive medical report based on the following information:
+
+**Worker Details:**
+Name: ${data.workerName}
+Injury Date: ${data.injuryDate}
+Incident: ${data.incidentDescription}
+
+**Injury Assessment:**
+${JSON.stringify(data.injuryCheckResponses, null, 2)}
+
+**Medical Certificate:**
+Doctor: ${data.treatingDoctor}
+Dates: ${data.certificateValidFrom} to ${data.certificateValidUntil}
+Stated Restrictions: ${data.certificateRestrictions}
+
+**Similar Cases Analysis:**
+${data.similarCases ? JSON.stringify(data.similarCases, null, 2) : "No similar cases found"}
+
+Generate a medical report that includes:
+
+1. **Incident Summary** (2-3 paragraphs)
+   - Date and circumstances
+   - Body parts affected
+   - Initial treatment
+
+2. **Medical Constraints Analysis**
+   - Review of medical certificate
+   - Interpretation of stated restrictions
+   - Clear listing of specific limitations:
+     * Physical limitations (lifting, bending, standing, etc.)
+     * Duration of each restriction
+     * Activities to avoid
+     * Activities that are safe
+
+3. **Functional Capacity Assessment**
+   - What the worker CAN do
+   - What the worker CANNOT do
+   - What the worker can do WITH modifications
+
+4. **Return to Work Recommendations**
+   - Suitable duties
+   - Required modifications
+   - Timeline for reassessment
+   - Expected recovery trajectory
+
+5. **Best Practice Recommendations**
+   ${data.similarCases ? "Based on similar case outcomes" : "Based on general best practices"}
+
+Format the report professionally and clinically.
+  `,
+  
+  reportStructure: {
+    sections: [
+      {
+        id: "incident_summary",
+        title: "Incident Summary",
+        required: true
+      },
+      {
+        id: "medical_constraints",
+        title: "Medical Constraints & Restrictions",
+        required: true,
+        format: "structured_list"
+      },
+      {
+        id: "functional_capacity",
+        title: "Functional Capacity Assessment",
+        required: true
+      },
+      {
+        id: "rtw_recommendations",
+        title: "Return to Work Recommendations",
+        required: true
+      },
+      {
+        id: "similar_cases",
+        title: "Similar Case Analysis",
+        required: false
+      },
+      {
+        id: "medical_contacts",
+        title: "Medical Professional Details",
+        required: true
+      }
+    ]
+  },
+  
+  generation: async (caseData) => {
+    // 1. Gather all required data
+    const reportData = await compileReportData(caseData.caseId);
+    
+    // 2. Find similar cases for context
+    const similarCases = await findSimilarCases({
+      injuryType: reportData.injuryType,
+      bodyParts: reportData.affectedBodyParts,
+      ageRange: reportData.workerAge,
+      industry: reportData.industry
+    });
+    
+    // 3. Generate report using AI
+    const aiResponse = await callOpenAI({
+      model: "gpt-4",
+      prompt: medicalReportGeneration.aiPrompt({...reportData, similarCases}),
+      temperature: 0.3 // Lower temp for clinical consistency
+    });
+    
+    // 4. Structure the response
+    const structuredReport = parseAIReport(aiResponse);
+    
+    // 5. Extract medical constraints for database
+    const constraints = extractConstraints(structuredReport);
+    
+    // 6. Store in database
+    await saveReport(caseData.caseId, {
+      fullReport: structuredReport,
+      constraints: constraints,
+      generatedDate: new Date(),
+      version: 1
+    });
+    
+    return {
+      report: structuredReport,
+      constraints: constraints,
+      pdfReady: true
+    };
+  },
+  
+  pdfGeneration: {
+    template: "medical_report_template.html",
+    styling: "professional_clinical",
+    includeBranding: true,
+    includeMetadata: {
+      generatedBy: "GPNet AI Medical Analysis",
+      generatedDate: true,
+      caseReference: true
+    }
+  }
+}
+```
+
+### 8.2 Medical Constraints Extraction
+
+```javascript
+const medicalConstraints = {
+  structure: {
+    lifting: {
+      maxWeight: "number (kg)",
+      frequency: "never|occasional|frequent",
+      duration: "days|weeks|months"
+    },
+    standing: {
+      maxDuration: "number (minutes)",
+      frequency: "continuous|intermittent",
+      duration: "days|weeks|months"
+    },
+    bending: {
+      restriction: "no bending|light bending|full bending allowed",
+      duration: "days|weeks|months"
+    },
+    repetitiveMovements: {
+      affected: ["wrist", "shoulder", "knee", "etc"],
+      restriction: "avoid|limit|no restriction",
+      duration: "days|weeks|months"
+    },
+    workHours: {
+      maxHoursPerDay: "number",
+      requiresBreaks: "boolean",
+      breakFrequency: "string"
+    },
+    environment: {
+      avoidHeights: "boolean",
+      avoidMachinery: "boolean",
+      requiresSupervision: "boolean",
+      temperatureRestrictions: "string"
+    },
+    custom: [
+      {
+        restriction: "string",
+        duration: "string"
+      }
+    ]
+  },
+  
+  extraction: async (medicalReportText) => {
+    // Use AI to extract structured constraints from report
+    const extractionPrompt = `
+Extract all medical restrictions from the following report as a structured JSON object:
+
+${medicalReportText}
+
+Return​​​​​​​​​​​​​​​​
+```
