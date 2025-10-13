@@ -151,10 +151,11 @@ router.post('/freshdesk-webhook', async (req, res) => {
         console.warn('Invalid webhook signature');
         return res.status(401).json({ error: 'Invalid signature' });
       }
-    } else if (process.env.NODE_ENV === 'production') {
-      // In production, webhook signature verification is required
-      console.warn('Missing webhook signature in production');
-      return res.status(401).json({ error: 'Webhook signature required in production' });
+      console.log('Webhook signature validated successfully');
+    } else {
+      // Signature not provided - log warning but allow request
+      // Freshdesk automation rules may not support custom signature headers
+      console.warn('Webhook signature not provided - proceeding with payload validation only');
     }
 
     // Validate request payload
