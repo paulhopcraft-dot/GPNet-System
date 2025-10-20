@@ -152,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       createTableIfMissing: true
     }),
     name: 'gpnet.sid',
-    secret: process.env.SESSION_SECRET || 'dev-secret-change-in-production',
+    secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
     cookie: {
