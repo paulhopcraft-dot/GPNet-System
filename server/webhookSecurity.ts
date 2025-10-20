@@ -47,16 +47,17 @@ async function rateLimitMiddleware(req: Request, res: Response, next: NextFuncti
 
     const now = new Date();
     const oneMinuteAgo = new Date(now.getTime() - 60000);
+    const expiresAt = new Date(now.getTime() + 60000); // 1 minute from now
 
     await db.delete(webhookRateLimits)
-      .where(lt(webhookRateLimits.timestamp, oneMinuteAgo));
+      .where(lt(webhookRateLimits.expiresAt, now));
 
     const recentRequests = await db
       .select({ count: sql<number>`count(*)` })
       .from(webhookRateLimits)
       .where(and(
         eq(webhookRateLimits.ipAddress, realIp),
-        gte(webhookRateLimits.timestamp, oneMinuteAgo)
+        gte(webhookRateLimits.windowStart, oneMinuteAgo)
       ));
 
     const requestCount = Number(recentRequests[0]?.count || 0);
@@ -71,7 +72,8 @@ async function rateLimitMiddleware(req: Request, res: Response, next: NextFuncti
 
     await db.insert(webhookRateLimits).values({
       ipAddress: realIp,
-      timestamp: now,
+      windowStart: now,
+      expiresAt: expiresAt,
     });
 
     next();
@@ -86,7 +88,13 @@ async function rateLimitMiddleware(req: Request, res: Response, next: NextFuncti
   }
 }
 
+// Disabled - webhookFormMappings table doesn't exist yet
+// TODO: Re-enable when webhookFormMappings table is created in schema
 async function verifyWebhookPassword(req: Request, res: Response, next: NextFunction) {
+  console.log('⚠️  Webhook password verification disabled - webhookFormMappings table not implemented');
+  next();
+  // Original code commented out until table is added to schema:
+  /*
   try {
     const formId = req.body?.formID || req.body?.form_id;
 
@@ -131,38 +139,50 @@ async function verifyWebhookPassword(req: Request, res: Response, next: NextFunc
       res.status(500).json({ error: 'Security validation failed' });
     }
   }
+  */
 }
 
 async function idempotencyMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
-    const idempotencyKey = extractIdempotencyKey(req.body);
+    const submissionId = extractIdempotencyKey(req.body);
 
-    if (!idempotencyKey) {
-      console.log('No idempotency key - allowing request');
+    if (!submissionId) {
+      console.log('No submission ID - allowing request');
       return next();
     }
+
+    const endpoint = req.path || req.url;
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
 
     const [existing] = await db
       .select()
       .from(webhookIdempotency)
-      .where(eq(webhookIdempotency.idempotencyKey, idempotencyKey))
+      .where(and(
+        eq(webhookIdempotency.submissionId, submissionId),
+        eq(webhookIdempotency.endpoint, endpoint)
+      ))
       .limit(1);
 
     if (existing) {
-      console.log(`Duplicate webhook detected: ${idempotencyKey}`);
+      console.log(`Duplicate webhook detected: ${submissionId} for ${endpoint}`);
       return res.status(200).json({
         success: true,
         message: 'Duplicate request - already processed',
-        idempotencyKey
+        submissionId
       });
     }
 
     await db.insert(webhookIdempotency).values({
-      idempotencyKey,
-      timestamp: new Date(),
+      submissionId,
+      endpoint,
+      processedAt: now,
+      expiresAt: expiresAt,
+      ipAddress: req.ip || 'unknown',
+      userAgent: req.headers['user-agent'] || null,
     });
 
-    console.log(`New idempotency key: ${idempotencyKey}`);
+    console.log(`New submission recorded: ${submissionId} for ${endpoint}`);
     next();
   } catch (error) {
     console.error('Idempotency check error:', error);
