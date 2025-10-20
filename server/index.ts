@@ -1,5 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecurity";
@@ -7,6 +9,12 @@ import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecuri
 /**
  * Log object storage health status on startup
  */
+// Validate required environment variables
+if (!process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET environment variable is required');
+}
+
+console.log('✅ Environment variables validated');
 async function logObjectStorageHealth() {
   try {
     const configuredDir = process.env.PRIVATE_OBJECT_DIR;
@@ -38,15 +46,65 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Configure CORS for mobile Safari compatibility with security
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true,
+  },
+}));
+
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || false // Restrict origins in production
-    : true, // Allow all origins in development
-  credentials: true, // Allow credentials (cookies, sessions)
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['set-cookie']
+    ? process.env.FRONTEND_URL || false
+    : true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-CSRF-Token'],
+  exposedHeaders: ['set-cookie'],
+  maxAge: 86400,
 }));
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many requests from this IP, please try again later',
+  keyGenerator: (req) => {
+    return req.session?.user?.id?.toString() || 'anonymous';
+  },
+  skip: (req) => req.path.startsWith('/api/webhook'),
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: 'Too many authentication attempts, please try again later',
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => {
+    return req.body?.email || 'anonymous';
+  },
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+
+console.log('✅ Security: Helmet, CORS, Rate Limiting enabled');
 
 // Handle webhook raw body BEFORE global JSON parser
 app.use('/api/medical-documents/freshdesk-webhook', express.raw({
@@ -113,8 +171,8 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
+    console.error('Express error handler:', err);
     res.status(status).json({ message });
-    throw err;
   });
 
   // Add API route protection middleware before static serving
@@ -146,6 +204,31 @@ app.use((req, res, next) => {
   await logObjectStorageHealth();
 
   const port = parseInt(process.env.PORT || '5000', 10);
+  let retryCount = 0;
+  const MAX_RETRIES = 5;
+  
+  server.on('error', (error: any) => {
+    if (error.code === 'EADDRINUSE') {
+      retryCount++;
+      if (retryCount > MAX_RETRIES) {
+        console.error(`❌ Port ${port} still in use after ${MAX_RETRIES} retries. Exiting...`);
+        process.exit(1);
+      }
+      console.error(`⚠️  Port ${port} is already in use. Retry ${retryCount}/${MAX_RETRIES} in 2 seconds...`);
+      setTimeout(() => {
+        server.close();
+        server.listen({
+          port,
+          host: "0.0.0.0",
+          reusePort: true,
+        });
+      }, 2000);
+    } else {
+      console.error('Server error:', error);
+      process.exit(1);
+    }
+  });
+
   server.listen({
     port,
     host: "0.0.0.0",

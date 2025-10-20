@@ -1,6 +1,6 @@
 import { 
   tickets, workers, formSubmissions, analyses, emails, attachments,
-  injuries, stakeholders, rtwPlans, riskHistory, reports,
+  injuries, stakeholders, rtwPlans, riskHistory, reports, userinvites,
   legislationDocuments, rtwWorkflowSteps, complianceAudit, workerParticipationEvents,
   letterTemplates, generatedLetters, freshdeskTickets, freshdeskSyncLogs,
   organizations, clientUsers, adminUsers, auditEvents, archiveIndex,
@@ -3048,6 +3048,65 @@ export class DatabaseStorage implements IStorage {
       .where(eq(workers.id, id))
       .returning();
     return worker;
+  }
+  // ========================================
+  // USER INVITE METHODS
+  // Add these methods to your DatabaseStorage class
+  // ========================================
+
+  async createUserInvite(data: InsertUserInvite): Promise<UserInvite> {
+    const [invite] = await db.insert(userInvites).values(data).returning();
+    return invite;
+  }
+
+  async getUserInvite(id: string): Promise<UserInvite | undefined> {
+    const [invite] = await db
+      .select()
+      .from(userInvites)
+      .where(eq(userInvites.id, id));
+    return invite;
+  }
+
+  async getUserInviteByToken(token: string): Promise<UserInvite | undefined> {
+    const [invite] = await db
+      .select()
+      .from(userInvites)
+      .where(eq(userInvites.token, token));
+    return invite;
+  }
+
+  async getUserInvitesByOrg(organizationId: string): Promise<UserInvite[]> {
+    return db
+      .select()
+      .from(userInvites)
+      .where(
+        and(
+          eq(userInvites.organizationId, organizationId),
+          eq(userInvites.status, 'pending')
+        )
+      )
+      .orderBy(desc(userInvites.createdAt));
+  }
+
+  async updateUserInvite(id: string, data: Partial<InsertUserInvite>): Promise<UserInvite> {
+    const [invite] = await db
+      .update(userInvites)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(userInvites.id, id))
+      .returning();
+    return invite;
+  }
+
+  async getExpiredInvites(now: Date): Promise<UserInvite[]> {
+    return db
+      .select()
+      .from(userInvites)
+      .where(
+        and(
+          eq(userInvites.status, 'pending'),
+          sql`${userInvites.expiresAt} < ${now}`
+        )
+      );
   }
 }
 

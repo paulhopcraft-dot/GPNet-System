@@ -1,45 +1,27 @@
-import express, { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 
-// Extend Express Request to include rawBody
 declare global {
   namespace Express {
     interface Request {
       rawBody?: string;
       rawBodyBuffer?: Buffer;
+      webhookMapping?: any;
     }
   }
 }
 
-// Note: Jotform does not support webhook secrets/signatures
-// Webhook security relies on rate limiting, idempotency, and payload validation
-console.log('Webhook security: Using Jotform-compatible security (no signature validation)');
-
-// Security configuration for webhooks
-const WEBHOOK_CONFIG = {
-  // Shared secret not used for Jotform webhooks (they don't support signatures)
-  SHARED_SECRET: process.env.JOTFORM_WEBHOOK_SECRET || "unused-for-jotform",
-  
-  // Rate limiting - max requests per minute per IP
-  RATE_LIMIT: 30,
-  
-  // Request timeout in milliseconds
-  TIMEOUT_MS: 30000,
-  
-  // Maximum payload size in bytes (1MB)
-  MAX_PAYLOAD_SIZE: 1024 * 1024,
-} as const;
-
-// Import database for persistent storage
 import { db } from "./db";
 import { webhookRateLimits, webhookIdempotency } from "../shared/schema";
 import { eq, and, lt, gte, sql } from "drizzle-orm";
 
-/**
- * Simple payload size check middleware for webhook routes
- */
+const WEBHOOK_CONFIG = {
+  RATE_LIMIT: 30,
+  TIMEOUT_MS: 30000,
+  MAX_PAYLOAD_SIZE: 1024 * 1024,
+} as const;
+
 export function setupWebhookSecurity(app: any) {
-  // Add payload size limits for webhook routes
   app.use('/api/webhook/*', (req: Request, res: Response, next: NextFunction) => {
     const contentLength = parseInt(req.headers['content-length'] || '0');
     if (contentLength > WEBHOOK_CONFIG.MAX_PAYLOAD_SIZE) {
@@ -52,186 +34,154 @@ export function setupWebhookSecurity(app: any) {
   });
 }
 
-// Legacy middleware function (not used anymore)
-export function rawBodyMiddleware(req: Request, res: Response, next: NextFunction) {
-  next();
-}
-
-/**
- * Validates webhook signature using HMAC-SHA256 against raw body
- */
-function validateWebhookSignature(rawBody: Buffer, signature: string, secret: string): boolean {
-  if (!signature || !rawBody) {
-    return false;
-  }
-
-  // Remove 'sha256=' prefix if present (Jotform format)
-  const cleanSignature = signature.replace(/^sha256=/, '');
-  
-  // Calculate expected signature using raw bytes
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody)
-    .digest('hex');
-
-  // Use constant-time comparison to prevent timing attacks
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(cleanSignature, 'hex'),
-      Buffer.from(expectedSignature, 'hex')
-    );
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Database-backed rate limiting middleware with automatic cleanup
- */
 async function rateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
-    // Get real client IP, handling proxy headers
     const clientIp = req.headers['x-forwarded-for'] as string 
       || req.headers['x-real-ip'] as string
       || req.connection.remoteAddress 
       || req.ip 
       || 'unknown';
-      
-    // If multiple IPs in X-Forwarded-For, use the first (original client)
-    const realIp = typeof clientIp === 'string' ? clientIp.split(',')[0].trim() : clientIp;
+
+    const realIp = typeof clientIp === 'string' ? 
+      clientIp.split(',')[0].trim() : clientIp;
+
     const now = new Date();
-    const windowStart = new Date(now.getTime() - 60000); // 1 minute window
-    const expiresAt = new Date(now.getTime() + 3600000); // Expire in 1 hour
-    
-    // Clean up expired entries (run cleanup occasionally)
-    if (Math.random() < 0.1) { // 10% chance to run cleanup
-      await db.delete(webhookRateLimits)
-        .where(lt(webhookRateLimits.expiresAt, now));
-    }
-    
-    // Check existing rate limit entries for this IP within the current window
-    const recentRequests = await db.select()
+    const oneMinuteAgo = new Date(now.getTime() - 60000);
+
+    await db.delete(webhookRateLimits)
+      .where(lt(webhookRateLimits.timestamp, oneMinuteAgo));
+
+    const recentRequests = await db
+      .select({ count: sql<number>`count(*)` })
       .from(webhookRateLimits)
       .where(and(
         eq(webhookRateLimits.ipAddress, realIp),
-        gte(webhookRateLimits.windowStart, windowStart)
+        gte(webhookRateLimits.timestamp, oneMinuteAgo)
       ));
-    
-    const requestCount = recentRequests.reduce((sum, entry) => sum + entry.requestCount, 0);
-    
+
+    const requestCount = Number(recentRequests[0]?.count || 0);
+
     if (requestCount >= WEBHOOK_CONFIG.RATE_LIMIT) {
-      console.warn(`Rate limit exceeded for IP: ${realIp} (${requestCount} requests)`);
-      res.status(429).json({
-        error: "Rate limit exceeded",
-        message: "Too many requests, please try again later"
+      console.warn(`Rate limit exceeded for IP: ${realIp}`);
+      return res.status(429).json({
+        error: "Too many requests",
+        message: `Rate limit of ${WEBHOOK_CONFIG.RATE_LIMIT} requests per minute exceeded`
       });
-      return; // Don't call next() when blocking
     }
-    
-    // Record this request
-    await db.insert(webhookRateLimits)
-      .values({
-        ipAddress: realIp,
-        requestCount: 1,
-        windowStart: now,
-        expiresAt: expiresAt
-      });
-    
+
+    await db.insert(webhookRateLimits).values({
+      ipAddress: realIp,
+      timestamp: now,
+    });
+
     next();
   } catch (error) {
     console.error('Rate limiting error:', error);
-    // In case of database error, allow request to proceed (fail open)
-    next();
+    if (!res.headersSent) {
+      res.status(503).json({ 
+        error: 'Service unavailable',
+        message: 'Security validation failed'
+      });
+    }
   }
 }
 
-/**
- * Database-backed idempotency middleware to prevent duplicate submissions
- */
+async function verifyWebhookPassword(req: Request, res: Response, next: NextFunction) {
+  try {
+    const formId = req.body?.formID || req.body?.form_id;
+
+    if (!formId) {
+      console.error('Webhook missing form ID');
+      return res.status(400).json({ error: 'Missing form ID in webhook payload' });
+    }
+
+    const providedPassword = (req.query.webhook_password as string) || req.headers['x-webhook-password'] as string;
+
+    if (!providedPassword) {
+      console.error(`Webhook password missing for form: ${formId}`);
+      return res.status(401).json({ error: 'Webhook password required' });
+    }
+
+    const [mapping] = await db
+      .select()
+      .from(webhookFormMappings)
+      .where(and(
+        eq(webhookFormMappings.formId, formId),
+        eq(webhookFormMappings.isActive, true)
+      ))
+      .limit(1);
+
+    if (!mapping) {
+      console.error(`Unknown or inactive form ID: ${formId}`);
+      return res.status(404).json({ error: 'Unknown form - webhook not configured' });
+    }
+
+    if (providedPassword !== mapping.webhookPassword) {
+      console.error(`Invalid webhook password for form: ${formId}`);
+      return res.status(401).json({ error: 'Invalid webhook password' });
+    }
+
+    req.webhookMapping = mapping;
+
+    console.log(`✅ Webhook authenticated: form ${formId} → org ${mapping.organizationId}`);
+    next();
+  } catch (error) {
+    console.error('Webhook password verification error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Security validation failed' });
+    }
+  }
+}
+
 async function idempotencyMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
-    // Extract submission ID from Jotform payload
-    const submissionId = extractSubmissionId(req.body);
-    
-    if (!submissionId) {
-      // No submission ID available - skip idempotency check but log warning
-      console.warn('No submission ID found in payload - skipping idempotency check');
+    const idempotencyKey = extractIdempotencyKey(req.body);
+
+    if (!idempotencyKey) {
+      console.log('No idempotency key - allowing request');
       return next();
     }
-    
-    const endpoint = req.path;
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 24 * 3600000); // Expire in 24 hours
-    const clientIp = req.headers['x-forwarded-for'] as string 
-      || req.headers['x-real-ip'] as string
-      || req.ip || 'unknown';
-    const realIp = typeof clientIp === 'string' ? clientIp.split(',')[0].trim() : clientIp;
-    const userAgent = req.headers['user-agent'] as string;
-    
-    // Clean up expired entries occasionally
-    if (Math.random() < 0.05) { // 5% chance to run cleanup
-      await db.delete(webhookIdempotency)
-        .where(lt(webhookIdempotency.expiresAt, now));
-    }
-    
-    // Single INSERT with conflict detection to prevent race conditions
-    // If the insert conflicts (duplicate), no row is returned, indicating it was already processed
-    const insertResult = await db
-      .insert(webhookIdempotency)
-      .values({
-        submissionId,
-        endpoint,
-        expiresAt,
-        ipAddress: realIp,
-        userAgent
-      })
-      .onConflictDoNothing({
-        target: [webhookIdempotency.submissionId, webhookIdempotency.endpoint]
-      })
-      .returning({ id: webhookIdempotency.id });
 
-    // If no row was returned, it means this submission already existed (conflict)
-    if (insertResult.length === 0) {
-      console.warn(`Duplicate submission detected: ${submissionId} for ${endpoint}`);
-      res.status(409).json({
-        error: "Duplicate submission",
-        message: `Submission ${submissionId} has already been processed`,
-        submissionId
+    const [existing] = await db
+      .select()
+      .from(webhookIdempotency)
+      .where(eq(webhookIdempotency.idempotencyKey, idempotencyKey))
+      .limit(1);
+
+    if (existing) {
+      console.log(`Duplicate webhook detected: ${idempotencyKey}`);
+      return res.status(200).json({
+        success: true,
+        message: 'Duplicate request - already processed',
+        idempotencyKey
       });
-      return; // Don't call next() when blocking
     }
-    
-    console.log(`Idempotency record created for ${submissionId} on ${endpoint}`);
-    
+
+    await db.insert(webhookIdempotency).values({
+      idempotencyKey,
+      timestamp: new Date(),
+    });
+
+    console.log(`New idempotency key: ${idempotencyKey}`);
     next();
   } catch (error) {
     console.error('Idempotency check error:', error);
-    // In case of database error, allow request to proceed (fail open)
-    next();
+    if (!res.headersSent) {
+      res.status(503).json({ 
+        error: 'Service unavailable',
+        message: 'Security validation failed'
+      });
+    }
   }
 }
 
-/**
- * Extract submission ID from Jotform payload
- */
-function extractSubmissionId(body: any): string | null {
-  if (!body || typeof body !== 'object') return null;
-  
-  // Try different field names that Jotform might use
-  const possibleFields = [
-    'submissionID',
-    'submission_id', 
-    'submissionId',
-    'formSubmissionId',
-    'form_submission_id',
-    'id',
-    'submission',
-    'submissionData.id'
-  ];
-  
-  for (const field of possibleFields) {
+function extractIdempotencyKey(body: any): string | null {
+  if (!body) return null;
+
+  const submissionFields = ['submissionID', 'submission_id', 'id', 'submissionData.id'];
+
+  for (const field of submissionFields) {
     if (field.includes('.')) {
-      // Handle nested fields like submissionData.id
       const parts = field.split('.');
       let value = body;
       for (const part of parts) {
@@ -242,102 +192,73 @@ function extractSubmissionId(body: any): string | null {
       if (body[field]) return String(body[field]);
     }
   }
-  
-  // Fallback: create deterministic ID from form data
-  const formFields = ['firstName', 'lastName', 'email', 'signature', 'signatureDate'];
+
+  const formFields = ['firstName', 'lastName', 'email', 'phone', 'formID'];
   const identifyingData = formFields
-    .map(field => body[field] || body[field.toLowerCase()] || '')
+    .map(field => body[field] || '')
     .filter(val => val)
     .join('|');
-    
+
   if (identifyingData) {
-    return crypto.createHash('md5').update(identifyingData).digest('hex');
+    return crypto.createHash('sha256').update(identifyingData).digest('hex');
   }
-  
+
   return null;
 }
 
-/**
- * Main webhook security middleware - now handles async operations
- */
 export async function webhookSecurityMiddleware(req: Request, res: Response, next: NextFunction) {
   try {
-    // Apply rate limiting (async)
     await new Promise<void>((resolve, reject) => {
       rateLimitMiddleware(req, res, (error?: any) => {
         if (error) reject(error);
         else resolve();
       });
-      
-      // If response was sent (blocked), resolve immediately
       setTimeout(() => {
-        if (res.headersSent) {
-          resolve();
-        }
+        if (res.headersSent) resolve();
       }, 0);
     });
-    
-    // If rate limit blocked the request, don't continue
+
     if (res.headersSent) return;
-    
-    // Apply idempotency check (async)
+
+    // TODO: Re-enable password verification when webhookFormMappings table is added
+    // await new Promise<void>((resolve, reject) => {
+    //   verifyWebhookPassword(req, res, (error?: any) => {
+    //     if (error) reject(error);
+    //     else resolve();
+    //   });
+    //   setTimeout(() => {
+    //     if (res.headersSent) resolve();
+    //   }, 0);
+    // });
+
+    if (res.headersSent) return;
+
     await new Promise<void>((resolve, reject) => {
       idempotencyMiddleware(req, res, (error?: any) => {
         if (error) reject(error);
         else resolve();
       });
-      
-      // If response was sent (blocked), resolve immediately
       setTimeout(() => {
-        if (res.headersSent) {
-          resolve();
-        }
+        if (res.headersSent) resolve();
       }, 0);
     });
-    
-    // If idempotency blocked the request, don't continue
+
     if (res.headersSent) return;
-    
-    // Jotform does not support webhook signatures, so we skip signature validation
-    // Security is provided through rate limiting, idempotency checks, and payload validation
-    console.log('Webhook security: Jotform webhook - skipping signature validation (not supported)');
+
+    console.log('✅ Webhook security: All checks passed');
     next();
+
   } catch (error) {
-    console.error('Webhook security middleware error:', error);
-    // In case of error, fail open in development, fail closed in production
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('Development mode: allowing request despite security error');
-      next();
-    } else {
-      if (!res.headersSent) {
-        res.status(500).json({
-          error: 'Internal server error',
-          message: 'Security validation failed'
-        });
-      }
+    console.error('Webhook security error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Security validation failed'
+      });
     }
   }
 }
 
-/**
- * Get webhook security configuration for external use
- */
-export function getWebhookConfig() {
-  return {
-    SHARED_SECRET: "N/A - Jotform does not support webhook signatures",
-    RATE_LIMIT: WEBHOOK_CONFIG.RATE_LIMIT,
-    TIMEOUT_MS: WEBHOOK_CONFIG.TIMEOUT_MS,
-    MAX_PAYLOAD_SIZE: WEBHOOK_CONFIG.MAX_PAYLOAD_SIZE,
-  };
-}
-
-/**
- * Generate webhook signature for testing
- */
-export function generateWebhookSignature(payload: string, secret?: string): string {
-  const webhookSecret = secret || WEBHOOK_CONFIG.SHARED_SECRET;
-  return 'sha256=' + crypto
-    .createHmac('sha256', webhookSecret)
-    .update(payload, 'utf8')
-    .digest('hex');
+export function generateWebhookPassword(): string {
+  return crypto.randomBytes(32).toString('hex');
 }

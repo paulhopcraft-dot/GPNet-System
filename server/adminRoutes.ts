@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import { inviteService } from './inviteService.js';
+import { generateWebhookPassword } from './webhookSecurity.js';
 import { authService } from './authService.js';
 import { storage } from './storage.js';
 import { z } from 'zod';
@@ -744,6 +746,185 @@ router.post('/execute-migration', requireSuperuser, async (req: Request, res: Re
       details: error instanceof Error ? error.message : 'Unknown error' 
     });
   }
+});// ========================================
+// INVITE MANAGEMENT ROUTES
+// ========================================
+
+router.post('/invites', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { email, role } = req.body;
+
+    const organizationId = req.session.user!.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({ error: 'No organization associated with admin' });
+    }
+
+    const invite = await inviteService.createInvite({
+      email,
+      organizationId,
+      role: role || 'user',
+      createdBy: req.session.user!.id,
+    });
+
+    res.json({ 
+      success: true, 
+      invite: {
+        id: invite.id,
+        email: invite.email,
+        role: invite.role,
+        token: invite.token,
+        expiresAt: invite.expiresAt,
+        status: invite.status
+      }
+    });
+  } catch (error) {
+    console.error('Create invite error:', error);
+    res.status(500).json({ error: 'Failed to create invite' });
+  }
 });
 
+router.get('/invites', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.session.user!.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({ error: 'No organization associated with admin' });
+    }
+
+    const invites = await inviteService.getOrganizationInvites(organizationId);
+    res.json({ invites });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch invites' });
+  }
+});
+
+router.delete('/invites/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    await inviteService.cancelInvite(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to cancel invite' });
+  }
+});
+
+// ========================================
+// WEBHOOK FORM MAPPING ROUTES
+// ========================================
+
+router.post('/webhook-forms', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { formId, formType, webhookPassword } = req.body;
+
+    const organizationId = req.session.user!.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({ error: 'No organization associated with admin' });
+    }
+
+    const existing = await storage.getWebhookFormMapping(formId);
+    if (existing) {
+      return res.status(409).json({ error: 'Form ID already registered' });
+    }
+
+    const password = webhookPassword || generateWebhookPassword();
+
+    const mapping = await storage.createWebhookFormMapping({
+      formId,
+      organizationId,
+      formType,
+      webhookPassword: password,
+      isActive: true,
+    });
+
+    const webhookUrl = `${process.env.BACKEND_URL || 'https://GPNet.replit.app'}/api/webhook/jotform?webhook_password=${password}`;
+
+    res.json({
+      success: true,
+      mapping: {
+        id: mapping.id,
+        formId: mapping.formId,
+        formType: mapping.formType,
+        isActive: mapping.isActive
+      },
+      webhookPassword: password,
+      webhookUrl,
+      instructions: {
+        step1: 'Copy the webhook URL above',
+        step2: 'Go to your JotForm form settings',
+        step3: 'Add a webhook integration',
+        step4: 'Paste the webhook URL (includes password)',
+        step5: 'Save and test the webhook'
+      }
+    });
+  } catch (error) {
+    console.error('Create webhook mapping error:', error);
+    res.status(500).json({ error: 'Failed to create webhook mapping' });
+  }
+});
+
+router.get('/webhook-forms', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const organizationId = req.session.user!.organizationId;
+    if (!organizationId) {
+      return res.status(400).json({ error: 'No organization associated with admin' });
+    }
+
+    const mappings = await storage.getWebhookFormMappingsByOrg(organizationId);
+
+    res.json({
+      mappings: mappings.map((m: any) => ({
+        id: m.id,
+        formId: m.formId,
+        formType: m.formType,
+        isActive: m.isActive,
+        webhookUrl: `${process.env.BACKEND_URL}/api/webhook/jotform?webhook_password=${m.webhookPassword}`,
+        createdAt: m.createdAt
+      }))
+    });
+  } catch (error) {
+    console.error('Get webhook mappings error:', error);
+    res.status(500).json({ error: 'Failed to fetch webhook mappings' });
+  }
+});
+
+router.get('/webhook-forms/:formId', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { formId } = req.params;
+
+    const mapping = await storage.getWebhookFormMapping(formId);
+    if (!mapping) {
+      return res.status(404).json({ error: 'Webhook form not found' });
+    }
+
+    if (mapping.organizationId !== req.session.user!.organizationId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    res.json({
+      mapping,
+      webhookPassword: mapping.webhookPassword,
+      webhookUrl: `${process.env.BACKEND_URL}/api/webhook/jotform?webhook_password=${mapping.webhookPassword}`
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch webhook mapping' });
+  }
+});
+
+router.delete('/webhook-forms/:formId', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { formId } = req.params;
+
+    const mapping = await storage.getWebhookFormMapping(formId);
+    if (!mapping) {
+      return res.status(404).json({ error: 'Webhook form not found' });
+    }
+
+    if (mapping.organizationId !== req.session.user!.organizationId) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    await storage.deleteWebhookFormMapping(formId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete webhook mapping' });
+  }
+});
 export default router;
