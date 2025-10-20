@@ -78,6 +78,81 @@ function normalizeYesNo(value: string | string[] | boolean | undefined): "yes" |
 }
 
 /**
+ * Normalizes severity enum
+ * Jotform sends: "Minor", "Moderate", "Serious", "Major"
+ * Returns: "minor" | "moderate" | "serious" | "major" | undefined
+ */
+function normalizeSeverity(value: string | string[] | undefined): "minor" | "moderate" | "serious" | "major" | undefined {
+  if (!value) return undefined;
+  
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    if (!first) return undefined;
+    value = first;
+  }
+  
+  if (typeof value !== 'string') return undefined;
+  
+  const normalized = value.toLowerCase().trim();
+  
+  if (normalized === 'minor' || normalized === 'moderate' || normalized === 'serious' || normalized === 'major') {
+    return normalized as "minor" | "moderate" | "serious" | "major";
+  }
+  
+  return undefined;
+}
+
+/**
+ * Normalizes return to work status enum
+ * Jotform sends: "Yes", "No", "With Restrictions"
+ * Returns: "yes" | "no" | "with_restrictions" | undefined
+ */
+function normalizeReturnToWork(value: string | string[] | undefined): "yes" | "no" | "with_restrictions" | undefined {
+  if (!value) return undefined;
+  
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    if (!first) return undefined;
+    value = first;
+  }
+  
+  if (typeof value !== 'string') return undefined;
+  
+  const normalized = value.toLowerCase().trim().replace(/\s+/g, '_');
+  
+  if (normalized === 'yes' || normalized === 'no' || normalized === 'with_restrictions') {
+    return normalized as "yes" | "no" | "with_restrictions";
+  }
+  
+  return undefined;
+}
+
+/**
+ * Normalizes claim type enum
+ * Jotform sends: "Standard", "WorkCover"
+ * Returns: "standard" | "workcover" | undefined
+ */
+function normalizeClaimType(value: string | string[] | undefined): "standard" | "workcover" | undefined {
+  if (!value) return undefined;
+  
+  if (Array.isArray(value)) {
+    const first = value.find(item => item && item.trim() !== '');
+    if (!first) return undefined;
+    value = first;
+  }
+  
+  if (typeof value !== 'string') return undefined;
+  
+  const normalized = value.toLowerCase().trim();
+  
+  if (normalized === 'standard' || normalized === 'workcover') {
+    return normalized as "standard" | "workcover";
+  }
+  
+  return undefined;
+}
+
+/**
  * Normalizes Jotform number fields
  * Jotform sends: "123", "45.67", "0", "" or actual numbers
  */
@@ -252,19 +327,30 @@ export function normalizeInjuryData(rawPayload: JotformRawPayload): any {
     dateOfBirth: normalizeDate(rawPayload.dateOfBirth || rawPayload.date_of_birth),
     employeeId: normalizeString(rawPayload.employeeId || rawPayload.employee_id),
     
-    // Manager/Supervisor Details (Module 1 Spec - Critical Update)
-    managerName: normalizeString(rawPayload.managerName || rawPayload.manager_name),
+    // Employment Details (injuryFormSchema compatibility)
+    department: normalizeString(rawPayload.department),
+    position: normalizeString(rawPayload.position),
+    supervisor: normalizeString(rawPayload.supervisor || rawPayload.managerName || rawPayload.manager_name),
+    
+    // Manager/Supervisor Details (Module 1 Spec - backward compatibility)
+    managerName: normalizeString(rawPayload.managerName || rawPayload.manager_name || rawPayload.supervisor),
     managerEmail: normalizeString(rawPayload.managerEmail || rawPayload.manager_email),
     managerPhone: normalizeString(rawPayload.managerPhone || rawPayload.manager_phone),
     
     // Incident Details (Enhanced from spec)
+    incidentDate: normalizeDate(rawPayload.incidentDate || rawPayload.incident_date || rawPayload.injuryDate || rawPayload.injury_date),
+    incidentTime: normalizeString(rawPayload.incidentTime || rawPayload.incident_time),
+    location: normalizeString(rawPayload.location || rawPayload.injuryLocation || rawPayload.injury_location),
     injuryDate: normalizeDate(rawPayload.injuryDate || rawPayload.injury_date || rawPayload.incidentDate || rawPayload.incident_date),
     injuryLocation: normalizeString(rawPayload.injuryLocation || rawPayload.injury_location || rawPayload.location),
     injuryType: normalizeString(rawPayload.injuryType || rawPayload.injury_type),
+    severity: normalizeSeverity(rawPayload.severity),
     description: normalizeString(rawPayload.description || rawPayload.incidentDescription || rawPayload.incident_description),
     activityAtTime: normalizeString(rawPayload.activityAtTime || rawPayload.activity_at_time || rawPayload.activity),
+    witnessDetails: normalizeString(rawPayload.witnessDetails || rawPayload.witness_details || rawPayload.witnesses),
     witnesses: normalizeString(rawPayload.witnesses || rawPayload.witnessDetails || rawPayload.witness_details),
-    bodyPartAffected: normalizeArray(rawPayload.bodyPartAffected || rawPayload.body_part_affected || rawPayload.bodyPart || rawPayload.body_part),
+    bodyPartsAffected: normalizeArray(rawPayload.bodyPartsAffected || rawPayload.body_parts_affected || rawPayload.bodyPartAffected || rawPayload.body_part_affected || rawPayload.bodyPart || rawPayload.body_part),
+    bodyPartAffected: normalizeArray(rawPayload.bodyPartAffected || rawPayload.body_part_affected || rawPayload.bodyPart || rawPayload.body_part || rawPayload.bodyPartsAffected || rawPayload.body_parts_affected),
     painLevel: normalizeInteger(rawPayload.painLevel || rawPayload.pain_level),
     
     // Medical Response (Module 1 Spec)
@@ -272,8 +358,13 @@ export function normalizeInjuryData(rawPayload: JotformRawPayload): any {
     hospitalAttended: normalizeBoolean(rawPayload.hospitalAttended || rawPayload.hospital_attended),
     hospitalName: normalizeString(rawPayload.hospitalName || rawPayload.hospital_name),
     doctorSeen: normalizeBoolean(rawPayload.doctorSeen || rawPayload.doctor_seen),
+    doctorName: normalizeString(rawPayload.doctorName || rawPayload.doctor_name),
+    clinicName: normalizeString(rawPayload.clinicName || rawPayload.clinic_name),
+    clinicPhone: normalizeString(rawPayload.clinicPhone || rawPayload.clinic_phone),
     firstAidAdministered: normalizeBoolean(rawPayload.firstAidAdministered || rawPayload.first_aid_administered),
     firstAidDetails: normalizeString(rawPayload.firstAidDetails || rawPayload.first_aid_details),
+    medicalTreatment: normalizeString(rawPayload.medicalTreatment || rawPayload.medical_treatment || rawPayload.medicalTreatmentDetails || rawPayload.medical_treatment_details),
+    immediateAction: normalizeString(rawPayload.immediateAction || rawPayload.immediate_action),
     
     // Current Worker Status (Module 1 Spec)
     currentLocation: normalizeString(rawPayload.currentLocation || rawPayload.current_location || rawPayload.workerLocation || rawPayload.worker_location),
@@ -289,10 +380,13 @@ export function normalizeInjuryData(rawPayload: JotformRawPayload): any {
     // Additional Information (Module 1 Spec - Free-form notes)
     additionalInfo: normalizeString(rawPayload.additionalInfo || rawPayload.additional_info || rawPayload.notes || rawPayload.additionalNotes || rawPayload.additional_notes),
     
-    // Work Impact (Backward compatibility - kept for existing forms)
+    // Work Impact & Recovery (injuryFormSchema compatibility)
     timeOffWork: normalizeBoolean(rawPayload.timeOffWork || rawPayload.time_off_work),
+    estimatedRecovery: normalizeString(rawPayload.estimatedRecovery || rawPayload.estimated_recovery),
+    canReturnToWork: normalizeReturnToWork(rawPayload.canReturnToWork || rawPayload.can_return_to_work),
+    workRestrictions: normalizeArray(rawPayload.workRestrictions || rawPayload.work_restrictions),
     modifiedDuties: normalizeBoolean(rawPayload.modifiedDuties || rawPayload.modified_duties),
-    medicalTreatment: normalizeBoolean(rawPayload.medicalTreatment || rawPayload.medical_treatment),
+    claimType: normalizeClaimType(rawPayload.claimType || rawPayload.claim_type),
     
     // Consent & Declaration
     consentToShare: normalizeBoolean(rawPayload.consentToShare || rawPayload.consent_to_share),
