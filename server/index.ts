@@ -81,9 +81,9 @@ app.use(cors({
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: (req) => {
-    // Higher limit for authenticated users (500 requests per 15 min)
+    // Very high limit for authenticated users (5000 requests per 15 min) - needed for ML predictions
     // Lower limit for anonymous users (100 requests per 15 min)
-    return req.session?.user ? 500 : 100;
+    return req.session?.user ? 5000 : 100;
   },
   standardHeaders: true,
   legacyHeaders: false,
