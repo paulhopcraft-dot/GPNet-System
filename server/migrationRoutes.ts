@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { requireSuperuser } from './adminRoutes.js';
+import { requireAdmin } from './adminRoutes.js';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -7,7 +7,7 @@ const execAsync = promisify(exec);
 const router = Router();
 
 // Endpoint to export development data
-router.post('/export-dev-data', requireSuperuser, async (req: Request, res: Response) => {
+router.post('/export-dev-data', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { PGHOST, PGUSER, PGPASSWORD, PGDATABASE } = process.env;
     

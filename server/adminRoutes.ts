@@ -22,7 +22,8 @@ export const requireAdmin = async (req: Request, res: Response, next: any) => {
       req.session.user = {
         id: 'dev-user',
         email: 'support@gpnet.au',
-        name: 'Natalie Support',
+        firstName: 'Natalie',
+        lastName: 'Support',
         userType: 'admin',
         role: 'super_user',
         organizationId: '34878b77-8969-40d1-86e2-8192869275d2', // Organization with most tickets for testing
@@ -39,31 +40,9 @@ export const requireAdmin = async (req: Request, res: Response, next: any) => {
   next();
 };
 
-// Enhanced middleware for superuser authentication with active status check
-export const requireSuperuser = async (req: Request, res: Response, next: any) => {
-  // TEMPORARY: Bypass authentication for development
-  if (process.env.NODE_ENV === 'development') {
-    // Mock session for development
-    if (!req.session.user) {
-      req.session.user = {
-        id: 'dev-user',
-        email: 'support@gpnet.au',
-        name: 'Natalie Support',
-        userType: 'admin',
-        role: 'super_user',
-        organizationId: '34878b77-8969-40d1-86e2-8192869275d2', // Organization with most tickets for testing
-        permissions: ['admin', 'superuser']
-      };
-      req.session.isAuthenticated = true;
-    }
-    return next();
-  }
-  
-  if (!req.session.user || req.session.user.userType !== 'admin' || !req.session.user.permissions?.includes('superuser')) {
-    return res.status(403).json({ error: 'Superuser access required' });
-  }
-  next();
-};
+// Simplified: All admins have the same permissions (no superuser distinction)
+// Keeping this as an alias for backward compatibility
+export const requireSuperuser = requireAdmin;
 
 // Zod schemas for admin endpoints
 const updatePermissionsSchema = z.object({

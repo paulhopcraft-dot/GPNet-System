@@ -11,8 +11,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Dashboard from "@/pages/Dashboard";
 import WorkerPreEmploymentCheck from "@/pages/WorkerPreEmploymentCheck";
 import AdminConsole from "@/pages/AdminConsole";
-import ClientLogin from "@/pages/ClientLogin";
-import AdminLogin from "@/pages/AdminLogin";
+import Login from "@/pages/Login";
 import AdminRoute from "@/components/AdminRoute";
 import WorkerForm from "@/pages/WorkerForm";
 import InjuryFormPage from "@/pages/InjuryForm";
@@ -33,8 +32,7 @@ function Router() {
   return (
     <Switch>
       {/* Public Routes */}
-      <Route path="/login/client" component={ClientLogin} />
-      <Route path="/login/admin" component={AdminLogin} />
+      <Route path="/login" component={Login} />
       <Route path="/form" component={WorkerForm} />
       
       {/* Protected Routes */}

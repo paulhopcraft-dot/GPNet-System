@@ -10,13 +10,11 @@ import { Link } from 'wouter';
 interface ProtectedRouteProps {
   children: ReactNode;
   requireAdmin?: boolean;
-  requireSuperuser?: boolean;
 }
 
 export default function ProtectedRoute({ 
   children, 
-  requireAdmin = false, 
-  requireSuperuser = false 
+  requireAdmin = false
 }: ProtectedRouteProps) {
   const { user, isLoading } = useUser();
 
@@ -69,18 +67,12 @@ export default function ProtectedRoute({
             <p className="text-muted-foreground">
               You need to be logged in to access this page.
             </p>
-            <div className="space-y-2">
-              <Link href="/login/client">
-                <Button className="w-full" data-testid="button-client-login">
-                  Client Login
-                </Button>
-              </Link>
-              <Link href="/login/admin">
-                <Button variant="outline" className="w-full" data-testid="button-admin-login">
-                  Admin Login
-                </Button>
-              </Link>
-            </div>
+            <Link href="/login">
+              <Button className="w-full" data-testid="button-login">
+                <LogIn className="mr-2 h-4 w-4" />
+                Go to Login
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
@@ -113,43 +105,6 @@ export default function ProtectedRoute({
                   <Link href="/">
                     <Button data-testid="button-back-dashboard">
                       Back to Dashboard
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Check superuser access
-  if (requireSuperuser && !user.permissions?.includes('superuser')) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="w-96">
-          <CardContent className="pt-6">
-            <div className="text-center py-12">
-              <Shield className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <h2 className="text-2xl font-semibold mb-2">Superuser Access Required</h2>
-              <p className="text-muted-foreground mb-6">
-                This area requires superuser permissions.
-              </p>
-              <div className="space-y-2">
-                {user.isImpersonating ? (
-                  <Button 
-                    onClick={handleStopImpersonation}
-                    disabled={stopImpersonationMutation.isPending}
-                    data-testid="button-stop-impersonation"
-                  >
-                    <UserCheck className="mr-2 h-4 w-4" />
-                    {stopImpersonationMutation.isPending ? "Stopping..." : "Stop Impersonation"}
-                  </Button>
-                ) : (
-                  <Link href="/admin">
-                    <Button data-testid="button-back-admin">
-                      Back to Admin Console
                     </Button>
                   </Link>
                 )}
