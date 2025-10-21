@@ -258,11 +258,6 @@ export default function CaseCard({
                   <span className="text-foreground font-medium" data-testid={`text-next-step-${ticketId}`}>
                     Next: {nextStep}
                   </span>
-                  {assignedTo && (
-                    <Badge variant="outline" className="text-xs" data-testid={`badge-assigned-${ticketId}`}>
-                      {assignedTo}
-                    </Badge>
-                  )}
                 </div>
                 <Button
                   size="sm"
