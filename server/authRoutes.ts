@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authService, AuthenticatedUser } from './authService.js';
 import { storage } from './storage.js';
-import { requireAdmin, requireSuperuser } from './adminRoutes.js';
+import { requireAdmin } from './adminRoutes.js';
 
 const router = Router();
 
@@ -243,7 +243,7 @@ router.post('/login/admin', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/register/admin', requireSuperuser, async (req: Request, res: Response) => {
+router.post('/register/admin', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { email, password, firstName, lastName, isSuperuser, permissions } = adminRegisterSchema.parse(req.body);
 
@@ -316,7 +316,7 @@ router.get('/session', (req: Request, res: Response) => {
 });
 
 // Admin impersonation routes
-router.post('/impersonate/start', requireSuperuser, async (req: Request, res: Response) => {
+router.post('/impersonate/start', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { organizationId } = impersonationSchema.parse(req.body);
     
@@ -389,7 +389,7 @@ router.post('/password/change', async (req: Request, res: Response) => {
 });
 
 // Organization management for admins
-router.get('/organizations', requireSuperuser, async (req: Request, res: Response) => {
+router.get('/organizations', requireAdmin, async (req: Request, res: Response) => {
   try {
     const organizations = await storage.getAllOrganizations();
     res.json(organizations);
