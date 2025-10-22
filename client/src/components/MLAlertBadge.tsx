@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, TrendingUp, UserX } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMLPredictions } from "@/contexts/MLPredictionsContext";
 
 interface MLAlert {
   type: 'escalation' | 'compliance' | 'priority' | 'fraud';
@@ -14,11 +14,7 @@ interface MLAlertBadgeProps {
 }
 
 export function MLAlertBadge({ ticketId }: MLAlertBadgeProps) {
-  const { data, isLoading } = useQuery({
-    queryKey: ['/api/ml/predictions', ticketId],
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    retry: false, // Don't retry if ML service is down
-  });
+  const { data, isLoading } = useMLPredictions(ticketId);
 
   if (isLoading || !data?.alerts || data.alerts.length === 0) {
     return null;
