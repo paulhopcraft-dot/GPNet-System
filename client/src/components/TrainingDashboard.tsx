@@ -44,7 +44,7 @@ export default function TrainingDashboard() {
 
   const { data: trainingStatus, isLoading } = useQuery<TrainingStatus>({
     queryKey: ['/api/case-console/training/status'],
-    refetchInterval: 5000, // Refresh every 5 seconds
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
 
   const trainModelMutation = useMutation({

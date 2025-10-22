@@ -27,6 +27,101 @@ router.get('/health', async (req, res) => {
 });
 
 /**
+ * POST /api/ml/predictions/batch
+ * Get ML predictions for multiple cases at once
+ * Body: { ticketIds: string[] }
+ */
+router.post('/predictions/batch', async (req, res) => {
+  try {
+    const { ticketIds } = req.body;
+    
+    if (!Array.isArray(ticketIds)) {
+      return res.status(400).json({ error: 'ticketIds must be an array' });
+    }
+    
+    if (ticketIds.length > 100) {
+      return res.status(400).json({ error: 'Maximum 100 tickets per batch' });
+    }
+    
+    // Process predictions in parallel
+    const predictions = await Promise.all(
+      ticketIds.map(async (ticketId) => {
+        try {
+          const ticket = await storage.getTicket(ticketId);
+          if (!ticket) {
+            return { ticketId, alerts: [], error: 'Case not found' };
+          }
+
+          const analysis = await storage.getAnalysisByTicket(ticketId);
+          const alerts = [];
+          const caseAge = Math.floor((Date.now() - new Date(ticket.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24));
+          
+          // Escalation alert logic
+          if (
+            ticket.claimType === 'workcover' || 
+            analysis?.ragScore === 'red' ||
+            (analysis?.ragScore === 'amber' && ticket.caseType === 'injury')
+          ) {
+            alerts.push({
+              type: 'escalation',
+              severity: 'high',
+              message: 'This case shows patterns associated with WorkCover escalation. Consider early intervention.',
+              probability: 0.82,
+              shap_top: [
+                { feature: 'claim_type', label: 'Claim Type', impact: 0.31, direction: 'increase' },
+                { feature: 'injury_severity', label: 'Injury Severity', impact: 0.24, direction: 'increase' },
+                { feature: 'days_open', label: 'Days Open', impact: 0.15, direction: 'increase' }
+              ]
+            });
+          }
+          
+          // Compliance alert logic
+          if (
+            (ticket.status === 'AWAITING_REVIEW' && caseAge > 3) ||
+            ((analysis?.ragScore === 'amber' || analysis?.ragScore === 'red') && caseAge > 5)
+          ) {
+            alerts.push({
+              type: 'compliance',
+              severity: 'high',
+              message: 'Worker engagement declining. Recommend proactive outreach to maintain compliance.',
+              entitlement_at_risk: true,
+              shap_top: [
+                { feature: 'response_time', label: 'Response Latency', impact: 0.28, direction: 'increase' },
+                { feature: 'days_open', label: 'Case Duration', impact: 0.19, direction: 'increase' }
+              ]
+            });
+          }
+          
+          return {
+            ticketId,
+            alerts,
+            generated_at: new Date().toISOString()
+          };
+        } catch (error) {
+          console.error(`Error processing predictions for ${ticketId}:`, error);
+          return {
+            ticketId,
+            alerts: [],
+            error: 'Failed to process predictions'
+          };
+        }
+      })
+    );
+    
+    res.json({
+      predictions,
+      note: 'Mock implementation - Python ML service integration ready when available'
+    });
+  } catch (error) {
+    console.error('Error processing batch predictions:', error);
+    res.status(500).json({
+      error: 'Failed to process batch predictions',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
  * GET /api/ml/predictions/:ticketId
  * Get all ML predictions for a case
  * (Mock implementation - real ML service integration ready when Python service is available)

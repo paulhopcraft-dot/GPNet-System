@@ -12,6 +12,7 @@ import { CaseDrawer } from "@/components/CaseDrawer";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useUser } from "@/components/UserContext";
 import { useSearch } from "@/contexts/SearchContext";
+import { MLPredictionsProvider } from "@/contexts/MLPredictionsContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -554,32 +555,34 @@ export default function Dashboard() {
                   <p className="text-muted-foreground">No cases found matching your criteria.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredCases.map((caseItem: DashboardCase) => (
-                    <CaseCard
-                      key={caseItem.ticketId}
-                      ticketId={caseItem.ticketId}
-                      fdId={caseItem.fdId}
-                      workerId={caseItem.workerId}
-                      caseType={caseItem.caseType}
-                      claimType={caseItem.claimType}
-                      priority={caseItem.priority}
-                      workerName={caseItem.workerName}
-                      workerNameIsExtracted={caseItem.workerNameIsExtracted}
-                      roleApplied={caseItem.roleApplied}
-                      company={caseItem.company}
-                      status={caseItem.status as any}
-                      ragScore={caseItem.ragScore}
-                      createdAt={new Date(caseItem.createdAt)}
-                      nextStep={caseItem.nextStep}
-                      lastStep={caseItem.lastStep}
-                      lastStepCompletedAt={caseItem.lastStepCompletedAt}
-                      assignedTo={caseItem.assignedTo}
-                      onViewCase={() => handleViewCase(caseItem)}
-                      onWorkerClick={handleWorkerClick}
-                    />
-                  ))}
-                </div>
+                <MLPredictionsProvider ticketIds={filteredCases.map(c => c.ticketId)}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredCases.map((caseItem: DashboardCase) => (
+                      <CaseCard
+                        key={caseItem.ticketId}
+                        ticketId={caseItem.ticketId}
+                        fdId={caseItem.fdId}
+                        workerId={caseItem.workerId}
+                        caseType={caseItem.caseType}
+                        claimType={caseItem.claimType}
+                        priority={caseItem.priority}
+                        workerName={caseItem.workerName}
+                        workerNameIsExtracted={caseItem.workerNameIsExtracted}
+                        roleApplied={caseItem.roleApplied}
+                        company={caseItem.company}
+                        status={caseItem.status as any}
+                        ragScore={caseItem.ragScore}
+                        createdAt={new Date(caseItem.createdAt)}
+                        nextStep={caseItem.nextStep}
+                        lastStep={caseItem.lastStep}
+                        lastStepCompletedAt={caseItem.lastStepCompletedAt}
+                        assignedTo={caseItem.assignedTo}
+                        onViewCase={() => handleViewCase(caseItem)}
+                        onWorkerClick={handleWorkerClick}
+                      />
+                    ))}
+                  </div>
+                </MLPredictionsProvider>
               )}
             </div>
           </TabsContent>
