@@ -218,24 +218,25 @@ function checkUrgencyFlags(ticket: any, analysis: any, medicalCertificates: any[
  * GET /api/cases
  * Retrieve list of cases for the dashboard
  */
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     console.log('=== CASE FETCHING DEBUG ===');
     console.log('Session exists:', !!(req as any).session);
     console.log('User in session:', !!(req as any).session?.user);
     
-    // Get authenticated user from session
-    const user = (req as any).session.user;
+    // Get authenticated user from session (may be undefined if no login)
+    const user = (req as any).session?.user;
     console.log('User data:', JSON.stringify(user, null, 2));
     
     let tickets;
     
-    // Admin users see all tickets across all organizations
-    const isAdmin = user.userType === 'admin' || user.role === 'admin' || user.role === 'super_user' || user.permissions?.includes('admin') || user.permissions?.includes('superuser');
+    // If no user (no login), show all tickets (default admin view)
+    // Admin users also see all tickets across all organizations
+    const isAdmin = !user || user.userType === 'admin' || user.role === 'admin' || user.role === 'super_user' || user.permissions?.includes('admin') || user.permissions?.includes('superuser');
     console.log('Admin check result:', isAdmin);
     
     if (isAdmin) {
-      console.log('✅ Admin user detected - fetching ALL tickets across all organizations');
+      console.log('✅ Admin/No-login user detected - fetching ALL tickets across all organizations');
       tickets = await storage.getAllTickets();
     } else {
       console.log(`❌ Company user - fetching tickets only for organization: ${user.organizationId}`);
