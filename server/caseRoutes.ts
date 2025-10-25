@@ -5,6 +5,9 @@ import { requireAuth } from './authRoutes.js';
 
 const router = Router();
 
+// Apply authentication to all case routes
+router.use(requireAuth);
+
 // Validation schemas
 const UpdateStatusSchema = z.object({
   status: z.string().min(1)

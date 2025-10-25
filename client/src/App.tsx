@@ -36,7 +36,11 @@ function Router() {
       <Route path="/form" component={WorkerForm} />
       
       {/* Protected Routes */}
-      <Route path="/" component={Dashboard} />
+      <Route path="/">
+        <ProtectedRoute>
+          <Dashboard />
+        </ProtectedRoute>
+      </Route>
       
       <Route path="/admin" component={AdminRoute} />
       

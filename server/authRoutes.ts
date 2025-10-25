@@ -54,9 +54,27 @@ const passwordChangeSchema = z.object({
 });
 
 // Middleware for general authentication (any user)
-export const requireAuth = (req: Request, res: Response, next: any) => {
-  // DISABLED dev-user auto-login to test proper authentication
-  // NOTE: Admin dashboard may still auto-login as dev-user via requireAdmin middleware
+export const requireAuth = async (req: Request, res: Response, next: any) => {
+  // Auto-login in development for testing
+  if (process.env.NODE_ENV === 'development' && (!req.session.user || !req.session.isAuthenticated)) {
+    // Auto-login as test admin
+    const testAdmin = await storage.getAdminUserByEmail('test@admin.com');
+    if (testAdmin) {
+      req.session.user = {
+        id: testAdmin.id,
+        email: testAdmin.email,
+        name: `${testAdmin.firstName} ${testAdmin.lastName}`,
+        firstName: testAdmin.firstName,
+        lastName: testAdmin.lastName,
+        role: 'super_user',
+        userType: 'admin',
+        permissions: ['admin', 'superuser'],
+        isImpersonating: false
+      };
+      req.session.isAuthenticated = true;
+      console.log('🔓 Auto-login enabled for testing - logged in as test@admin.com');
+    }
+  }
   
   if (!req.session.user || !req.session.isAuthenticated) {
     return res.status(401).json({ error: 'Authentication required' });

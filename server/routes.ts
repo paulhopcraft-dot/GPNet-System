@@ -1062,7 +1062,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Organization breakdown for dashboard
-  app.get("/api/dashboard/organizations", async (req, res) => {
+  app.get("/api/dashboard/organizations", requireAuth, async (req, res) => {
     try {
       const organizations = await storage.getAllOrganizations();
       
