@@ -137,6 +137,54 @@ app.use('/api/webhook', webhookSecurityMiddleware);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+// --- GPNet2 API Endpoint ---
+// Simple endpoint for the GPNet2 dashboard
+
+import { Request, Response } from "express";
+
+app.get("/api/cases", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const cases = [
+      {
+        workerName: "John Smith",
+        company: "Symmetry",
+        riskLevel: "High",
+        workStatus: "At work",
+        latestCert: "certificate.pdf",
+        compliance: "Very High",
+        summary: "Worker presented with lower back pain after lifting incident...",
+        nextStep: "Schedule follow-up",
+        owner: "Dr. Evans",
+        dueDate: "2024-08-15",
+      },
+    ];
+    res.status(200).json(cases);
+  } catch (err) {
+    console.error("Error fetching cases:", err);
+    res.status(500).json({ error: "Failed to fetch cases" });
+  }
+});
+// === Update Case Record (Next Step / Owner / Due) ===
+app.put('/api/cases/:workerName', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { workerName } = req.params;
+    const { nextStep, owner, dueDate } = req.body;
+
+    // Example update – replace with your DB logic later
+    console.log(`Updating case for ${workerName}`, { nextStep, owner, dueDate });
+
+    // TODO: if using Mongo, something like:
+    // await db.collection('cases').updateOne(
+    //   { workerName },
+    //   { $set: { nextStep, owner, dueDate } }
+    // );
+
+    res.status(200).json({ success: true, message: 'Case updated successfully' });
+  } catch (err) {
+    console.error('Error updating case:', err);
+    res.status(500).json({ error: 'Failed to update case' });
+  }
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
