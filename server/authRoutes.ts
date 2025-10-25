@@ -438,7 +438,7 @@ router.get('/audit', requireAdmin, async (req: Request, res: Response) => {
 
 
 // Get current user endpoint
-router.get('/me', async (req: Request, res: Response) => {
+router.get('/me', requireAuth, async (req: Request, res: Response) => {
   try {
     if (!req.session.user || !req.session.isAuthenticated) {
       return res.status(401).json({ error: 'Authentication required' });
