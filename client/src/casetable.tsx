@@ -17,7 +17,7 @@ const CaseTable: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/cases")
+    fetch("/api/gpnet2/cases")
       .then((res) => res.json())
       .then((data) => {
         setCases(data);

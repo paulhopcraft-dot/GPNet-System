@@ -1,9 +1,9 @@
-import GPNet2Table from "@/components/GPNet2Table";
+import CaseTable from "./casetable";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-background p-8">
-      <GPNet2Table />
+    <div className="min-h-screen bg-white text-gray-800">
+      <CaseTable />
     </div>
   );
 }
