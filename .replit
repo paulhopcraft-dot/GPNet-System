@@ -1,148 +1,15 @@
-modules = ["nodejs-20", "web", "postgresql-16", "python-3.11"]
-run = "npm run dev"
-hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
-
-[nix]
-channel = "stable-24_05"
-packages = ["alsa-lib", "at-spi2-atk", "at-spi2-core", "atk", "chromium", "dbus", "glib", "glibcLocales", "gtk3", "imagemagick", "libxcrypt", "libxkbcommon", "mesa", "nss", "poppler_utils", "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage", "xorg.libXfixes"]
-
-[deployment]
-deploymentTarget = "autoscale"
-build = ["npm", "run", "build"]
-run = ["npm", "run", "start"]
-
-[[ports]]
-localPort = 5000
-externalPort = 80
-
-[[ports]]
-localPort = 32833
-
-[[ports]]
-localPort = 32923
-
-[[ports]]
-localPort = 33399
-
-[[ports]]
-localPort = 33633
-externalPort = 3000
-
-[[ports]]
-localPort = 34839
-externalPort = 4200
-
-[[ports]]
-localPort = 34927
-externalPort = 6000
-
-[[ports]]
-localPort = 34933
-externalPort = 8080
-
-[[ports]]
-localPort = 35943
-
-[[ports]]
-localPort = 36459
-
-[[ports]]
-localPort = 37153
-externalPort = 5000
-
-[[ports]]
-localPort = 37231
-externalPort = 5173
-
-[[ports]]
-localPort = 37301
-externalPort = 8008
-
-[[ports]]
-localPort = 37643
-externalPort = 3002
-
-[[ports]]
-localPort = 38757
-
-[[ports]]
-localPort = 38793
-
-[[ports]]
-localPort = 38989
-
-[[ports]]
-localPort = 39033
-externalPort = 9000
-
-[[ports]]
-localPort = 39137
-externalPort = 8099
-
-[[ports]]
-localPort = 40799
-externalPort = 6800
-
-[[ports]]
-localPort = 40965
-externalPort = 8000
-
-[[ports]]
-localPort = 40999
-externalPort = 8081
-
-[[ports]]
-localPort = 41287
-externalPort = 3003
-
-[[ports]]
-localPort = 41545
-
-[[ports]]
-localPort = 41615
-
-[[ports]]
-localPort = 43829
-externalPort = 3001
-
-[[ports]]
-localPort = 45593
-
-[[ports]]
-localPort = 45845
-
-[[ports]]
-localPort = 46295
-
-[[ports]]
-localPort = 46419
-
-[[ports]]
-localPort = 46791
+modules = ["nodejs-22"]
+run = "npm run start"
+hidden = [".config", ".git", "node_modules", "dist"]
 
 [env]
-PORT = "5000"
+PORT = "9000"
 
-[workflows]
-runButton = "Project"
+[[ports]]
+localPort = 9000
+externalPort = 80
 
-[[workflows.workflow]]
-name = "Project"
-mode = "parallel"
-author = "agent"
+[deployment]
+run = "npm run start"
+deploymentTarget = "cloudrun"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Start application"
-
-[[workflows.workflow]]
-name = "Start application"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run dev"
-waitForPort = 5000
-
-[agent]
-integrations = ["javascript_database:1.0.0", "javascript_object_storage:1.0.0", "javascript_openai:1.0.0", "javascript_sendgrid:1.0.0"]

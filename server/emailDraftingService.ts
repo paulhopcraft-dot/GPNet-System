@@ -35,10 +35,11 @@ export interface GeneratedEmailDraft {
 export class EmailDraftingService {
   private readonly JOTFORM_BASE_URL = process.env.JOTFORM_BASE_URL || 'https://form.jotform.com/';
   private readonly BASE_URL = process.env.BASE_URL
-    ? process.env.BASE_URL
-    : (process.env.REPL_SLUG && process.env.REPL_OWNER
-       ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
-       : 'http://localhost:5000');
+  ? process.env.BASE_URL
+  : (process.env.REPL_SLUG && process.env.REPL_OWNER
+     ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+     : `http://localhost:${process.env.PORT || 9000}`);
+
   private readonly LINK_EXPIRY_HOURS = 72; // 3 days default
 
   /**

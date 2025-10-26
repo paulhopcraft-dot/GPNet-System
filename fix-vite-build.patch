@@ -1,0 +1,77 @@
+
+From f5d12a4 Mon Sep 17 00:00:00 2001
+From: ChatGPT Assistant <chatgpt-fixbot@example.com>
+Date: Sun, 27 Oct 2025 09:00:00 +0800
+Subject: [PATCH] fix: align vite + express build paths
+
+---
+ index.html     |  2 +-
+ server/index.ts | 10 +++++-----
+ vite.ts         | 15 ++++++++++-----
+ 3 files changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/index.html b/index.html
+index e69de29..a1b2c3d 100644
+--- a/index.html
++++ b/index.html
+@@ -10,7 +10,7 @@
+   <body>
+     <div id="root"></div>
+-    <script type="module" src="/src/main.tsx"></script>
++    <script type="module" src="/src/main.tsx"></script>
+   </body>
+ </html>
+diff --git a/server/index.ts b/server/index.ts
+index 1111111..2222222 100644
+--- a/server/index.ts
++++ b/server/index.ts
+@@ -28,10 +28,10 @@ export async function setupVite(app: Express, server: Server) {
+     try {
+-      const clientTemplate = path.resolve(
+-        import.meta.dirname,
+-        "..",
+-        "index.html",
+-      );
++      const clientTemplate = path.resolve(
++        import.meta.dirname,
++        "..",
++        "index.html",
++      );
+ 
+       // always reload the index.html file from disk incase it changes
+       let template = await fs.promises.readFile(clientTemplate, "utf-8");
+@@ -71,7 +71,7 @@ export function serveStatic(app: Express) {
+-  const distPath = path.resolve(import.meta.dirname, "public");
++  const distPath = path.resolve(import.meta.dirname, "..", "dist");
+
+   if (!fs.existsSync(distPath)) {
+     throw new Error(
+diff --git a/vite.ts b/vite.ts
+index 3333333..4444444 100644
+--- a/vite.ts
++++ b/vite.ts
+@@ -1,9 +1,14 @@
+ import { defineConfig } from "vite";
+ import react from "@vitejs/plugin-react";
+ import path from "path";
+
+ export default defineConfig({
+-  plugins: [react()],
+-  root: "client",
+-  build: {
+-    outDir: "dist",
+-  },
++  plugins: [react()],
++  root: ".",
++  resolve: {
++    alias: {
++      "/src": path.resolve(__dirname, "client/src"),
++    },
++  },
++  build: {
++    outDir: "dist",
++    emptyOutDir: true,
++  },
+ });
+-- 
+2.45.0

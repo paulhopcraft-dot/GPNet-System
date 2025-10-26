@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+
 import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecurity";
 
 /**
@@ -253,37 +254,44 @@ app.use((req, res, next) => {
   // Object storage health check
   await logObjectStorageHealth();
 
-  const port = parseInt(process.env.PORT || '5000', 10);
+  const port = parseInt(process.env.PORT || "9000");
+
+
   let retryCount = 0;
   const MAX_RETRIES = 5;
   
-  server.on('error', (error: any) => {
-    if (error.code === 'EADDRINUSE') {
-      retryCount++;
-      if (retryCount > MAX_RETRIES) {
-        console.error(`❌ Port ${port} still in use after ${MAX_RETRIES} retries. Exiting...`);
-        process.exit(1);
+  server.on("error", (error: any) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`⚠️ Port ${port} is already in use. Trying a new one...`);
+    const newPort = port + 1;
+    server.listen(
+      {
+        port: newPort,
+        host: "0.0.0.0",
+      },
+      () => {
+        log(`✅ Switched to port ${newPort}`);
       }
-      console.error(`⚠️  Port ${port} is already in use. Retry ${retryCount}/${MAX_RETRIES} in 2 seconds...`);
-      setTimeout(() => {
-        server.close();
-        server.listen({
-          port,
-          host: "0.0.0.0",
-          reusePort: true,
-        });
-      }, 2000);
-    } else {
-      console.error('Server error:', error);
-      process.exit(1);
-    }
-  });
-  
-  server.listen({
+    );
+  } else {
+    console.error("Server error:", error);
+    process.exit(1);
+  }
+});
+
+server.listen(
+  {
     port,
     host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  },
+  () => {
+    log(`✅ Serving on port ${port}`);
+    if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
+      console.log(
+        `🌐 Preview URL: https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+      );
+    }
+  }
+);
+
 })();
