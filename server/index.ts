@@ -137,12 +137,10 @@ app.use('/api/webhook', webhookSecurityMiddleware);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
 // --- GPNet2 API Endpoint ---
 // Simple endpoint for the GPNet2 dashboard
-
-import { Request, Response } from "express";
-
-app.get("/api/cases", async (req: Request, res: Response): Promise<void> => {
+app.get("/api/gpnet2/cases", async (req: Request, res: Response): Promise<void> => {
   try {
     const cases = [
       {
@@ -165,7 +163,7 @@ app.get("/api/cases", async (req: Request, res: Response): Promise<void> => {
   }
 });
 // === Update Case Record (Next Step / Owner / Due) ===
-app.put('/api/cases/:workerName', async (req: Request, res: Response): Promise<void> => {
+app.put('/api/gpnet2/cases/:workerName', async (req: Request, res: Response): Promise<void> => {
   try {
     const { workerName } = req.params;
     const { nextStep, owner, dueDate } = req.body;
