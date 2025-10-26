@@ -1,12 +1,9 @@
-import React from "react";
-import CaseTable from "./CaseTable";
+import GPNet2Table from "@/components/GPNet2Table";
 
-const App: React.FC = () => {
+export default function App() {
   return (
-    <div className="min-h-screen bg-white text-gray-800">
-      <CaseTable />
+    <div className="min-h-screen bg-background p-8">
+      <GPNet2Table />
     </div>
   );
-};
-
-export default App;
+}
