@@ -1,5 +1,5 @@
 modules = ["nodejs-22"]
-run = "npm run start"
+run = "npx tsx server/index.ts"
 hidden = [".config", ".git", "node_modules", "dist"]
 
 [env]
@@ -8,6 +8,10 @@ PORT = "9000"
 [[ports]]
 localPort = 9000
 externalPort = 80
+
+[[ports]]
+localPort = 9001
+externalPort = 3000
 
 [deployment]
 run = "npm run start"
