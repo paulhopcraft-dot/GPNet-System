@@ -1,0 +1,264 @@
+import { useState, useMemo } from "react";
+import { CompanyNav } from "@/components/CompanyNav";
+import { SearchBar } from "@/components/SearchBar";
+import { CasesTable } from "@/components/CasesTable";
+import { CaseDetailPanel } from "@/components/CaseDetailPanel";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
+import type { Company, WorkerCase } from "@shared/schema";
+
+//todo: remove mock functionality
+const mockCases: WorkerCase[] = [
+  {
+    id: "1",
+    workerName: "John Smith",
+    company: "Symmetry",
+    riskLevel: "High",
+    workStatus: "At work",
+    hasCertificate: true,
+    certificateUrl: "#",
+    complianceIndicator: "Very High",
+    currentStatus: "Initial assessment completed",
+    nextStep: "Schedule follow-up",
+    owner: "Dr. Evans",
+    dueDate: "2024-08-15",
+    summary: "Worker presented with lower back pain following lifting incident on 2024-07-28. Initial assessment indicates possible disc herniation. Currently on light duties with 10kg lifting restriction. Requires specialist referral and ongoing monitoring. Worker is cooperative and motivated to return to full duties.",
+    attachments: [
+      {
+        id: "1",
+        name: "certificate.pdf",
+        type: "Medical Certificate",
+        url: "#",
+      },
+      {
+        id: "2",
+        name: "diagnosis.docx",
+        type: "Diagnostic Report",
+        url: "#",
+      },
+    ],
+    clcLastFollowUp: "2024-08-01",
+    clcNextFollowUp: "2024-08-15",
+  },
+  {
+    id: "2",
+    workerName: "Jane Doe",
+    company: "Allied Health",
+    riskLevel: "Medium",
+    workStatus: "Off work",
+    hasCertificate: false,
+    complianceIndicator: "High",
+    currentStatus: "Awaiting specialist report",
+    nextStep: "Review report",
+    owner: "Dr. Smith",
+    dueDate: "2024-08-20",
+    summary: "Worker experiencing severe shoulder pain after workplace fall. Currently unable to perform duties. Awaiting MRI results and specialist consultation. Expected recovery timeline: 4-6 weeks.",
+    attachments: [
+      {
+        id: "3",
+        name: "incident_report.pdf",
+        type: "Incident Report",
+        url: "#",
+      },
+    ],
+    clcLastFollowUp: "2024-08-05",
+    clcNextFollowUp: "2024-08-20",
+  },
+  {
+    id: "3",
+    workerName: "Peter Jones",
+    company: "Apex Labour",
+    riskLevel: "Low",
+    workStatus: "At work",
+    hasCertificate: true,
+    certificateUrl: "#",
+    complianceIndicator: "Medium",
+    currentStatus: "Monitoring symptoms",
+    nextStep: "Check-in call",
+    owner: "Nurse Joy",
+    dueDate: "2024-08-18",
+    summary: "Minor wrist strain from repetitive tasks. Worker has been provided with ergonomic equipment and modified duties. Regular monitoring in place. Good progress expected.",
+    attachments: [
+      {
+        id: "4",
+        name: "ergonomic_assessment.pdf",
+        type: "Assessment Report",
+        url: "#",
+      },
+    ],
+    clcLastFollowUp: "2024-08-03",
+    clcNextFollowUp: "2024-08-18",
+  },
+  {
+    id: "4",
+    workerName: "Mary Williams",
+    company: "SafeWorks",
+    riskLevel: "High",
+    workStatus: "Off work",
+    hasCertificate: true,
+    certificateUrl: "#",
+    complianceIndicator: "Low",
+    currentStatus: "Rehabilitation plan in progress",
+    nextStep: "Update plan",
+    owner: "Dr. Williams",
+    dueDate: "2024-08-22",
+    summary: "Post-surgical recovery following knee operation. Active rehabilitation program underway. Worker showing good compliance with treatment plan. Gradual return to work planned over 8-week period.",
+    clcLastFollowUp: "2024-08-07",
+    clcNextFollowUp: "2024-08-22",
+  },
+  {
+    id: "5",
+    workerName: "David Brown",
+    company: "Core Industrial",
+    riskLevel: "Medium",
+    workStatus: "At work",
+    hasCertificate: false,
+    complianceIndicator: "Very Low",
+    currentStatus: "Fit for full duties",
+    nextStep: "Close case",
+    owner: "Admin",
+    dueDate: "2024-08-25",
+    summary: "Successfully completed return to work program. All restrictions lifted. Worker performing full duties without issue. Case ready for closure pending final documentation.",
+    clcLastFollowUp: "2024-08-10",
+    clcNextFollowUp: "2024-08-25",
+  },
+  {
+    id: "6",
+    workerName: "Sarah Wilson",
+    company: "Symmetry",
+    riskLevel: "Low",
+    workStatus: "At work",
+    hasCertificate: true,
+    certificateUrl: "#",
+    complianceIndicator: "High",
+    currentStatus: "Ergonomic assessment scheduled",
+    nextStep: "Conduct assessment",
+    owner: "OHS",
+    dueDate: "2024-08-17",
+    summary: "Preventative case following worker request for workstation assessment. No current injury. Proactive approach to prevent future issues. Assessment scheduled with OHS team.",
+    attachments: [
+      {
+        id: "5",
+        name: "workstation_photo.jpg",
+        type: "Photo Documentation",
+        url: "#",
+      },
+    ],
+    clcLastFollowUp: "2024-08-02",
+    clcNextFollowUp: "2024-08-17",
+  },
+  {
+    id: "7",
+    workerName: "Michael Taylor",
+    company: "Allied Health",
+    riskLevel: "High",
+    workStatus: "Off work",
+    hasCertificate: true,
+    certificateUrl: "#",
+    complianceIndicator: "Medium",
+    currentStatus: "Awaiting surgery",
+    nextStep: "Post-op review",
+    owner: "Dr. Taylor",
+    dueDate: "2024-09-01",
+    summary: "Herniated disc requiring surgical intervention. Surgery scheduled for 2024-08-28. Pre-operative clearance obtained. Post-operative recovery plan in development with treating specialist.",
+    attachments: [
+      {
+        id: "6",
+        name: "mri_results.pdf",
+        type: "Diagnostic Imaging",
+        url: "#",
+      },
+      {
+        id: "7",
+        name: "surgical_plan.pdf",
+        type: "Treatment Plan",
+        url: "#",
+      },
+    ],
+    clcLastFollowUp: "2024-08-08",
+    clcNextFollowUp: "2024-09-01",
+  },
+  {
+    id: "8",
+    workerName: "Emily Davis",
+    company: "Apex Labour",
+    riskLevel: "Medium",
+    workStatus: "At work",
+    hasCertificate: false,
+    complianceIndicator: "High",
+    currentStatus: "Return to work plan active",
+    nextStep: "Progress review",
+    owner: "Case Manager",
+    dueDate: "2024-08-19",
+    summary: "Gradual return to work following ankle sprain. Currently at 50% duties with progressive increase planned. Worker responding well to physiotherapy. On track for full duties by end of month.",
+    clcLastFollowUp: "2024-08-04",
+    clcNextFollowUp: "2024-08-19",
+  },
+];
+
+export default function Dashboard() {
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+
+  const filteredCases = useMemo(() => {
+    return mockCases.filter((c) => {
+      const matchesCompany = !selectedCompany || c.company === selectedCompany;
+      const matchesSearch =
+        !searchQuery ||
+        c.workerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.company.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCompany && matchesSearch;
+    });
+  }, [selectedCompany, searchQuery]);
+
+  const selectedCase = useMemo(() => {
+    return mockCases.find((c) => c.id === selectedCaseId) || null;
+  }, [selectedCaseId]);
+
+  const handleCaseClick = (caseId: string) => {
+    setSelectedCaseId(caseId);
+  };
+
+  const handleClosePanel = () => {
+    setSelectedCaseId(null);
+  };
+
+  return (
+    <div className="flex h-screen">
+      <aside className="w-64 flex-shrink-0 bg-sidebar p-4 border-r border-sidebar-border">
+        <div className="flex items-center gap-3 mb-8">
+          <div className="bg-primary/20 rounded-full size-10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary">corporate_fare</span>
+          </div>
+          <h1 className="text-sidebar-foreground text-xl font-bold">GPNet 2</h1>
+        </div>
+        <CompanyNav selectedCompany={selectedCompany} onSelectCompany={setSelectedCompany} />
+      </aside>
+
+      <main className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col p-6 overflow-y-auto">
+          <div className="flex justify-between items-center gap-4 mb-6">
+            <SearchBar value={searchQuery} onChange={setSearchQuery} />
+            <div className="flex items-center gap-2">
+              <Button disabled data-testid="button-add-case">
+                <span className="material-symbols-outlined text-base">add</span>
+                <span className="font-bold">Add Case</span>
+              </Button>
+              <ThemeToggle />
+            </div>
+          </div>
+          <CasesTable 
+            cases={filteredCases} 
+            selectedCaseId={selectedCaseId}
+            onCaseClick={handleCaseClick} 
+          />
+        </div>
+
+        {selectedCase && (
+          <CaseDetailPanel workerCase={selectedCase} onClose={handleClosePanel} />
+        )}
+      </main>
+    </div>
+  );
+}
