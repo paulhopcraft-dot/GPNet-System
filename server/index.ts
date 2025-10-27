@@ -6,6 +6,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { requireAuth } from "./authRoutes";
 
 import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecurity";
 
@@ -143,46 +144,109 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // --- GPNet2 API Endpoint ---
-// Fetch real worker cases from database (synced with Freshdesk)
-app.get("/api/gpnet2/cases", async (req: Request, res: Response): Promise<void> => {
+// Fetch real worker cases from database (synced with Freshdesk) with tenant security
+app.get("/api/gpnet2/cases", requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
-    // Query tickets with worker data using raw SQL for better control
-    const query = `
-      SELECT 
-        t.id,
-        w.first_name || ' ' || w.last_name as worker_name,
-        COALESCE(t.company_name, w.company, 'Unknown') as company,
-        COALESCE(t.risk_level, 'Low') as risk_level,
-        CASE 
-          WHEN w.status_off_work = true THEN 'Off work'
-          ELSE 'At work'
-        END as work_status,
-        t.compliance_status,
-        t.current_status,
-        t.next_step,
-        t.assigned_to as owner,
-        t.next_action_due_at,
-        t.subject,
-        t.last_participation_date,
-        t.next_deadline_date
-      FROM tickets t
-      LEFT JOIN workers w ON t.worker_id = w.id
-      WHERE t.status != 'COMPLETE'
-      ORDER BY 
-        CASE t.risk_level 
-          WHEN 'High' THEN 1 
-          WHEN 'Medium' THEN 2 
-          ELSE 3 
-        END,
-        t.next_action_due_at ASC NULLS LAST
-      LIMIT 100
-    `;
+    // Get organization ID from session (supports admin impersonation)
+    const organizationId = req.session.user!.impersonationTarget || req.session.user!.organizationId;
+    
+    // Superusers without impersonation can see all tickets (admin view)
+    const isSuperUser = req.session.user!.permissions?.includes('superuser') && !req.session.user!.impersonationTarget;
 
-    const result = await db.execute(sql.raw(query));
+    // Query tickets with worker data using proper parameterized query for security
+    const result = isSuperUser 
+      ? await db.execute(sql`
+          SELECT 
+            t.id,
+            t.organization_id,
+            w.first_name || ' ' || w.last_name as worker_name,
+            COALESCE(t.company_name, w.company) as company,
+            COALESCE(t.risk_level, 'Low') as risk_level,
+            CASE 
+              WHEN w.status_off_work = true THEN 'Off work'
+              ELSE 'At work'
+            END as work_status,
+            t.compliance_status,
+            t.current_status,
+            t.next_step,
+            t.assigned_to as owner,
+            t.next_action_due_at,
+            t.subject,
+            t.last_participation_date,
+            t.next_deadline_date
+          FROM tickets t
+          LEFT JOIN workers w ON t.worker_id = w.id
+          WHERE t.status != 'COMPLETE'
+          ORDER BY 
+            CASE t.risk_level 
+              WHEN 'High' THEN 1 
+              WHEN 'Medium' THEN 2 
+              ELSE 3 
+            END,
+            t.next_action_due_at ASC NULLS LAST
+          LIMIT 100
+        `)
+      : await db.execute(sql`
+          SELECT 
+            t.id,
+            t.organization_id,
+            w.first_name || ' ' || w.last_name as worker_name,
+            COALESCE(t.company_name, w.company) as company,
+            COALESCE(t.risk_level, 'Low') as risk_level,
+            CASE 
+              WHEN w.status_off_work = true THEN 'Off work'
+              ELSE 'At work'
+            END as work_status,
+            t.compliance_status,
+            t.current_status,
+            t.next_step,
+            t.assigned_to as owner,
+            t.next_action_due_at,
+            t.subject,
+            t.last_participation_date,
+            t.next_deadline_date
+          FROM tickets t
+          LEFT JOIN workers w ON t.worker_id = w.id
+          WHERE t.status != 'COMPLETE' 
+            AND t.organization_id = ${organizationId}
+          ORDER BY 
+            CASE t.risk_level 
+              WHEN 'High' THEN 1 
+              WHEN 'Medium' THEN 2 
+              ELSE 3 
+            END,
+            t.next_action_due_at ASC NULLS LAST
+          LIMIT 100
+        `);
     const tickets = result.rows;
+
+    // Valid company names according to WorkerCase interface
+    const validCompanies = new Set(["Symmetry", "Allied Health", "Apex Labour", "SafeWorks", "Core Industrial"]);
+    
+    // Company name normalization map
+    const companyNameMap: Record<string, string> = {
+      "symmetry": "Symmetry",
+      "allied health": "Allied Health",
+      "allied": "Allied Health",
+      "apex labour": "Apex Labour",
+      "apex": "Apex Labour",
+      "safeworks": "SafeWorks",
+      "safe works": "SafeWorks",
+      "core industrial": "Core Industrial",
+      "core": "Core Industrial"
+    };
 
     // Map database records to WorkerCase interface
     const cases = tickets.map((row: any) => {
+      // Normalize company name to match WorkerCase enum
+      let company = row.company || "Core Industrial";
+      const normalizedKey = company.toLowerCase();
+      if (companyNameMap[normalizedKey]) {
+        company = companyNameMap[normalizedKey];
+      } else if (!validCompanies.has(company)) {
+        company = "Core Industrial"; // Default fallback
+      }
+
       // Map compliance status to indicator
       let complianceIndicator: string;
       switch(row.compliance_status) {
@@ -190,6 +254,12 @@ app.get("/api/gpnet2/cases", async (req: Request, res: Response): Promise<void> 
         case 'at_risk': complianceIndicator = 'Medium'; break;
         case 'non_compliant': complianceIndicator = 'Low'; break;
         default: complianceIndicator = 'High';
+      }
+
+      // Map risk level to valid values
+      let riskLevel = row.risk_level || 'Low';
+      if (!['High', 'Medium', 'Low'].includes(riskLevel)) {
+        riskLevel = 'Low';
       }
 
       // Format due date
@@ -200,17 +270,17 @@ app.get("/api/gpnet2/cases", async (req: Request, res: Response): Promise<void> 
       return {
         id: row.id,
         workerName: row.worker_name || 'Unknown Worker',
-        company: row.company,
-        riskLevel: row.risk_level || 'Low',
-        workStatus: row.work_status,
-        hasCertificate: false, // TODO: Check documents table
+        company,
+        riskLevel,
+        workStatus: row.work_status || 'At work',
+        hasCertificate: false, // TODO: Query documents table in future iteration
         complianceIndicator,
         currentStatus: row.current_status || 'Case under review',
-        nextStep: row.next_step || 'Awaiting triage',
+        nextStep: row.next_step || 'Initial case review and triage',
         owner: row.owner || 'Unassigned',
         dueDate,
         summary: row.subject || 'No summary available',
-        attachments: [], // TODO: Fetch from documents/attachments table
+        attachments: [], // TODO: Query attachments table in future iteration
         clcLastFollowUp: row.last_participation_date || '',
         clcNextFollowUp: row.next_deadline_date || dueDate
       };
