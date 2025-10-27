@@ -55,7 +55,7 @@ import { registerChatGPTRoutes } from "./chatgptRoutes";
 import { registerAgentRoutes } from "./agentRoutes";
 import { registerRTWRoutes } from "./rtwRoutes";
 import { externalEmails, aiRecommendations, emailAttachments } from "@shared/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db";
 
 // Using centralized risk assessment service for all analysis (duplicate engines removed)
@@ -166,6 +166,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Mount authentication routes
   app.use('/api/auth', authRoutes);
+  
+  // ===========================================
+  // GPNet2 DASHBOARD API
+  // ===========================================
+  
+  // Fetch worker cases from database (synced with Freshdesk) with tenant security
+  app.get("/api/gpnet2/cases", requireAuth, async (req, res) => {
+    try {
+      const organizationId = req.session.user!.impersonationTarget || req.session.user!.organizationId;
+      const isSuperUser = req.session.user!.permissions?.includes('superuser') && !req.session.user!.impersonationTarget;
+
+      const result = isSuperUser 
+        ? await db.execute(sql`
+            SELECT t.id, t.organization_id, w.first_name || ' ' || w.last_name as worker_name,
+              COALESCE(t.company_name, w.company) as company, COALESCE(t.risk_level, 'Low') as risk_level,
+              CASE WHEN w.status_off_work = true THEN 'Off work' ELSE 'At work' END as work_status,
+              t.compliance_status, t.current_status, t.next_step, t.assigned_to as owner,
+              t.next_action_due_at, t.subject, t.last_participation_date, t.next_deadline_date
+            FROM tickets t LEFT JOIN workers w ON t.worker_id = w.id
+            WHERE t.status != 'COMPLETE' ORDER BY 
+              CASE t.risk_level WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
+              t.next_action_due_at ASC NULLS LAST LIMIT 100
+          `)
+        : await db.execute(sql`
+            SELECT t.id, t.organization_id, w.first_name || ' ' || w.last_name as worker_name,
+              COALESCE(t.company_name, w.company) as company, COALESCE(t.risk_level, 'Low') as risk_level,
+              CASE WHEN w.status_off_work = true THEN 'Off work' ELSE 'At work' END as work_status,
+              t.compliance_status, t.current_status, t.next_step, t.assigned_to as owner,
+              t.next_action_due_at, t.subject, t.last_participation_date, t.next_deadline_date
+            FROM tickets t LEFT JOIN workers w ON t.worker_id = w.id
+            WHERE t.status != 'COMPLETE' AND t.organization_id = ${organizationId}
+            ORDER BY CASE t.risk_level WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
+              t.next_action_due_at ASC NULLS LAST LIMIT 100
+          `);
+          
+      const cases = result.rows.map((row: any) => ({
+        id: row.id,
+        workerName: row.worker_name || 'Unknown Worker',
+        company: row.company || "Core Industrial",
+        riskLevel: ['High', 'Medium', 'Low'].includes(row.risk_level) ? row.risk_level : 'Low',
+        workStatus: row.work_status || 'At work',
+        hasCertificate: false,
+        complianceIndicator: row.compliance_status === 'compliant' ? 'Very High' : row.compliance_status === 'at_risk' ? 'Medium' : row.compliance_status === 'non_compliant' ? 'Low' : 'High',
+        currentStatus: row.current_status || 'Case under review',
+        nextStep: row.next_step || 'Initial case review and triage',
+        owner: row.owner || 'Unassigned',
+        dueDate: row.next_action_due_at ? new Date(row.next_action_due_at).toISOString().split('T')[0] : row.next_deadline_date || '',
+        summary: row.subject || 'No summary available',
+        attachments: [],
+        clcLastFollowUp: row.last_participation_date || '',
+        clcNextFollowUp: row.next_deadline_date || ''
+      }));
+
+      res.status(200).json(cases);
+    } catch (err) {
+      console.error("Error fetching GPNet2 cases:", err);
+      res.status(500).json({ error: "Failed to fetch cases" });
+    }
+  });
   
   // ===========================================
   // SERVICE INITIALIZATION
