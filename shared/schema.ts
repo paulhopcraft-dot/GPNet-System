@@ -3,6 +3,38 @@ import { pgTable, text, varchar, timestamp, integer, bigint, jsonb, boolean, uni
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// GPNet2 Dashboard Types
+export type CompanyName = "Symmetry" | "Allied Health" | "Apex Labour" | "SafeWorks" | "Core Industrial";
+export type WorkStatus = "At work" | "Off work";
+export type RiskLevel = "High" | "Medium" | "Low";
+export type ComplianceIndicator = "Very High" | "High" | "Medium" | "Low" | "Very Low";
+
+export interface CaseAttachment {
+  id: string;
+  name: string;
+  type: string;
+  url: string;
+}
+
+export interface WorkerCase {
+  id: string;
+  workerName: string;
+  company: CompanyName;
+  riskLevel: RiskLevel;
+  workStatus: WorkStatus;
+  hasCertificate: boolean;
+  certificateUrl?: string;
+  complianceIndicator: ComplianceIndicator;
+  currentStatus: string;
+  nextStep: string;
+  owner: string;
+  dueDate: string;
+  summary: string;
+  attachments?: CaseAttachment[];
+  clcLastFollowUp?: string;
+  clcNextFollowUp?: string;
+}
+
 
 
 // Tickets table for case management - extended for Freshdesk integration
