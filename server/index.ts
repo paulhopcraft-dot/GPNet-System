@@ -47,15 +47,16 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Configure CORS for mobile Safari compatibility with security
+// Disable CSP in development to allow Vite dev server to work properly
 app.use(helmet({
-  contentSecurityPolicy: {
+  contentSecurityPolicy: app.get('env') === 'development' ? false : {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'"],
-      fontSrc: ["'self'", "data:"],
+      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
       frameSrc: ["'none'"],
