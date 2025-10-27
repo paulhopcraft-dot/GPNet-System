@@ -4,6 +4,8 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecurity";
 
@@ -141,164 +143,82 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // --- GPNet2 API Endpoint ---
-// Simple endpoint for the GPNet2 dashboard
+// Fetch real worker cases from database (synced with Freshdesk)
 app.get("/api/gpnet2/cases", async (req: Request, res: Response): Promise<void> => {
   try {
-    const cases = [
-      {
-        id: "1",
-        workerName: "John Smith",
-        company: "Symmetry",
-        riskLevel: "High",
-        workStatus: "At work",
-        hasCertificate: true,
-        certificateUrl: "#",
-        complianceIndicator: "Very High",
-        currentStatus: "Initial assessment completed",
-        nextStep: "Schedule follow-up",
-        owner: "Dr. Evans",
-        dueDate: "2024-08-15",
-        summary: "Worker presented with lower back pain following lifting incident on 2024-07-28. Initial assessment indicates possible disc herniation. Currently on light duties with 10kg lifting restriction. Requires specialist referral and ongoing monitoring. Worker is cooperative and motivated to return to full duties.",
-        attachments: [
-          { id: "1", name: "certificate.pdf", type: "Medical Certificate", url: "#" },
-          { id: "2", name: "diagnosis.docx", type: "Diagnostic Report", url: "#" }
-        ],
-        clcLastFollowUp: "2024-08-01",
-        clcNextFollowUp: "2024-08-15"
-      },
-      {
-        id: "2",
-        workerName: "Jane Doe",
-        company: "Allied Health",
-        riskLevel: "Medium",
-        workStatus: "Off work",
-        hasCertificate: false,
-        complianceIndicator: "High",
-        currentStatus: "Awaiting specialist report",
-        nextStep: "Review report",
-        owner: "Dr. Smith",
-        dueDate: "2024-08-20",
-        summary: "Worker experiencing severe shoulder pain after workplace fall. Currently unable to perform duties. Awaiting MRI results and specialist consultation. Expected recovery timeline: 4-6 weeks.",
-        attachments: [
-          { id: "3", name: "incident_report.pdf", type: "Incident Report", url: "#" }
-        ],
-        clcLastFollowUp: "2024-08-05",
-        clcNextFollowUp: "2024-08-20"
-      },
-      {
-        id: "3",
-        workerName: "Peter Jones",
-        company: "Apex Labour",
-        riskLevel: "Low",
-        workStatus: "At work",
-        hasCertificate: true,
-        certificateUrl: "#",
-        complianceIndicator: "Medium",
-        currentStatus: "Monitoring symptoms",
-        nextStep: "Check-in call",
-        owner: "Nurse Joy",
-        dueDate: "2024-08-18",
-        summary: "Minor wrist strain from repetitive tasks. Worker has been provided with ergonomic equipment and modified duties. Regular monitoring in place. Good progress expected.",
-        attachments: [
-          { id: "4", name: "ergonomic_assessment.pdf", type: "Assessment Report", url: "#" }
-        ],
-        clcLastFollowUp: "2024-08-03",
-        clcNextFollowUp: "2024-08-18"
-      },
-      {
-        id: "4",
-        workerName: "Mary Williams",
-        company: "SafeWorks",
-        riskLevel: "High",
-        workStatus: "Off work",
-        hasCertificate: true,
-        certificateUrl: "#",
-        complianceIndicator: "Low",
-        currentStatus: "Rehabilitation plan in progress",
-        nextStep: "Update plan",
-        owner: "Dr. Williams",
-        dueDate: "2024-08-22",
-        summary: "Post-surgical recovery following knee operation. Active rehabilitation program underway. Worker showing good compliance with treatment plan. Gradual return to work planned over 8-week period.",
-        clcLastFollowUp: "2024-08-07",
-        clcNextFollowUp: "2024-08-22"
-      },
-      {
-        id: "5",
-        workerName: "David Brown",
-        company: "Core Industrial",
-        riskLevel: "Medium",
-        workStatus: "At work",
-        hasCertificate: false,
-        complianceIndicator: "Very Low",
-        currentStatus: "Fit for full duties",
-        nextStep: "Close case",
-        owner: "Admin",
-        dueDate: "2024-08-25",
-        summary: "Successfully completed return to work program. All restrictions lifted. Worker performing full duties without issue. Case ready for closure pending final documentation.",
-        clcLastFollowUp: "2024-08-10",
-        clcNextFollowUp: "2024-08-25"
-      },
-      {
-        id: "6",
-        workerName: "Sarah Wilson",
-        company: "Symmetry",
-        riskLevel: "Low",
-        workStatus: "At work",
-        hasCertificate: true,
-        certificateUrl: "#",
-        complianceIndicator: "High",
-        currentStatus: "Ergonomic assessment scheduled",
-        nextStep: "Conduct assessment",
-        owner: "OHS",
-        dueDate: "2024-08-17",
-        summary: "Preventative case following worker request for workstation assessment. No current injury. Proactive approach to prevent future issues. Assessment scheduled with OHS team.",
-        attachments: [
-          { id: "5", name: "workstation_photo.jpg", type: "Photo Documentation", url: "#" }
-        ],
-        clcLastFollowUp: "2024-08-02",
-        clcNextFollowUp: "2024-08-17"
-      },
-      {
-        id: "7",
-        workerName: "Michael Taylor",
-        company: "Allied Health",
-        riskLevel: "High",
-        workStatus: "Off work",
-        hasCertificate: true,
-        certificateUrl: "#",
-        complianceIndicator: "Medium",
-        currentStatus: "Awaiting surgery",
-        nextStep: "Post-op review",
-        owner: "Dr. Taylor",
-        dueDate: "2024-09-01",
-        summary: "Herniated disc requiring surgical intervention. Surgery scheduled for 2024-08-28. Pre-operative clearance obtained. Post-operative recovery plan in development with treating specialist.",
-        attachments: [
-          { id: "6", name: "mri_results.pdf", type: "Diagnostic Imaging", url: "#" },
-          { id: "7", name: "surgical_plan.pdf", type: "Treatment Plan", url: "#" }
-        ],
-        clcLastFollowUp: "2024-08-08",
-        clcNextFollowUp: "2024-09-01"
-      },
-      {
-        id: "8",
-        workerName: "Emily Davis",
-        company: "Apex Labour",
-        riskLevel: "Medium",
-        workStatus: "At work",
-        hasCertificate: false,
-        complianceIndicator: "High",
-        currentStatus: "Return to work plan active",
-        nextStep: "Progress review",
-        owner: "Case Manager",
-        dueDate: "2024-08-19",
-        summary: "Gradual return to work following ankle sprain. Currently at 50% duties with progressive increase planned. Worker responding well to physiotherapy. On track for full duties by end of month.",
-        clcLastFollowUp: "2024-08-04",
-        clcNextFollowUp: "2024-08-19"
+    // Query tickets with worker data using raw SQL for better control
+    const query = `
+      SELECT 
+        t.id,
+        w.first_name || ' ' || w.last_name as worker_name,
+        COALESCE(t.company_name, w.company, 'Unknown') as company,
+        COALESCE(t.risk_level, 'Low') as risk_level,
+        CASE 
+          WHEN w.status_off_work = true THEN 'Off work'
+          ELSE 'At work'
+        END as work_status,
+        t.compliance_status,
+        t.current_status,
+        t.next_step,
+        t.assigned_to as owner,
+        t.next_action_due_at,
+        t.subject,
+        t.last_participation_date,
+        t.next_deadline_date
+      FROM tickets t
+      LEFT JOIN workers w ON t.worker_id = w.id
+      WHERE t.status != 'COMPLETE'
+      ORDER BY 
+        CASE t.risk_level 
+          WHEN 'High' THEN 1 
+          WHEN 'Medium' THEN 2 
+          ELSE 3 
+        END,
+        t.next_action_due_at ASC NULLS LAST
+      LIMIT 100
+    `;
+
+    const result = await db.execute(sql.raw(query));
+    const tickets = result.rows;
+
+    // Map database records to WorkerCase interface
+    const cases = tickets.map((row: any) => {
+      // Map compliance status to indicator
+      let complianceIndicator: string;
+      switch(row.compliance_status) {
+        case 'compliant': complianceIndicator = 'Very High'; break;
+        case 'at_risk': complianceIndicator = 'Medium'; break;
+        case 'non_compliant': complianceIndicator = 'Low'; break;
+        default: complianceIndicator = 'High';
       }
-    ];
+
+      // Format due date
+      const dueDate = row.next_action_due_at 
+        ? new Date(row.next_action_due_at).toISOString().split('T')[0]
+        : row.next_deadline_date || '';
+
+      return {
+        id: row.id,
+        workerName: row.worker_name || 'Unknown Worker',
+        company: row.company,
+        riskLevel: row.risk_level || 'Low',
+        workStatus: row.work_status,
+        hasCertificate: false, // TODO: Check documents table
+        complianceIndicator,
+        currentStatus: row.current_status || 'Case under review',
+        nextStep: row.next_step || 'Awaiting triage',
+        owner: row.owner || 'Unassigned',
+        dueDate,
+        summary: row.subject || 'No summary available',
+        attachments: [], // TODO: Fetch from documents/attachments table
+        clcLastFollowUp: row.last_participation_date || '',
+        clcNextFollowUp: row.next_deadline_date || dueDate
+      };
+    });
+
     res.status(200).json(cases);
   } catch (err) {
-    console.error("Error fetching cases:", err);
+    console.error("Error fetching GPNet2 cases:", err);
     res.status(500).json({ error: "Failed to fetch cases" });
   }
 });
