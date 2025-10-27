@@ -13,6 +13,10 @@ externalPort = 80
 localPort = 9001
 externalPort = 3000
 
+[[ports]]
+localPort = 42915
+externalPort = 3001
+
 [deployment]
 run = "npm run start"
 deploymentTarget = "cloudrun"
