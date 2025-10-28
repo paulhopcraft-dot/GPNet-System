@@ -45,6 +45,11 @@ async function logObjectStorageHealth() {
 }
 
 const app = express();
+// === GPNet Test Route ===
+app.get("/api/test", (req: Request, res: Response) => {
+  res.send("✅ GPNet system connected successfully!");
+});
+
 
 // Trust proxy for proper headers (needed for mobile Safari)
 app.set('trust proxy', 1);
