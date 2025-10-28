@@ -179,45 +179,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = isSuperUser 
         ? await db.execute(sql`
-            SELECT t.id, t.organization_id, w.first_name || ' ' || w.last_name as worker_name,
-              COALESCE(t.company_name, w.company) as company, COALESCE(t.risk_level, 'Low') as risk_level,
-              CASE WHEN w.status_off_work = true THEN 'Off work' ELSE 'At work' END as work_status,
-              t.compliance_status, t.current_status, t.next_step, t.assigned_to as owner,
-              t.next_action_due_at, t.subject, t.last_participation_date, t.next_deadline_date
-            FROM tickets t LEFT JOIN workers w ON t.worker_id = w.id
-            WHERE t.status != 'COMPLETE' ORDER BY 
-              CASE t.risk_level WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
-              t.next_action_due_at ASC NULLS LAST LIMIT 100
+            SELECT 
+              t.id, t.organization_id, t.subject, t.company_name,
+              t.custom_json, t.compliance_status, t.current_status, 
+              t.next_step, t.assigned_to, t.assigned_owner,
+              t.next_action_due_at, t.last_participation_date, t.next_deadline_date,
+              t.priority_level, t.flag_red_count, t.flag_amber_count, t.flag_green_count,
+              w.first_name as w_first, w.last_name as w_last, w.status_off_work,
+              (SELECT json_agg(json_build_object('filename', a.filename, 'path', a.path))
+               FROM attachments a WHERE a.ticket_id = t.id) as attachments_json
+            FROM tickets t 
+            LEFT JOIN workers w ON t.worker_id = w.id
+            WHERE t.status != 'COMPLETE' 
+            ORDER BY t.priority_level DESC NULLS LAST, t.next_action_due_at ASC NULLS LAST 
+            LIMIT 100
           `)
         : await db.execute(sql`
-            SELECT t.id, t.organization_id, w.first_name || ' ' || w.last_name as worker_name,
-              COALESCE(t.company_name, w.company) as company, COALESCE(t.risk_level, 'Low') as risk_level,
-              CASE WHEN w.status_off_work = true THEN 'Off work' ELSE 'At work' END as work_status,
-              t.compliance_status, t.current_status, t.next_step, t.assigned_to as owner,
-              t.next_action_due_at, t.subject, t.last_participation_date, t.next_deadline_date
-            FROM tickets t LEFT JOIN workers w ON t.worker_id = w.id
+            SELECT 
+              t.id, t.organization_id, t.subject, t.company_name,
+              t.custom_json, t.compliance_status, t.current_status,
+              t.next_step, t.assigned_to, t.assigned_owner,
+              t.next_action_due_at, t.last_participation_date, t.next_deadline_date,
+              t.priority_level, t.flag_red_count, t.flag_amber_count, t.flag_green_count,
+              w.first_name as w_first, w.last_name as w_last, w.status_off_work,
+              (SELECT json_agg(json_build_object('filename', a.filename, 'path', a.path))
+               FROM attachments a WHERE a.ticket_id = t.id) as attachments_json
+            FROM tickets t 
+            LEFT JOIN workers w ON t.worker_id = w.id
             WHERE t.status != 'COMPLETE' AND t.organization_id = ${organizationId}
-            ORDER BY CASE t.risk_level WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
-              t.next_action_due_at ASC NULLS LAST LIMIT 100
+            ORDER BY t.priority_level DESC NULLS LAST, t.next_action_due_at ASC NULLS LAST 
+            LIMIT 100
           `);
           
-      const cases = result.rows.map((row: any) => ({
-        id: row.id,
-        workerName: row.worker_name || 'Unknown Worker',
-        company: row.company || "Core Industrial",
-        riskLevel: ['High', 'Medium', 'Low'].includes(row.risk_level) ? row.risk_level : 'Low',
-        workStatus: row.work_status || 'At work',
-        hasCertificate: false,
-        complianceIndicator: row.compliance_status === 'compliant' ? 'Very High' : row.compliance_status === 'at_risk' ? 'Medium' : row.compliance_status === 'non_compliant' ? 'Low' : 'High',
-        currentStatus: row.current_status || 'Case under review',
-        nextStep: row.next_step || 'Initial case review and triage',
-        owner: row.owner || 'Unassigned',
-        dueDate: row.next_action_due_at ? new Date(row.next_action_due_at).toISOString().split('T')[0] : row.next_deadline_date || '',
-        summary: row.subject || 'No summary available',
-        attachments: [],
-        clcLastFollowUp: row.last_participation_date || '',
-        clcNextFollowUp: row.next_deadline_date || ''
-      }));
+      const cases = result.rows.map((row: any) => {
+        // Extract worker name from custom_json or worker table
+        let workerName = 'Unknown Worker';
+        try {
+          const customData = typeof row.custom_json === 'string' ? JSON.parse(row.custom_json) : row.custom_json;
+          const firstName = customData?.cf_worker_first_name || row.w_first || '';
+          const lastName = customData?.cf_workers_name || row.w_last || '';
+          if (firstName || lastName) {
+            workerName = `${firstName} ${lastName}`.trim();
+          }
+        } catch (e) {
+          if (row.w_first || row.w_last) {
+            workerName = `${row.w_first || ''} ${row.w_last || ''}`.trim();
+          }
+        }
+
+        // Extract work status from custom_json or worker table
+        let workStatus = 'At work';
+        try {
+          const customData = typeof row.custom_json === 'string' ? JSON.parse(row.custom_json) : row.custom_json;
+          const offWork = customData?.cf_off_work;
+          if (offWork === true || offWork === 'true' || offWork === 'Yes') {
+            workStatus = 'Off work';
+          } else if (row.status_off_work === true) {
+            workStatus = 'Off work';
+          }
+        } catch (e) {
+          if (row.status_off_work === true) {
+            workStatus = 'Off work';
+          }
+        }
+
+        // Calculate risk level from RAG flags
+        let riskLevel = 'Low';
+        const redCount = row.flag_red_count || 0;
+        const amberCount = row.flag_amber_count || 0;
+        if (redCount > 0) {
+          riskLevel = 'High';
+        } else if (amberCount > 0) {
+          riskLevel = 'Medium';
+        }
+
+        // Map compliance status to indicator
+        let complianceIndicator = 'High';
+        if (row.compliance_status === 'compliant') {
+          complianceIndicator = 'Very High';
+        } else if (row.compliance_status === 'at_risk') {
+          complianceIndicator = 'Medium';
+        } else if (row.compliance_status === 'non_compliant') {
+          complianceIndicator = 'Low';
+        }
+
+        // Parse attachments
+        let attachments = [];
+        try {
+          if (row.attachments_json) {
+            attachments = typeof row.attachments_json === 'string' 
+              ? JSON.parse(row.attachments_json) 
+              : row.attachments_json;
+          }
+        } catch (e) {
+          attachments = [];
+        }
+
+        // Check for medical certificate
+        const hasCertificate = attachments.some((att: any) => 
+          att.filename?.toLowerCase().includes('certificate') || 
+          att.filename?.toLowerCase().includes('medical')
+        );
+
+        return {
+          id: row.id,
+          workerName,
+          company: row.company_name || "Unknown Company",
+          riskLevel,
+          workStatus,
+          hasCertificate,
+          complianceIndicator,
+          currentStatus: row.current_status || 'Case under review',
+          nextStep: row.next_step || 'Initial case review and triage',
+          owner: row.assigned_owner || row.assigned_to || 'Unassigned',
+          dueDate: row.next_action_due_at 
+            ? new Date(row.next_action_due_at).toISOString().split('T')[0] 
+            : row.next_deadline_date || '',
+          summary: row.subject || 'No summary available',
+          attachments: attachments || [],
+          clcLastFollowUp: row.last_participation_date || '',
+          clcNextFollowUp: row.next_deadline_date || ''
+        };
+      });
 
       res.status(200).json(cases);
     } catch (err) {
