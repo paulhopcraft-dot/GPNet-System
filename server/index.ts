@@ -49,6 +49,13 @@ const app = express();
 app.get("/api/test", (req: Request, res: Response) => {
   res.send("✅ GPNet system connected successfully!");
 });
+app.get("/api/info", (req: Request, res: Response) => {
+  res.json({
+    status: "✅ Live system responding",
+    env: process.env.NODE_ENV || "development",
+    timestamp: new Date().toISOString(),
+  });
+});
 
 
 // Trust proxy for proper headers (needed for mobile Safari)
