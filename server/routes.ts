@@ -287,7 +287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Check for medical certificate (either from attachments or custom_json)
-        const hasCertificate = medicalCertificateUrl || attachments.some((att: any) => 
+        const hasCertificate = !!medicalCertificateUrl || attachments.some((att: any) => 
           att.filename?.toLowerCase().includes('certificate') || 
           att.filename?.toLowerCase().includes('medical')
         );
