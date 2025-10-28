@@ -275,8 +275,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           attachments = [];
         }
 
-        // Check for medical certificate
-        const hasCertificate = attachments.some((att: any) => 
+        // Extract medical certificate from custom_json
+        let medicalCertificateUrl = null;
+        let certificateValidUntil = null;
+        try {
+          const customData = typeof row.custom_json === 'string' ? JSON.parse(row.custom_json) : row.custom_json;
+          medicalCertificateUrl = customData?.cf_latest_medical_certificate || null;
+          certificateValidUntil = customData?.cf_valid_until || null;
+        } catch (e) {
+          // Silent fail
+        }
+
+        // Check for medical certificate (either from attachments or custom_json)
+        const hasCertificate = medicalCertificateUrl || attachments.some((att: any) => 
           att.filename?.toLowerCase().includes('certificate') || 
           att.filename?.toLowerCase().includes('medical')
         );
@@ -288,6 +299,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           riskLevel,
           workStatus,
           hasCertificate,
+          certificateUrl: medicalCertificateUrl,
+          certificateValidUntil,
           complianceIndicator,
           currentStatus: row.current_status || 'Case under review',
           nextStep: row.next_step || 'Initial case review and triage',
