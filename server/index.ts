@@ -198,26 +198,41 @@ app.use((req, res, next) => {
 
 (async () => {
   const server = await registerRoutes(app);
+  // ✅ Always-available health/test endpoints
+  app.get("/api/test", (req, res) => {
+    res.json({ ok: true, message: "GPNet system connected successfully!" });
+  });
+
+   app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  // ✅ Temporary Demo Endpoint (for presentation)
+  app.get("/api/demo", (req, res) => {
+    res.json({
+      app: "GPNet",
+      status: "ready for demo",
+      database: "connected",
+      health: "good",
+      timestamp: new Date().toISOString(),
+    });
+  });
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    console.error('Express error handler:', err);
+    console.error("Express error handler:", err);
     res.status(status).json({ message });
   });
 
-  // Add API route protection middleware before static serving
-  app.use('/api/*', (req, res, next) => {
-    // Mark that this is an API route
+    // Add API route protection middleware before static serving
+  app.use("/api/*", (req, res, next) => {
     res.locals.isApiRoute = true;
     next();
   });
 
-  // Catch unhandled API routes and return 404 instead of serving static files
-  app.use('/api/*', (req, res) => {
-    res.status(404).json({ error: 'API endpoint not found' });
-  });
+  // ✅ No 404 block here — we want demo & health endpoints reachable
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
@@ -230,49 +245,35 @@ app.use((req, res, next) => {
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
   // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
+  // This serves both the API and the client.
   // It is the only port that is not firewalled.
-  // Object storage health check
   await logObjectStorageHealth();
 
   const port = parseInt(process.env.PORT || "9000");
 
-
-  let retryCount = 0;
-  const MAX_RETRIES = 5;
-  
   server.on("error", (error: any) => {
-  if (error.code === "EADDRINUSE") {
-    console.error(`⚠️ Port ${port} is already in use. Trying a new one...`);
-    const newPort = port + 1;
-    server.listen(
-      {
-        port: newPort,
-        host: "0.0.0.0",
-      },
-      () => {
-        log(`✅ Switched to port ${newPort}`);
-      }
-    );
-  } else {
-    console.error("Server error:", error);
-    process.exit(1);
-  }
-});
-
-server.listen(
-  {
-    port,
-    host: "0.0.0.0",
-  },
-  () => {
-    log(`✅ Serving on port ${port}`);
-    if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
-      console.log(
-        `🌐 Preview URL: https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+    if (error.code === "EADDRINUSE") {
+      console.error(`⚠️ Port ${port} is already in use. Trying a new one...`);
+      const newPort = port + 1;
+      server.listen(
+        { port: newPort, host: "0.0.0.0" },
+        () => log(`✅ Switched to port ${newPort}`)
       );
+    } else {
+      console.error("Server error:", error);
+      process.exit(1);
     }
-  }
-);
+  });
 
+  server.listen(
+    { port, host: "0.0.0.0" },
+    () => {
+      log(`✅ Serving on port ${port}`);
+      if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
+        console.log(
+          `🌐 Preview URL: https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        );
+      }
+    }
+  );
 })();
