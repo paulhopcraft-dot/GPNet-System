@@ -7,6 +7,7 @@ import { setupVite, serveStatic, log } from "./vite";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { requireAuth } from "./authRoutes";
+import { getBuildInfo } from "./buildInfo";
 
 import { setupWebhookSecurity, webhookSecurityMiddleware } from "./webhookSecurity";
 
@@ -45,6 +46,8 @@ async function logObjectStorageHealth() {
 }
 
 const app = express();
+process.env.GPNET_STARTED_AT = new Date().toISOString();
+
 // === GPNet Test Route ===
 app.get("/api/test", (req: Request, res: Response) => {
   res.send("✅ GPNet system connected successfully!");
@@ -55,6 +58,14 @@ app.get("/api/info", (req: Request, res: Response) => {
     env: process.env.NODE_ENV || "development",
     timestamp: new Date().toISOString(),
   });
+});
+app.get("/api/version", async (req: Request, res: Response) => {
+  try {
+    const info = await getBuildInfo();
+    res.json(info);
+  } catch (e: any) {
+    res.status(500).json({ error: "Failed to read build info", details: e?.message });
+  }
 });
 
 

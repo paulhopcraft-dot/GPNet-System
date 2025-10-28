@@ -1,0 +1,59 @@
+import { promises as fs } from "fs";
+import * as path from "path";
+
+async function readGitHead(repoRoot: string) {
+  try {
+    const head = await fs.readFile(path.join(repoRoot, ".git/HEAD"), "utf8");
+    const refMatch = head.match(/^ref:\s+(.*)$/m);
+    if (!refMatch) return { branch: undefined, commit: head.trim() };
+    const ref = refMatch[1].trim();
+    const branch = ref.split("/").pop();
+    const refPath = path.join(repoRoot, ".git", ref);
+    try {
+      const commit = (await fs.readFile(refPath, "utf8")).trim();
+      return { branch, commit };
+    } catch {
+      try {
+        const packed = await fs.readFile(path.join(repoRoot, ".git/packed-refs"), "utf8");
+        const line = packed.split("\n").find(l => l.endsWith(` ${ref}`));
+        if (line) return { branch, commit: line.split(" ")[0].trim() };
+      } catch {}
+    }
+    return { branch, commit: undefined };
+  } catch {
+    return { branch: undefined, commit: undefined };
+  }
+}
+
+export async function getBuildInfo() {
+  const repoRoot = process.cwd();
+  const envCommit = process.env.GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || process.env.COMMIT_REF;
+  const envBranch = process.env.GIT_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || process.env.BRANCH;
+
+  let commit = envCommit;
+  let branch = envBranch;
+  if (!commit || !branch) {
+    const fromGit = await readGitHead(repoRoot);
+    commit = commit || fromGit.commit;
+    branch = branch || fromGit.branch;
+  }
+
+  const shortCommit = commit ? commit.slice(0, 7) : "unknown";
+  const previewUrl =
+    process.env.REPL_SLUG && process.env.REPL_OWNER
+      ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+      : undefined;
+
+  const startedAtIso = process.env.GPNET_STARTED_AT || new Date().toISOString();
+
+  return {
+    name: "GPNet",
+    branch: branch || "unknown",
+    commit: commit || "unknown",
+    shortCommit,
+    buildTime: startedAtIso,
+    env: process.env.NODE_ENV || "development",
+    previewUrl,
+    uptimeSeconds: Math.floor(process.uptime()),
+  };
+}
