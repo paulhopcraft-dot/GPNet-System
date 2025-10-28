@@ -21,9 +21,11 @@ externalPort = 3000
 localPort = 42915
 externalPort = 3001
 
+
 [deployment]
-run = "npm run start"
+run = "npx tsx server/index.ts"
 deploymentTarget = "cloudrun"
+
 
 [nix]
 channel = "stable-25_05"
