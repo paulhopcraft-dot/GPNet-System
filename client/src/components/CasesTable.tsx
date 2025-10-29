@@ -23,6 +23,7 @@ export function CasesTable({ cases, selectedCaseId, onCaseClick }: CasesTablePro
         <thead className="bg-muted border-b border-border">
           <tr>
             <th className="px-4 py-3 font-medium text-muted-foreground">Worker Name</th>
+            <th className="px-4 py-3 font-medium text-muted-foreground">Date of Injury</th>
             <th className="px-4 py-3 font-medium text-muted-foreground">Company</th>
             <th className="px-4 py-3 font-medium text-muted-foreground">Risk Level</th>
             <th className="px-4 py-3 font-medium text-muted-foreground">
@@ -42,7 +43,7 @@ export function CasesTable({ cases, selectedCaseId, onCaseClick }: CasesTablePro
         <tbody className="divide-y divide-border">
           {filteredCases.length === 0 ? (
             <tr>
-              <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+              <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                 No cases found
               </td>
             </tr>
@@ -62,6 +63,9 @@ export function CasesTable({ cases, selectedCaseId, onCaseClick }: CasesTablePro
                 >
                   <td className="px-4 py-3 font-medium text-card-foreground">
                     {workerCase.workerName}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
+                    {workerCase.dateOfInjury || '-'}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{workerCase.company}</td>
                   <td className="px-4 py-3">

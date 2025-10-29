@@ -188,7 +188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               t.next_step, t.assigned_to, t.assigned_owner,
               t.next_action_due_at, t.last_participation_date, t.next_deadline_date,
               t.priority_level, t.flag_red_count, t.flag_amber_count, t.flag_green_count,
-              w.first_name as w_first, w.last_name as w_last, w.status_off_work
+              w.first_name as w_first, w.last_name as w_last, w.status_off_work, w.date_of_injury
             FROM tickets t 
             LEFT JOIN workers w ON t.worker_id = w.id
             WHERE t.status != 'COMPLETE' 
@@ -202,7 +202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               t.next_step, t.assigned_to, t.assigned_owner,
               t.next_action_due_at, t.last_participation_date, t.next_deadline_date,
               t.priority_level, t.flag_red_count, t.flag_amber_count, t.flag_green_count,
-              w.first_name as w_first, w.last_name as w_last, w.status_off_work
+              w.first_name as w_first, w.last_name as w_last, w.status_off_work, w.date_of_injury
             FROM tickets t 
             LEFT JOIN workers w ON t.worker_id = w.id
             WHERE t.status != 'COMPLETE' AND t.organization_id = ${organizationId}
@@ -280,6 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return {
           id: row.id,
           workerName,
+          dateOfInjury: row.date_of_injury || null,
           company: row.company_name || "Unknown Company",
           riskLevel,
           workStatus,

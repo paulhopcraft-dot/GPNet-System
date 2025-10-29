@@ -19,6 +19,7 @@ export interface CaseAttachment {
 export interface WorkerCase {
   id: string;
   workerName: string;
+  dateOfInjury?: string | null;
   company: CompanyName;
   riskLevel: RiskLevel;
   workStatus: WorkStatus;
