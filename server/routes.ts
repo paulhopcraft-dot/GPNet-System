@@ -181,7 +181,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? await db.execute(sql`
             SELECT 
               t.id, t.organization_id, t.subject, t.company_name,
-              t.custom_json, t.compliance_status, t.current_status, 
+              t.custom_json, t.compliance_status, t.current_status, t.status, t.case_type,
               t.next_step, t.assigned_to, t.assigned_owner,
               t.next_action_due_at, t.last_participation_date, t.next_deadline_date,
               t.priority_level, t.flag_red_count, t.flag_amber_count, t.flag_green_count,
@@ -197,7 +197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : await db.execute(sql`
             SELECT 
               t.id, t.organization_id, t.subject, t.company_name,
-              t.custom_json, t.compliance_status, t.current_status,
+              t.custom_json, t.compliance_status, t.current_status, t.status, t.case_type,
               t.next_step, t.assigned_to, t.assigned_owner,
               t.next_action_due_at, t.last_participation_date, t.next_deadline_date,
               t.priority_level, t.flag_red_count, t.flag_amber_count, t.flag_green_count,
@@ -292,6 +292,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           att.filename?.toLowerCase().includes('medical')
         );
 
+        // Generate meaningful current status from available data
+        let currentStatus = row.current_status;
+        if (!currentStatus) {
+          // Derive status from ticket state
+          const ticketStatus = row.status?.toUpperCase();
+          const caseType = row.case_type;
+          
+          if (ticketStatus === 'NEW') {
+            currentStatus = 'New case - awaiting initial review';
+          } else if (ticketStatus === 'ANALYSING') {
+            currentStatus = 'Under analysis by GPNet team';
+          } else if (ticketStatus === 'AWAITING_REVIEW') {
+            currentStatus = 'Analysis complete - pending review';
+          } else if (ticketStatus === 'READY_TO_SEND') {
+            currentStatus = 'Report ready - preparing to send';
+          } else {
+            currentStatus = 'Case under review';
+          }
+        }
+
         return {
           id: row.id,
           workerName,
@@ -302,7 +322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           certificateUrl: medicalCertificateUrl,
           certificateValidUntil,
           complianceIndicator,
-          currentStatus: row.current_status || 'Case under review',
+          currentStatus,
           nextStep: row.next_step || 'Initial case review and triage',
           owner: row.assigned_owner || row.assigned_to || 'Unassigned',
           dueDate: row.next_action_due_at 
