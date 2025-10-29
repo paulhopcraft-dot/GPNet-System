@@ -36,14 +36,13 @@ export function CasesTable({ cases, selectedCaseId, onCaseClick }: CasesTablePro
             </th>
             <th className="px-4 py-3 font-medium text-muted-foreground">Latest Certificate</th>
             <th className="px-4 py-3 font-medium text-muted-foreground">Compliance Indicator</th>
-            <th className="px-4 py-3 font-medium text-muted-foreground">Where are we at?</th>
-            <th className="px-4 py-3 font-medium text-muted-foreground">Next Step + Owner + Due</th>
+            <th className="px-6 py-3 font-medium text-muted-foreground w-1/3">Next Step (Owner / Due Date)</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {filteredCases.length === 0 ? (
             <tr>
-              <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+              <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                 No cases found
               </td>
             </tr>
@@ -88,9 +87,13 @@ export function CasesTable({ cases, selectedCaseId, onCaseClick }: CasesTablePro
                   <td className="px-4 py-3">
                     <RiskBadge level={workerCase.complianceIndicator} type="compliance" />
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{workerCase.currentStatus}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {workerCase.nextStep} - {workerCase.owner} - {workerCase.dueDate}
+                  <td className="px-6 py-3 text-card-foreground w-1/3">
+                    <div className="space-y-1">
+                      <div className="font-medium">{workerCase.nextStep}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {workerCase.owner} {workerCase.dueDate && `• Due: ${workerCase.dueDate}`}
+                      </div>
+                    </div>
                   </td>
                 </tr>
               );

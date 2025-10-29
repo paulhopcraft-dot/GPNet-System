@@ -25,7 +25,6 @@ export interface WorkerCase {
   hasCertificate: boolean;
   certificateUrl?: string;
   complianceIndicator: ComplianceIndicator;
-  currentStatus: string;
   nextStep: string;
   owner: string;
   dueDate: string;

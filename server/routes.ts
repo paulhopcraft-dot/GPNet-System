@@ -188,9 +188,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               w.first_name as w_first, w.last_name as w_last, w.status_off_work,
               (SELECT json_agg(json_build_object('filename', a.filename, 'path', a.path))
                FROM attachments a WHERE a.ticket_id = t.id) as attachments_json,
-              (SELECT body_text FROM ticket_messages 
-               WHERE ticket_id = t.id AND is_private = true 
-               ORDER BY created_at DESC LIMIT 1) as last_private_note
+              (SELECT json_agg(json_build_object('text', tm.body_text, 'date', tm.created_at))
+               FROM ticket_messages tm 
+               WHERE tm.ticket_id = t.id AND tm.is_private = true 
+               ORDER BY tm.created_at DESC LIMIT 3) as recent_private_notes,
+              (SELECT json_agg(json_build_object('subject', e.subject, 'body', e.body, 'direction', e.direction, 'date', e.sent_at))
+               FROM emails e 
+               WHERE e.ticket_id = t.id 
+               ORDER BY e.sent_at DESC LIMIT 3) as recent_emails
             FROM tickets t 
             LEFT JOIN workers w ON t.worker_id = w.id
             WHERE t.status != 'COMPLETE' 
@@ -207,9 +212,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               w.first_name as w_first, w.last_name as w_last, w.status_off_work,
               (SELECT json_agg(json_build_object('filename', a.filename, 'path', a.path))
                FROM attachments a WHERE a.ticket_id = t.id) as attachments_json,
-              (SELECT body_text FROM ticket_messages 
-               WHERE ticket_id = t.id AND is_private = true 
-               ORDER BY created_at DESC LIMIT 1) as last_private_note
+              (SELECT json_agg(json_build_object('text', tm.body_text, 'date', tm.created_at))
+               FROM ticket_messages tm 
+               WHERE tm.ticket_id = t.id AND tm.is_private = true 
+               ORDER BY tm.created_at DESC LIMIT 3) as recent_private_notes,
+              (SELECT json_agg(json_build_object('subject', e.subject, 'body', e.body, 'direction', e.direction, 'date', e.sent_at))
+               FROM emails e 
+               WHERE e.ticket_id = t.id 
+               ORDER BY e.sent_at DESC LIMIT 3) as recent_emails
             FROM tickets t 
             LEFT JOIN workers w ON t.worker_id = w.id
             WHERE t.status != 'COMPLETE' AND t.organization_id = ${organizationId}
@@ -298,70 +308,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
           att.filename?.toLowerCase().includes('medical')
         );
 
-        // Generate intelligent context-aware status from Freshdesk private notes
-        let currentStatus = row.current_status;
-        if (!currentStatus) {
-          const ticketStatus = row.status?.toUpperCase();
-          const nextStep = row.next_step || '';
-          const nextStepLower = nextStep.toLowerCase();
-          const privateNote = (row.last_private_note || '').toLowerCase();
+        // Generate rich contextual "Next Step" from recent emails and private notes
+        let contextualNextStep = row.next_step || 'Initial case review and triage';
+        
+        try {
+          const recentNotes = row.recent_private_notes ? JSON.parse(row.recent_private_notes) : [];
+          const recentEmails = row.recent_emails ? JSON.parse(row.recent_emails) : [];
           
-          // PRIORITY 1: Analyze the latest private note from Freshdesk (most specific)
-          if (privateNote) {
-            if (privateNote.includes('waiting') && (privateNote.includes('certificate') || privateNote.includes('medical cert'))) {
-              currentStatus = 'Waiting on medical certificate';
-            } else if (privateNote.includes('waiting') && privateNote.includes('worker information')) {
-              currentStatus = 'Waiting on worker information sheet';
-            } else if (privateNote.includes('waiting') && (privateNote.includes('complete check') || privateNote.includes('assessment'))) {
-              currentStatus = 'Waiting for worker to complete check';
-            } else if (privateNote.includes('preparing') && privateNote.includes('rtw')) {
-              currentStatus = 'Preparing return-to-work plan';
-            } else if (privateNote.includes('scheduling') || (privateNote.includes('contact') && privateNote.includes('schedule'))) {
-              currentStatus = 'Scheduling assessment with worker';
-            } else if (privateNote.includes('report') && (privateNote.includes('complete') || privateNote.includes('ready'))) {
-              currentStatus = 'Report complete - preparing to send';
-            } else if (privateNote.includes('merged from ticket')) {
-              currentStatus = 'Case merged - under review';
+          // Combine all recent activity into context
+          let activityContext = '';
+          
+          // Add latest private notes (most relevant)
+          if (recentNotes && recentNotes.length > 0) {
+            const latestNote = recentNotes[0]?.text || '';
+            const noteSnippet = latestNote.substring(0, 300).toLowerCase();
+            
+            // Extract key action phrases from notes
+            if (noteSnippet.includes('waiting') && (noteSnippet.includes('certificate') || noteSnippet.includes('medical cert'))) {
+              activityContext = 'Awaiting medical certificate';
+            } else if (noteSnippet.includes('waiting') && noteSnippet.includes('worker')) {
+              activityContext = 'Waiting for worker response';
+            } else if (noteSnippet.includes('report') && noteSnippet.includes('ready')) {
+              activityContext = 'Report complete - preparing to send';
+            } else if (noteSnippet.includes('merged from ticket')) {
+              activityContext = 'Case merged - reviewing combined information';
+            } else if (noteSnippet.includes('recommendations') || noteSnippet.includes('it is recommended')) {
+              activityContext = 'Recommendations provided - awaiting action';
             }
           }
           
-          // PRIORITY 2: Analyze next_step field for specific contextual statuses
-          if (!currentStatus || currentStatus === row.current_status) {
-            if (nextStepLower.includes('missing_or_invalid_cert') || nextStepLower.includes('certificate_expired')) {
-              currentStatus = 'Waiting on medical certificate';
-            } else if (nextStepLower.includes('missing_doctor_signature')) {
-              currentStatus = 'Waiting for doctor to sign certificate';
-            } else if (nextStepLower.includes('worker_declared_unfit')) {
-              currentStatus = 'Worker declared unfit - reviewing options';
-            } else if (nextStepLower.includes('rtw') && nextStepLower.includes('plan')) {
-              currentStatus = 'Preparing return-to-work plan';
-            } else if (nextStepLower.includes('rtw alert') || nextStepLower.includes('review_required')) {
-              currentStatus = 'RTW case requires review';
-            } else if (nextStepLower.includes('schedule') || nextStepLower.includes('contact')) {
-              currentStatus = 'Scheduling assessment with worker';
-            } else if (nextStepLower.includes('follow up') || nextStepLower.includes('completion')) {
-              currentStatus = 'Waiting for worker to complete check';
-            } else if (nextStepLower.includes('information sheet') || nextStepLower.includes('worker\'s information')) {
-              currentStatus = 'Waiting on worker information sheet';
-            } else if (nextStepLower.includes('initial case review') || nextStepLower.includes('triage')) {
-              currentStatus = 'New case - awaiting initial review';
+          // Add email context if available
+          if (recentEmails && recentEmails.length > 0 && !activityContext) {
+            const latestEmail = recentEmails[0];
+            if (latestEmail?.direction === 'outgoing') {
+              activityContext = `Email sent: ${latestEmail.subject?.substring(0, 50) || 'Follow-up'} - awaiting response`;
+            } else if (latestEmail?.direction === 'incoming') {
+              activityContext = `Response received - ${latestEmail.subject?.substring(0, 50) || 'Review required'}`;
             }
           }
           
-          // PRIORITY 3: Fallback to ticket status
-          if (!currentStatus || currentStatus === row.current_status) {
-            if (ticketStatus === 'NEW') {
-              currentStatus = 'New case - awaiting initial review';
-            } else if (ticketStatus === 'ANALYSING') {
-              currentStatus = 'Under analysis by GPNet team';
-            } else if (ticketStatus === 'AWAITING_REVIEW') {
-              currentStatus = 'Analysis complete - pending review';
-            } else if (ticketStatus === 'READY_TO_SEND') {
-              currentStatus = 'Report ready - preparing to send';
+          // Combine with next_step field for full context
+          if (activityContext) {
+            const baseNextStep = row.next_step || '';
+            if (baseNextStep.toLowerCase().includes('initial case review')) {
+              contextualNextStep = activityContext;
             } else {
-              currentStatus = 'Case under review';
+              contextualNextStep = `${activityContext} | ${baseNextStep}`;
             }
           }
+        } catch (e) {
+          // Fallback to original next_step if parsing fails
+          contextualNextStep = row.next_step || 'Initial case review and triage';
         }
 
         return {
@@ -374,8 +371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           certificateUrl: medicalCertificateUrl,
           certificateValidUntil,
           complianceIndicator,
-          currentStatus,
-          nextStep: row.next_step || 'Initial case review and triage',
+          nextStep: contextualNextStep,
           owner: row.assigned_owner || row.assigned_to || 'Unassigned',
           dueDate: row.next_action_due_at 
             ? new Date(row.next_action_due_at).toISOString().split('T')[0] 
