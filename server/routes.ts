@@ -187,7 +187,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               t.priority_level, t.flag_red_count, t.flag_amber_count, t.flag_green_count,
               w.first_name as w_first, w.last_name as w_last, w.status_off_work,
               (SELECT json_agg(json_build_object('filename', a.filename, 'path', a.path))
-               FROM attachments a WHERE a.ticket_id = t.id) as attachments_json
+               FROM attachments a WHERE a.ticket_id = t.id) as attachments_json,
+              (SELECT body_text FROM ticket_messages 
+               WHERE ticket_id = t.id AND is_private = true 
+               ORDER BY created_at DESC LIMIT 1) as last_private_note
             FROM tickets t 
             LEFT JOIN workers w ON t.worker_id = w.id
             WHERE t.status != 'COMPLETE' 
@@ -203,7 +206,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               t.priority_level, t.flag_red_count, t.flag_amber_count, t.flag_green_count,
               w.first_name as w_first, w.last_name as w_last, w.status_off_work,
               (SELECT json_agg(json_build_object('filename', a.filename, 'path', a.path))
-               FROM attachments a WHERE a.ticket_id = t.id) as attachments_json
+               FROM attachments a WHERE a.ticket_id = t.id) as attachments_json,
+              (SELECT body_text FROM ticket_messages 
+               WHERE ticket_id = t.id AND is_private = true 
+               ORDER BY created_at DESC LIMIT 1) as last_private_note
             FROM tickets t 
             LEFT JOIN workers w ON t.worker_id = w.id
             WHERE t.status != 'COMPLETE' AND t.organization_id = ${organizationId}
@@ -292,42 +298,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
           att.filename?.toLowerCase().includes('medical')
         );
 
-        // Generate intelligent context-aware status
+        // Generate intelligent context-aware status from Freshdesk private notes
         let currentStatus = row.current_status;
         if (!currentStatus) {
           const ticketStatus = row.status?.toUpperCase();
           const nextStep = row.next_step || '';
           const nextStepLower = nextStep.toLowerCase();
+          const privateNote = (row.last_private_note || '').toLowerCase();
           
-          // Analyze next_step for specific contextual statuses
-          if (nextStepLower.includes('missing_or_invalid_cert') || nextStepLower.includes('certificate_expired')) {
-            currentStatus = 'Waiting on medical certificate';
-          } else if (nextStepLower.includes('missing_doctor_signature')) {
-            currentStatus = 'Waiting for doctor to sign certificate';
-          } else if (nextStepLower.includes('worker_declared_unfit')) {
-            currentStatus = 'Worker declared unfit - reviewing options';
-          } else if (nextStepLower.includes('rtw') && nextStepLower.includes('plan')) {
-            currentStatus = 'Preparing return-to-work plan';
-          } else if (nextStepLower.includes('rtw alert') || nextStepLower.includes('review_required')) {
-            currentStatus = 'RTW case requires review';
-          } else if (nextStepLower.includes('schedule') || nextStepLower.includes('contact')) {
-            currentStatus = 'Scheduling assessment with worker';
-          } else if (nextStepLower.includes('follow up') || nextStepLower.includes('completion')) {
-            currentStatus = 'Waiting for worker to complete check';
-          } else if (nextStepLower.includes('information sheet') || nextStepLower.includes('worker\'s information')) {
-            currentStatus = 'Waiting on worker information sheet';
-          } else if (nextStepLower.includes('initial case review') || nextStepLower.includes('triage')) {
-            currentStatus = 'New case - awaiting initial review';
-          } else if (ticketStatus === 'NEW') {
-            currentStatus = 'New case - awaiting initial review';
-          } else if (ticketStatus === 'ANALYSING') {
-            currentStatus = 'Under analysis by GPNet team';
-          } else if (ticketStatus === 'AWAITING_REVIEW') {
-            currentStatus = 'Analysis complete - pending review';
-          } else if (ticketStatus === 'READY_TO_SEND') {
-            currentStatus = 'Report ready - preparing to send';
-          } else {
-            currentStatus = 'Case under review';
+          // PRIORITY 1: Analyze the latest private note from Freshdesk (most specific)
+          if (privateNote) {
+            if (privateNote.includes('waiting') && (privateNote.includes('certificate') || privateNote.includes('medical cert'))) {
+              currentStatus = 'Waiting on medical certificate';
+            } else if (privateNote.includes('waiting') && privateNote.includes('worker information')) {
+              currentStatus = 'Waiting on worker information sheet';
+            } else if (privateNote.includes('waiting') && (privateNote.includes('complete check') || privateNote.includes('assessment'))) {
+              currentStatus = 'Waiting for worker to complete check';
+            } else if (privateNote.includes('preparing') && privateNote.includes('rtw')) {
+              currentStatus = 'Preparing return-to-work plan';
+            } else if (privateNote.includes('scheduling') || (privateNote.includes('contact') && privateNote.includes('schedule'))) {
+              currentStatus = 'Scheduling assessment with worker';
+            } else if (privateNote.includes('report') && (privateNote.includes('complete') || privateNote.includes('ready'))) {
+              currentStatus = 'Report complete - preparing to send';
+            } else if (privateNote.includes('merged from ticket')) {
+              currentStatus = 'Case merged - under review';
+            }
+          }
+          
+          // PRIORITY 2: Analyze next_step field for specific contextual statuses
+          if (!currentStatus || currentStatus === row.current_status) {
+            if (nextStepLower.includes('missing_or_invalid_cert') || nextStepLower.includes('certificate_expired')) {
+              currentStatus = 'Waiting on medical certificate';
+            } else if (nextStepLower.includes('missing_doctor_signature')) {
+              currentStatus = 'Waiting for doctor to sign certificate';
+            } else if (nextStepLower.includes('worker_declared_unfit')) {
+              currentStatus = 'Worker declared unfit - reviewing options';
+            } else if (nextStepLower.includes('rtw') && nextStepLower.includes('plan')) {
+              currentStatus = 'Preparing return-to-work plan';
+            } else if (nextStepLower.includes('rtw alert') || nextStepLower.includes('review_required')) {
+              currentStatus = 'RTW case requires review';
+            } else if (nextStepLower.includes('schedule') || nextStepLower.includes('contact')) {
+              currentStatus = 'Scheduling assessment with worker';
+            } else if (nextStepLower.includes('follow up') || nextStepLower.includes('completion')) {
+              currentStatus = 'Waiting for worker to complete check';
+            } else if (nextStepLower.includes('information sheet') || nextStepLower.includes('worker\'s information')) {
+              currentStatus = 'Waiting on worker information sheet';
+            } else if (nextStepLower.includes('initial case review') || nextStepLower.includes('triage')) {
+              currentStatus = 'New case - awaiting initial review';
+            }
+          }
+          
+          // PRIORITY 3: Fallback to ticket status
+          if (!currentStatus || currentStatus === row.current_status) {
+            if (ticketStatus === 'NEW') {
+              currentStatus = 'New case - awaiting initial review';
+            } else if (ticketStatus === 'ANALYSING') {
+              currentStatus = 'Under analysis by GPNet team';
+            } else if (ticketStatus === 'AWAITING_REVIEW') {
+              currentStatus = 'Analysis complete - pending review';
+            } else if (ticketStatus === 'READY_TO_SEND') {
+              currentStatus = 'Report ready - preparing to send';
+            } else {
+              currentStatus = 'Case under review';
+            }
           }
         }
 
