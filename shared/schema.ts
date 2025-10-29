@@ -133,9 +133,9 @@ export const workers = pgTable("workers", {
   company: text("company"), // Company name
 
     // ✅ Real Date of Injury field (new)
-  dateOfInjury: timestamp("date_of_injury").default(null), // When injury occurred
-  injuryDescription: text("injury_description").default(null), // Optional injury notes/summary
-  injurySeverity: text("injury_severity").default(null), // e.g. "minor", "moderate", "serious", "major"
+  dateOfInjury: timestamp("date_of_injury"), // When injury occurred
+  injuryDescription: text("injury_description"), // Optional injury notes/summary
+  injurySeverity: text("injury_severity"), // e.g. "minor", "moderate", "serious", "major"
 
 
   expectedRecoveryDate: timestamp("expected_recovery_date"), // Expected recovery date
