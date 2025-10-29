@@ -1,19 +1,16 @@
-import type { CompanyName } from "@shared/schema";
+import type { WorkerCase } from "@shared/schema";
 
 interface CompanyNavProps {
-  selectedCompany: CompanyName | null;
-  onSelectCompany: (company: CompanyName | null) => void;
+  selectedCompany: string | null;
+  onSelectCompany: (company: string | null) => void;
+  cases: WorkerCase[];
 }
 
-const companies: CompanyName[] = [
-  "Symmetry",
-  "Allied Health",
-  "Apex Labour",
-  "SafeWorks",
-  "Core Industrial",
-];
-
-export function CompanyNav({ selectedCompany, onSelectCompany }: CompanyNavProps) {
+export function CompanyNav({ selectedCompany, onSelectCompany, cases }: CompanyNavProps) {
+  // Dynamically extract unique companies from actual case data
+  const companies = Array.from(new Set(cases.map(c => c.company)))
+    .filter(company => company)
+    .sort();
   return (
     <nav className="space-y-1">
       <button

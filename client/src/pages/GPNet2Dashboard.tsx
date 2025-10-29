@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import type { CompanyName, WorkerCase } from "@shared/schema";
 
 export default function GPNet2Dashboard() {
-  const [selectedCompany, setSelectedCompany] = useState<CompanyName | null>(null);
+  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
 
@@ -58,7 +58,7 @@ export default function GPNet2Dashboard() {
           </div>
           <h1 className="text-sidebar-foreground text-xl font-bold">GPNet 2</h1>
         </div>
-        <CompanyNav selectedCompany={selectedCompany} onSelectCompany={setSelectedCompany} />
+        <CompanyNav selectedCompany={selectedCompany} onSelectCompany={setSelectedCompany} cases={cases} />
       </aside>
 
       <main className="flex-1 flex overflow-hidden">
