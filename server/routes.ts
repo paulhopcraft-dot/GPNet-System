@@ -292,14 +292,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           att.filename?.toLowerCase().includes('medical')
         );
 
-        // Generate meaningful current status from available data
+        // Generate intelligent context-aware status
         let currentStatus = row.current_status;
         if (!currentStatus) {
-          // Derive status from ticket state
           const ticketStatus = row.status?.toUpperCase();
-          const caseType = row.case_type;
+          const nextStep = row.next_step || '';
+          const nextStepLower = nextStep.toLowerCase();
           
-          if (ticketStatus === 'NEW') {
+          // Analyze next_step for specific contextual statuses
+          if (nextStepLower.includes('missing_or_invalid_cert') || nextStepLower.includes('certificate_expired')) {
+            currentStatus = 'Waiting on medical certificate';
+          } else if (nextStepLower.includes('missing_doctor_signature')) {
+            currentStatus = 'Waiting for doctor to sign certificate';
+          } else if (nextStepLower.includes('worker_declared_unfit')) {
+            currentStatus = 'Worker declared unfit - reviewing options';
+          } else if (nextStepLower.includes('rtw') && nextStepLower.includes('plan')) {
+            currentStatus = 'Preparing return-to-work plan';
+          } else if (nextStepLower.includes('rtw alert') || nextStepLower.includes('review_required')) {
+            currentStatus = 'RTW case requires review';
+          } else if (nextStepLower.includes('schedule') || nextStepLower.includes('contact')) {
+            currentStatus = 'Scheduling assessment with worker';
+          } else if (nextStepLower.includes('follow up') || nextStepLower.includes('completion')) {
+            currentStatus = 'Waiting for worker to complete check';
+          } else if (nextStepLower.includes('information sheet') || nextStepLower.includes('worker\'s information')) {
+            currentStatus = 'Waiting on worker information sheet';
+          } else if (nextStepLower.includes('initial case review') || nextStepLower.includes('triage')) {
+            currentStatus = 'New case - awaiting initial review';
+          } else if (ticketStatus === 'NEW') {
             currentStatus = 'New case - awaiting initial review';
           } else if (ticketStatus === 'ANALYSING') {
             currentStatus = 'Under analysis by GPNet team';
