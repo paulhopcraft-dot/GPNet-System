@@ -19,14 +19,16 @@ export default function GPNet2Dashboard() {
   });
 
   const filteredCases = useMemo(() => {
-    return cases.filter((c) => {
-      const matchesCompany = !selectedCompany || c.company === selectedCompany;
-      const matchesSearch =
-        !searchQuery ||
-        c.workerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.company.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCompany && matchesSearch;
-    });
+    return cases
+      .filter((c) => {
+        const matchesCompany = !selectedCompany || c.company === selectedCompany;
+        const matchesSearch =
+          !searchQuery ||
+          c.workerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          c.company.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesCompany && matchesSearch;
+      })
+      .sort((a, b) => a.workerName.localeCompare(b.workerName));
   }, [cases, selectedCompany, searchQuery]);
 
   const selectedCase = useMemo(() => {
