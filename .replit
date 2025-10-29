@@ -29,5 +29,5 @@ deploymentTarget = "cloudrun"
 
 [nix]
 channel = "stable-25_05"
-packages = ["imagemagick_light"]
+packages = ["imagemagick_light", "unzip"]
 
