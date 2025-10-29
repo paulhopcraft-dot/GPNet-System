@@ -2,6 +2,7 @@ import type { WorkerCase, WorkStatus } from "@shared/schema";
 import { RiskBadge } from "./RiskBadge";
 import { WorkStatusFilter } from "./WorkStatusFilter";
 import { useState } from "react";
+import { Link2 } from "lucide-react";
 
 interface CasesTableProps {
   cases: WorkerCase[];
@@ -72,11 +73,13 @@ export function CasesTable({ cases, selectedCaseId, onCaseClick }: CasesTablePro
                     {workerCase.hasCertificate ? (
                       <a
                         href={workerCase.certificateUrl || "#"}
-                        className="text-primary hover:underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline inline-flex items-center gap-1"
                         onClick={(e) => e.stopPropagation()}
                         data-testid={`link-certificate-${workerCase.id}`}
                       >
-                        <span className="material-symbols-outlined text-xl align-middle">link</span>
+                        <Link2 className="h-4 w-4" />
                       </a>
                     ) : (
                       <span className="text-muted-foreground">None</span>

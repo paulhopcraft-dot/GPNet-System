@@ -125,14 +125,20 @@ export const workers = pgTable("workers", {
   email: text("email").notNull(),
   roleApplied: text("role_applied").notNull(),
   site: text("site"),
-  
+
   // New field for spec compatibility (nullable for incremental migration)
   roleTitle: text("role_title"), // Job title - maps to roleApplied
-  
+
   // Case Console - Rule Engine fields (nullable for backward compatibility)
   managerName: text("manager_name"), // Worker's manager
   company: text("company"), // Company name
-  dateOfInjury: timestamp("date_of_injury"), // When injury occurred
+
+    // ✅ Real Date of Injury field (new)
+  dateOfInjury: timestamp("date_of_injury").default(null), // When injury occurred
+  injuryDescription: text("injury_description").default(null), // Optional injury notes/summary
+  injurySeverity: text("injury_severity").default(null), // e.g. "minor", "moderate", "serious", "major"
+
+
   expectedRecoveryDate: timestamp("expected_recovery_date"), // Expected recovery date
   statusOffWork: boolean("status_off_work").default(false), // Currently off work
   rtwPlanPresent: boolean("rtw_plan_present").default(false), // Has RTW plan
