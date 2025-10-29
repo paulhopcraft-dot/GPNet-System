@@ -213,6 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cases = result.rows.map((row: any) => {
         // Extract worker name from custom_json or worker table
         let workerName = 'Unknown Worker';
+        let dateOfInjury = null;
         try {
           const customData = typeof row.custom_json === 'string' ? JSON.parse(row.custom_json) : row.custom_json;
           const firstName = customData?.cf_worker_first_name || row.w_first || '';
@@ -220,10 +221,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (firstName || lastName) {
             workerName = `${firstName} ${lastName}`.trim();
           }
+          // Extract date of injury from Freshdesk custom field
+          dateOfInjury = customData?.cf_injury_date || row.date_of_injury || null;
         } catch (e) {
           if (row.w_first || row.w_last) {
             workerName = `${row.w_first || ''} ${row.w_last || ''}`.trim();
           }
+          dateOfInjury = row.date_of_injury || null;
         }
 
         // Extract work status from custom_json or worker table
@@ -280,7 +284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return {
           id: row.id,
           workerName,
-          dateOfInjury: row.date_of_injury || null,
+          dateOfInjury,
           company: row.company_name || "Unknown Company",
           riskLevel,
           workStatus,
